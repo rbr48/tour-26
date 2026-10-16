@@ -30,6 +30,10 @@ import UserProfileModal from './components/UserProfileModal';
 import InstagramFeed from './components/InstagramFeed';
 import DiscordDiscussion from './components/DiscordDiscussion';
 import NotificationCenter from './components/NotificationCenter';
+import AITourGuideModal from './components/AITourGuideModal';
+import FamilySafetyHub from './components/FamilySafetyHub';
+import BkashDepositModal from './components/BkashDepositModal';
+import TourQuizModal from './components/TourQuizModal';
 import { sendPushNotification } from './services/notificationService';
 import { sanitizeAndCompressTourData } from './utils/imageCompressor';
 
@@ -383,6 +387,12 @@ export default function App() {
   const [showPrintReport, setShowPrintReport] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
+
+  // Superpower Feature Modals
+  const [showAIGuideModal, setShowAIGuideModal] = useState(false);
+  const [showSafetyHubModal, setShowSafetyHubModal] = useState(false);
+  const [showBkashModal, setShowBkashModal] = useState(false);
+  const [showQuizModal, setShowQuizModal] = useState(false);
 
   // Activity Feed & Push Notification State
   const [activities, setActivities] = useState(() => {
@@ -980,6 +990,73 @@ export default function App() {
     pushToServer(updated);
   };
 
+  // Superpower Handlers
+  const handleShareLocation = (loc) => {
+    const updated = {
+      ...data,
+      familyLocations: {
+        ...(data.familyLocations || {}),
+        [loc.uid]: loc
+      }
+    };
+    pushToServer(updated);
+    addActivity({
+      id: Date.now(),
+      type: 'location',
+      title: `📍 ${loc.name} অবস্থান শেয়ার করেছেন`,
+      body: loc.note || 'সৈকত এলাকায় লাইভ অবস্থান আপডেট হয়েছে',
+      tab: 'dashboard',
+      time: 'এইমাত্র'
+    });
+    sendPushNotification({
+      title: `📍 ${loc.name} এর নতুন অবস্থান`,
+      body: loc.note || 'কক্সবাজার সমুদ্র সৈকত এলাকায় অবস্থান শেয়ার করেছেন',
+      onClick: () => setActiveTab('dashboard')
+    });
+  };
+
+  const handleAddDepositTransaction = (trx) => {
+    const newExpense = {
+      id: trx.id,
+      title: `ট্যুর ফান্ডে জমা: ${trx.depositorName} (${trx.method})`,
+      category: 'অন্যান্য',
+      amount: Number(trx.amount),
+      paidBy: trx.depositorName,
+      date: new Date().toISOString().slice(0, 10),
+      time: trx.time,
+      isDeposit: true,
+      trxId: trx.trxId
+    };
+
+    const updatedMembers = (data.members || []).map(m => {
+      if (m.name.includes(trx.depositorName) || trx.depositorName.includes(m.name)) {
+        return { ...m, deposit: Number(m.deposit || 0) + Number(trx.amount) };
+      }
+      return m;
+    });
+
+    const updated = {
+      ...data,
+      members: updatedMembers,
+      expenses: [newExpense, ...(data.expenses || [])]
+    };
+    pushToServer(updated);
+
+    addActivity({
+      id: Date.now(),
+      type: 'deposit',
+      title: '💰 নতুন জমা অন্তর্ভুক্ত হয়েছে',
+      body: `${trx.depositorName} • ৳${Number(trx.amount).toLocaleString()} (${trx.method})`,
+      tab: 'expenses',
+      time: 'এইমাত্র'
+    });
+    sendPushNotification({
+      title: '💰 ফান্ডে নতুন জমা যুক্ত হয়েছে',
+      body: `${trx.depositorName}: ৳${Number(trx.amount).toLocaleString()} (${trx.method})`,
+      onClick: () => setActiveTab('expenses')
+    });
+  };
+
   // Notice Handlers
   const handleAddNotice = (notice) => {
     const updated = {
@@ -1549,6 +1626,47 @@ export default function App() {
                 <span className="hidden md:inline font-semibold">ড্রাইভ</span>
               </a>
 
+              {/* AI Copilot Button */}
+              <button
+                onClick={() => setShowAIGuideModal(true)}
+                className="p-2 sm:px-2.5 sm:py-1.5 bg-indigo-600/40 hover:bg-indigo-600 text-indigo-200 hover:text-white rounded-xl border border-indigo-400/40 transition flex items-center gap-1 text-xs font-semibold cursor-pointer shadow-sm"
+                title="AI ট্যুর গাইড ও বিচ অ্যাসিস্ট্যান্ট"
+              >
+                <Sparkles size={15} className="text-amber-300 animate-pulse" />
+                <span className="hidden sm:inline">AI গাইড</span>
+              </button>
+
+              {/* Family Safety & Compass Hub */}
+              <button
+                onClick={() => setShowSafetyHubModal(true)}
+                className="p-2 sm:px-2.5 sm:py-1.5 bg-rose-600/40 hover:bg-rose-600 text-rose-200 hover:text-white rounded-xl border border-rose-400/40 transition flex items-center gap-1 text-xs font-semibold cursor-pointer shadow-sm"
+                title="ফ্যামিলি সুরক্ষা, বিচ কম্পাস ও জরুরি SOS"
+              >
+                <ShieldCheck size={15} className="text-rose-300" />
+                <span className="hidden sm:inline">সুরক্ষা</span>
+              </button>
+
+              {/* Travel Trivia Quiz */}
+              <button
+                onClick={() => setShowQuizModal(true)}
+                className="p-2 sm:px-2.5 sm:py-1.5 bg-amber-500/30 hover:bg-amber-500 text-amber-200 hover:text-slate-900 rounded-xl border border-amber-400/40 transition flex items-center gap-1 text-xs font-semibold cursor-pointer shadow-sm"
+                title="ফ্যামিলি ট্রাভেল কুইজ ও ডিজিটাল ট্রফি"
+              >
+                <span className="text-xs">🎮</span>
+                <span className="hidden md:inline">কুইজ</span>
+              </button>
+
+              {/* Android APK Download */}
+              <a
+                href="/Tour2026.apk"
+                download="Tour2026.apk"
+                className="p-2 sm:px-2.5 sm:py-1.5 bg-cyan-600/40 hover:bg-cyan-600 text-cyan-200 hover:text-white rounded-xl border border-cyan-400/40 transition flex items-center gap-1 text-xs font-semibold shadow-sm"
+                title="অ্যান্ড্রয়েড অ্যাপ (APK) ডাউনলোড করুন"
+              >
+                <span className="text-xs">📱</span>
+                <span className="hidden lg:inline">APK</span>
+              </a>
+
               {/* Notification Center (Push alerts & activity history) */}
               <NotificationCenter
                 activities={activities}
@@ -1943,6 +2061,7 @@ export default function App() {
               onAddExpense={handleAddExpense}
               onDeleteExpense={handleDeleteExpense}
               onOpenPrintModal={() => setShowPrintReport(true)}
+              onOpenBkashModal={() => setShowBkashModal(true)}
               onEditMemberDeposit={(m) => setEditingMember(m)}
             />
           )}
@@ -2618,6 +2737,55 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* SUPERPOWER MODALS */}
+      <AITourGuideModal
+        isOpen={showAIGuideModal}
+        onClose={() => setShowAIGuideModal(false)}
+      />
+
+      <FamilySafetyHub
+        isOpen={showSafetyHubModal}
+        onClose={() => setShowSafetyHubModal(false)}
+        currentUser={currentUser}
+        currentProfile={currentProfile}
+        familyLocations={data.familyLocations || {}}
+        onShareLocation={handleShareLocation}
+      />
+
+      <BkashDepositModal
+        isOpen={showBkashModal}
+        onClose={() => setShowBkashModal(false)}
+        currentUser={currentUser}
+        currentProfile={currentProfile}
+        onAddDepositTransaction={handleAddDepositTransaction}
+      />
+
+      <TourQuizModal
+        isOpen={showQuizModal}
+        onClose={() => setShowQuizModal(false)}
+        currentUser={currentUser}
+        currentProfile={currentProfile}
+      />
+
+      {/* FLOATING ACTION SPEED DIAL / QUICK ACCESS */}
+      <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2.5">
+        <button
+          onClick={() => setShowSafetyHubModal(true)}
+          className="w-11 h-11 rounded-full bg-rose-600 hover:bg-rose-700 text-white shadow-lg flex items-center justify-center transition hover:scale-105 active:scale-95 cursor-pointer border-2 border-white ring-2 ring-rose-300/40"
+          title="জরুরি SOS ও বিচ কম্পাস"
+        >
+          <ShieldCheck size={20} />
+        </button>
+        <button
+          onClick={() => setShowAIGuideModal(true)}
+          className="w-13 h-13 rounded-full bg-gradient-to-tr from-indigo-600 via-purple-600 to-amber-500 text-white shadow-xl flex items-center justify-center transition hover:scale-105 active:scale-95 cursor-pointer border-2 border-white ring-4 ring-indigo-300/50"
+          title="AI ট্যুর গাইড ও বিচ অ্যাসিস্ট্যান্ট"
+        >
+          <Sparkles size={24} className="text-amber-200 animate-pulse" />
+        </button>
+      </div>
     </div>
   );
 }
+
