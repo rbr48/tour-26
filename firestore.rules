@@ -1,0 +1,59 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: tours
+    // Document ID: coxsbazar2026 (or specific tour IDs)
+    // Fields:
+    //   - tourInfo: map (required) - Meta information (title, dates, hotel, bus, etc.)
+    //   - itinerary: list (required) - Array of day-by-day plan items
+    //   - members: list (required) - Array of family member records (seats, rooms, deposits)
+    //   - expenses: list (required) - Array of expense tracking entries
+    //   - checklist: list (required) - Array of travel packing checklist items
+    //   - updatedAt: string (optional) - ISO 8601 update timestamp
+    //   - updatedBy: map (optional) - Details of the user making the edit
+    //
+    // ===============================================================
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Domain Validator for Tour Data
+    function isValidTourData() {
+      return hasRequiredFields(['tourInfo', 'itinerary', 'members', 'expenses', 'checklist']) &&
+        request.resource.data.tourInfo is map &&
+        request.resource.data.itinerary is list &&
+        request.resource.data.members is list &&
+        request.resource.data.expenses is list &&
+        request.resource.data.checklist is list;
+    }
+
+    // Tour Collection Rules
+    match /tours/{tourId} {
+      // Allow read access to authenticated family members
+      allow read: if isAuthenticated();
+
+      // Allow write access only if authenticated and data structure is valid
+      allow create, update: if isAuthenticated() && isValidTourData();
+
+      // Prevent accidental document deletion
+      allow delete: if false;
+    }
+
+    // Default deny for all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
