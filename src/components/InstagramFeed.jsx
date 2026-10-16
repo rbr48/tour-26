@@ -8,6 +8,7 @@ import { compressImageFile } from '../utils/imageCompressor';
 import {
   uploadToGoogleDrive,
   getDriveAccessToken,
+  getAppsScriptWebhook,
   GOOGLE_DRIVE_FOLDER_URL,
   GOOGLE_DRIVE_FOLDER_ID
 } from '../services/googleDriveService';
@@ -124,7 +125,7 @@ export default function InstagramFeed({
         alert(`গুগল ড্রাইভে ফাইল সফলভাবে সংরক্ষিত হয়েছে!\n\nফাইল: ${res.fileName}\nফোল্ডার: কক্সবাজার ফ্যামিলি ট্যুর ২০২৬`);
       }
     } catch (err) {
-      if (err.message === 'NO_TOKEN' || err.message === 'TOKEN_EXPIRED') {
+      if ((err.message === 'NO_TOKEN' || err.message === 'TOKEN_EXPIRED') && !getAppsScriptWebhook()) {
         const proceed = confirm('গুগল ড্রাইভ ফোল্ডারে ফাইল আপলোড করার জন্য অনুমোদন প্রয়োজন। আপনি কি এখন ড্রাইভ এক্সেস অনুমোদন করতে চান?');
         if (proceed) {
           const authRes = await handleConnectDrive();
@@ -140,6 +141,8 @@ export default function InstagramFeed({
     }
   };
 
+  const isDriveConfigured = Boolean(getAppsScriptWebhook() || hasDriveToken);
+
   const handleSyncAllToDrive = async () => {
     const unsyncedPosts = posts.filter(p => !p.driveBackedUp && p.image);
     if (unsyncedPosts.length === 0) {
@@ -147,7 +150,7 @@ export default function InstagramFeed({
       return;
     }
 
-    if (!hasDriveToken) {
+    if (!isDriveConfigured) {
       const proceed = confirm(`মোট ${unsyncedPosts.length}টি ছবি ড্রাইভে ব্যাকআপ করা হবে। অনুগ্রহ করে ড্রাইভ অনুমোদনের জন্য আপনার গুগল অ্যাকাউন্ট কানেক্ট করুন।`);
       if (!proceed) return;
       const res = await connectGoogleDrive();
@@ -479,7 +482,7 @@ export default function InstagramFeed({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <p className="font-extrabold text-xs text-slate-900">গুগল ড্রাইভ ব্যাকআপ হাব</p>
-                {hasDriveToken ? (
+                {isDriveConfigured ? (
                   <span className="text-[9px] bg-emerald-200 text-emerald-900 font-bold px-1.5 py-0.2 rounded-md">
                     ✓ ড্রাইভ সংযুক্ত
                   </span>
@@ -1011,10 +1014,10 @@ export default function InstagramFeed({
 
                   {driveBackup && (
                     <div className="pt-2 border-t border-emerald-200/80 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                      {hasDriveToken ? (
+                      {isDriveConfigured ? (
                         <span className="text-emerald-800 flex items-center gap-1 font-semibold">
                           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                          ✓ ড্রাইভ এক্সেস সক্রিয় (পোস্টের সাথে অটো-আপলোড হবে)
+                          ✓ ক্লাউড ড্রাইভ সক্রিয় (পোস্টের সাথে অটো-আপলোড হবে)
                         </span>
                       ) : (
                         <div className="flex items-center justify-between w-full">
