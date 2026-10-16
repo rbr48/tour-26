@@ -170,11 +170,13 @@ export const uploadToGoogleDrive = async ({
 };
 
 // 5. Apps Script Webhook configuration helper
+export const DEFAULT_APPS_SCRIPT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzdoJLe5hD8Gmx3Q-vISeFAy5GDXs0thbt2DO-3aotJ2gWZlqxEB1fE3FJ2kq2tjdgWlA/exec';
+
 export const getAppsScriptWebhook = () => {
   try {
-    return localStorage.getItem('tour_drive_webhook_url') || '';
+    return localStorage.getItem('tour_drive_webhook_url') || DEFAULT_APPS_SCRIPT_WEBHOOK_URL;
   } catch {
-    return '';
+    return DEFAULT_APPS_SCRIPT_WEBHOOK_URL;
   }
 };
 
@@ -204,10 +206,18 @@ export const uploadViaAppsScript = async (webhookUrl, { imageDataUrl, fileName, 
 
   const response = await fetch(webhookUrl, {
     method: 'POST',
-    mode: 'cors',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(payload)
   });
 
-  return await response.json();
+  if (!response.ok) {
+    throw new Error(`Apps Script HTTP error: ${response.status}`);
+  }
+
+  const resJson = await response.json();
+  if (resJson.error) {
+    throw new Error(resJson.error);
+  }
+
+  return resJson;
 };
