@@ -1,0 +1,14 @@
+services:
+  tour-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tour2026-app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8190:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=3000
+      - NODE_ENV=production

@@ -1,0 +1,8 @@
+{
+  "appId": "com.izhaanintellect.tour2026",
+  "appName": "Family Tour 2026",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
