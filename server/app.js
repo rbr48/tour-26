@@ -2,6 +2,7 @@ import http from 'node:http';
 import { createBackupStore } from './backup-store.js';
 import { AuthError, createFirebaseTokenVerifier } from './firebase-auth.js';
 import { HttpError, readJsonBody, sendJson } from './http.js';
+import { createPushService } from './push-service.js';
 import { createStaticHandler } from './static-files.js';
 import { validateBackup } from './validate-backup.js';
 
@@ -26,10 +27,11 @@ function bearerToken(headerValue) {
 }
 
 /**
- * Builds the HTTP server: an authenticated backup API under /api and the static
- * web app for everything else. Dependencies can be injected for tests.
+ * Builds the HTTP server: an authenticated backup API under /api, a real Web Push
+ * notification API under /api/push, and the static web app for everything else.
+ * Dependencies can be injected for tests.
  */
-export function createApp({ config, verifyToken, store }) {
+export function createApp({ config, verifyToken, store, pushService }) {
   const verify =
     verifyToken ||
     createFirebaseTokenVerifier({
@@ -37,6 +39,7 @@ export function createApp({ config, verifyToken, store }) {
       allowedEmails: config.allowedEmails,
     });
   const backup = store || createBackupStore(config.dataDir);
+  const push = pushService || createPushService({ dataDir: config.dataDir });
   const serveStatic = createStaticHandler(config.distDir);
   const allowedOrigins = new Set(config.allowedOrigins);
 
@@ -100,12 +103,120 @@ export function createApp({ config, verifyToken, store }) {
     sendJson(res, 405, { error: 'method not allowed' }, { ...headers, Allow: API_METHODS });
   }
 
+  async function handlePushApi(req, res, pathname) {
+    const headers = corsHeaders(req.headers.origin, allowedOrigins);
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, headers);
+      res.end();
+      return;
+    }
+
+    if (pathname === '/api/push/vapid-public-key' && req.method === 'GET') {
+      sendJson(res, 200, { publicKey: push.getPublicKey() }, headers);
+      return;
+    }
+
+    let user;
+    try {
+      user = await verify(bearerToken(req.headers.authorization));
+    } catch (err) {
+      if (err instanceof AuthError) {
+        sendJson(res, err.status, { error: err.message }, headers);
+        return;
+      }
+      console.error('token verification failed unexpectedly:', err);
+      sendJson(res, 503, { error: 'authentication is unavailable' }, headers);
+      return;
+    }
+
+    if (pathname === '/api/push/subscribe' && req.method === 'POST') {
+      let body;
+      try {
+        body = await readJsonBody(req, 65536);
+      } catch (err) {
+        if (err instanceof HttpError) {
+          sendJson(res, err.status, { error: err.message }, headers);
+          return;
+        }
+        throw err;
+      }
+      try {
+        const result = push.subscribe({
+          subscription: body.subscription,
+          userEmail: user.email,
+          deviceName: body.deviceName || 'Web Device',
+        });
+        sendJson(res, 200, { status: 'subscribed', ...result }, headers);
+      } catch (err) {
+        sendJson(res, 400, { error: err.message }, headers);
+      }
+      return;
+    }
+
+    if (pathname === '/api/push/unsubscribe' && req.method === 'POST') {
+      let body;
+      try {
+        body = await readJsonBody(req, 65536);
+      } catch (err) {
+        if (err instanceof HttpError) {
+          sendJson(res, err.status, { error: err.message }, headers);
+          return;
+        }
+        throw err;
+      }
+      const result = push.unsubscribe({ endpoint: body.endpoint });
+      sendJson(res, 200, { status: 'unsubscribed', ...result }, headers);
+      return;
+    }
+
+    if (pathname === '/api/push/send' && req.method === 'POST') {
+      let body;
+      try {
+        body = await readJsonBody(req, 65536);
+      } catch (err) {
+        if (err instanceof HttpError) {
+          sendJson(res, err.status, { error: err.message }, headers);
+          return;
+        }
+        throw err;
+      }
+      if (!body.title || !body.body) {
+        sendJson(res, 400, { error: 'title and body are required' }, headers);
+        return;
+      }
+      const result = await push.sendPush({
+        title: String(body.title).slice(0, 200),
+        body: String(body.body).slice(0, 1000),
+        icon: body.icon || '/icon-192.png',
+        badge: body.badge || '/icon-192.png',
+        url: body.url || '/',
+        tag: body.tag || 'tour_update',
+        excludeEmail: body.excludeSender === false ? undefined : (body.excludeEmail || user.email),
+      });
+      sendJson(res, 200, { status: 'sent', ...result }, headers);
+      return;
+    }
+
+    if (pathname === '/api/push/test' && req.method === 'POST') {
+      const result = await push.sendTest({ userEmail: user.email });
+      sendJson(res, 200, { status: 'tested', ...result }, headers);
+      return;
+    }
+
+    sendJson(res, 404, { error: 'push endpoint not found' }, headers);
+  }
+
   const server = http.createServer(async (req, res) => {
     try {
       const { pathname } = new URL(req.url || '/', 'http://localhost');
 
       if (pathname === '/api') {
         await handleApi(req, res);
+        return;
+      }
+      if (pathname.startsWith('/api/push/')) {
+        await handlePushApi(req, res, pathname);
         return;
       }
       if (pathname === '/health') {

@@ -42,10 +42,18 @@ export default defineConfig({
     chunkSizeWarningLimit: 700,
   },
   server: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+    },
     // Local development: the backup API runs on the Node server.
     proxy: {
       '/api': 'http://localhost:3000',
       '/health': 'http://localhost:3000',
+    },
+  },
+  preview: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
     },
   },
 });

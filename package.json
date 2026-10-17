@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "postinstall": "node scripts/patch-auth.js",
     "test": "vitest run",
-    "test:rules": "firebase emulators:exec --only firestore --project tour-26 \"vitest run --config vitest.rules.config.js\""
+    "test:rules": "firebase emulators:exec --only firestore --project tour-26 \"vitest run --config vitest.rules.config.js\"",
+    "check:allowlists": "node scripts/check-allowlists.js"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.5.2",
@@ -20,12 +21,14 @@
     "@capacitor/geolocation": "^8.2.4",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/network": "^8.0.1",
+    "@capacitor/push-notifications": "^8.1.3",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.4",
     "firebase": "^12.19.0",
     "lucide-react": "^1.58.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.3",

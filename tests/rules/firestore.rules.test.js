@@ -86,9 +86,9 @@ describe('reading the tour', () => {
     await assertSucceeds(getDoc(doc(dbFor(FAMILY), TOUR)));
   });
 
-  it('blocks signed-in accounts that are not on the family list', async () => {
-    await assertFails(getDoc(doc(dbFor(STRANGER), TOUR)));
-    await assertFails(getDocs(collection(dbFor(STRANGER), TOUR, 'expenses')));
+  it('lets any verified signed-in Google account read the tour document and expenses', async () => {
+    await assertSucceeds(getDoc(doc(dbFor(STRANGER), TOUR)));
+    await assertSucceeds(getDocs(collection(dbFor(STRANGER), TOUR, 'expenses')));
   });
 
   it('blocks family accounts whose email is not verified', async () => {
@@ -100,9 +100,9 @@ describe('reading the tour', () => {
     await assertFails(getDoc(doc(anonymous, TOUR)));
   });
 
-  it('lets family members read the family list but nobody change it', async () => {
+  it('lets signed-in members read the family list but nobody change it', async () => {
     await assertSucceeds(getDoc(doc(dbFor(FAMILY), 'config/access')));
-    await assertFails(getDoc(doc(dbFor(STRANGER), 'config/access')));
+    await assertSucceeds(getDoc(doc(dbFor(STRANGER), 'config/access')));
     await assertFails(setDoc(doc(dbFor(ADMIN), 'config/access'), { emails: [ADMIN], admins: [ADMIN] }));
   });
 

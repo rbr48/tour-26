@@ -14,42 +14,75 @@ import {
 import {
   requestNotificationPermission,
   getNotificationPermission,
+  subscribeToPushNotifications,
+  sendBroadcastPush,
+  sendTestPush,
   sendPushNotification,
-  playNotificationSound
+  playNotificationSound,
 } from '../services/notificationService';
 
 export default function NotificationCenter({
   activities = [],
   onNavigate,
   activeToast,
-  onDismissToast
+  onDismissToast,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [permission, setPermission] = useState(() => getNotificationPermission());
+  const [isSubscribing, setIsSubscribing] = useState(false);
+  const [feedback, setFeedback] = useState(null);
   // Calculate unread items
-  const unreadCount = activities.filter(a => !a.read).length;
+  const [unreadCount, setUnreadCount] = useState(activities.length);
 
   const handleRequestPermission = async () => {
-    const res = await requestNotificationPermission();
-    setPermission(res);
-    if (res === 'granted') {
-      sendPushNotification({
-        title: '🎉 নোটিফিকেশন সক্রিয় হয়েছে!',
-        body: 'এখন থেকে নতুন নোটিশ, ফটো, চ্যাট ও খরচের আপডেট সরাসরি নোটিফিকেশনে পাবেন।',
-        onClick: () => window.focus()
-      });
+    setIsSubscribing(true);
+    setFeedback(null);
+    try {
+      const res = await subscribeToPushNotifications();
+      const currentPerm = getNotificationPermission();
+      setPermission(currentPerm);
+      if (res.success) {
+        setFeedback({ type: 'success', text: '✅ পুশ নোটিফিকেশন সফলভাবে সক্রিয় হয়েছে!' });
+        sendPushNotification({
+          title: '🎉 নোটিফিকেশন সক্রিয় হয়েছে!',
+          body: 'এখন থেকে নতুন নোটিশ, ফটো, চ্যাট ও খরচের রিয়েল পুশ সরাসরি আপনার ফোনে পাবেন।',
+          onClick: () => window.focus(),
+        });
+      } else {
+        setFeedback({ type: 'error', text: res.error || 'নোটিফিকেশন চালু করা যায়নি' });
+      }
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message });
+    } finally {
+      setIsSubscribing(false);
     }
   };
 
-  const handleTestNotification = () => {
-    sendPushNotification({
-      title: '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
-      body: 'টেস্ট নোটিফিকেশন সফল! নতুন কোনো অ্যাক্টিভিটি হলে এভাবে তাৎক্ষণিক নোটিফিকেশন আসবে।',
-      onClick: () => {
-        window.focus();
-        onNavigate('feed');
+  const handleTestNotification = async () => {
+    setFeedback({ type: 'info', text: '📡 টেস্ট নোটিফিকেশন পাঠানো হচ্ছে...' });
+    playNotificationSound();
+    try {
+      const res = await sendTestPush();
+      if (res.success) {
+        setFeedback({ type: 'success', text: '🔔 টেস্ট সফল! ফোনের স্ট্যাটাস বার চেক করুন।' });
+      } else {
+        // Fallback local notification
+        sendPushNotification({
+          title: '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
+          body: 'টেস্ট নোটিফিকেশন সফল! নতুন কোনো অ্যাক্টিভিটি হলে এভাবে তাৎক্ষণিক নোটিফিকেশন আসবে।',
+          onClick: () => {
+            window.focus();
+            onNavigate('feed');
+          },
+        });
+        setFeedback({ type: 'info', text: res.error ? `সার্ভার: ${res.error}` : 'লোকাল টেস্ট সম্পন্ন হয়েছে।' });
       }
-    });
+    } catch {
+      sendPushNotification({
+        title: '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
+        body: 'টেস্ট সম্পন্ন!',
+      });
+    }
   };
 
   const getActivityIcon = (type) => {
@@ -109,6 +142,21 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }} />
               </button>
             </div>
 
+            {/* Feedback Message */}
+            {feedback && (
+              <div
+                className={`p-2.5 text-xs border-b ${
+                  feedback.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : feedback.type === 'error'
+                      ? 'bg-rose-50 text-rose-800 border-rose-200'
+                      : 'bg-blue-50 text-blue-800 border-blue-200'
+                }`}
+              >
+                {feedback.text}
+              </div>
+            )}
+
             {/* Permission Banner */}
             {permission !== 'granted' ? (
               <div className="p-3 bg-amber-50 border-b border-amber-200 text-amber-900 text-xs space-y-2">
@@ -121,9 +169,10 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }} />
                 </p>
                 <button
                   onClick={handleRequestPermission}
-                  className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 text-teal-950 font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                  disabled={isSubscribing}
+                  className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-teal-950 font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
                 >
-                  🔔 নোটিফিকেশন সক্রিয় করুন
+                  {isSubscribing ? '⏳ চালু করা হচ্ছে...' : '🔔 নোটিফিকেশন সক্রিয় করুন'}
                 </button>
               </div>
             ) : (
@@ -135,7 +184,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }} />
                   onClick={handleTestNotification}
                   className="text-[10px] text-teal-700 hover:underline cursor-pointer font-bold"
                 >
-                  টেস্ট করুন
+                  টেস্ট নোটিফিকেশন পাঠান
                 </button>
               </div>
             )}

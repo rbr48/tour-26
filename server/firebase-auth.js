@@ -132,7 +132,8 @@ export function createFirebaseTokenVerifier({
     }
 
     const email = String(payload.email || '').toLowerCase();
-    if (!email || !allowedEmails.includes(email)) {
+    const allowAll = allowedEmails.includes('*');
+    if (!email || (!allowAll && !allowedEmails.includes(email))) {
       throw new AuthError('account is not on the family list', 403);
     }
 

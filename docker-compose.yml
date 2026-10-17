@@ -13,7 +13,7 @@ services:
       - PORT=3000
       - NODE_ENV=production
       - FIREBASE_PROJECT_ID=tour-26
-      - ALLOWED_EMAILS=${ALLOWED_EMAILS:?set ALLOWED_EMAILS in .env}
+      - ALLOWED_EMAILS=${ALLOWED_EMAILS:-*}
     read_only: true
     tmpfs:
       - /tmp

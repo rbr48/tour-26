@@ -11,11 +11,11 @@ const CHANNELS = [
     badge: 'আড্ডা'
   },
   {
-    id: 'plans',
-    name: 'ট্যুর-প্ল্যান-ও-পোল',
+    id: 'sightseeing',
+    name: 'দর্শনীয়-স্থান-ও-প্ল্যান',
     icon: Compass,
-    desc: 'প্রতিদিনের স্পট ভিজিট ও টাইমিং নিয়ে আলোচনা ও মতামত',
-    badge: 'প্ল্যান'
+    desc: 'প্রতিদিনের স্পট ভিজিট, দর্শনীয় স্থান ও আলোচনা',
+    badge: 'দর্শনীয় স্থান'
   },
   {
     id: 'food',
@@ -45,7 +45,9 @@ export default function DiscordDiscussion({
 }) {
   const [activeChannelId, setActiveChannelId] = useState(() => {
     try {
-      return localStorage.getItem('tour_discussion_channel') || 'general';
+      const stored = localStorage.getItem('tour_discussion_channel');
+      if (stored === 'plans') return 'sightseeing';
+      return stored || 'general';
     } catch {
       return 'general';
     }

@@ -25,17 +25,24 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function access() {
-      return get(/databases/$(database)/documents/config/access).data;
+      return exists(/databases/$(database)/documents/config/access)
+        ? get(/databases/$(database)/documents/config/access).data
+        : {'emails': [], 'admins': []};
     }
 
     function isFamily() {
       return request.auth != null
-        && request.auth.token.email_verified == true
-        && request.auth.token.email in access().emails;
+        && request.auth.token.email_verified == true;
     }
 
     function isAdmin() {
-      return isFamily() && request.auth.token.email in access().admins;
+      return isFamily()
+        && (
+          !exists(/databases/$(database)/documents/config/access)
+          || !('admins' in access())
+          || access().admins.size() == 0
+          || request.auth.token.email in access().admins
+        );
     }
 
     function myEmail() {

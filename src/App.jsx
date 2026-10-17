@@ -16,7 +16,11 @@ import { onAuthStateChanged } from 'firebase/auth';
 import TideWeatherWidget from './components/TideWeatherWidget';
 import NotificationCenter from './components/NotificationCenter';
 import ConfirmDialog from './components/ConfirmDialog';
-import { sendPushNotification } from './services/notificationService';
+import {
+  sendPushNotification,
+  sendBroadcastPush,
+  subscribeToPushNotifications,
+} from './services/notificationService';
 import { SEED_DATA } from './data/seed';
 import {
   addItem,
@@ -391,6 +395,13 @@ export default function App() {
   const uid = currentUser?.uid ?? null;
   const isAdmin = Boolean(currentUser?.email) && admins.includes(currentUser.email.toLowerCase());
 
+  // Auto-subscribe to Web Push if browser permission is already granted
+  useEffect(() => {
+    if (uid && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      subscribeToPushNotifications(currentUser).catch(() => {});
+    }
+  }, [uid, currentUser]);
+
   // 2. Live trip data. Each change in Firestore arrives here, and the app announces what
   //    other people added. Writes made on this device are not announced.
   useEffect(() => {
@@ -599,6 +610,12 @@ export default function App() {
       body: post.caption || 'ইনস্টাফিডে আপনার পোস্ট লাইভ হয়েছে',
       onClick: () => setActiveTab('feed'),
     });
+    sendBroadcastPush({
+      title: `📸 ${post.author || 'পরিবারের সদস্য'} নতুন ছবি শেয়ার করেছেন`,
+      body: post.caption || 'ইনস্টাফিডে নতুন ছবি যুক্ত হয়েছে',
+      url: '/#feed',
+      tag: 'feed',
+    });
   };
 
   const handleLikePost = (postId, userName) => {
@@ -633,6 +650,12 @@ export default function App() {
       body: message.text || 'চ্যানেলে বার্তা পোস্ট হয়েছে',
       tab: 'discussions',
       time: 'এইমাত্র',
+    });
+    sendBroadcastPush({
+      title: `💬 ${message.author || 'সদস্য'} (${CHANNEL_LABELS[channelId] || channelId})`,
+      body: message.text || 'নতুন বার্তা পাঠিয়েছেন',
+      url: '/#discussions',
+      tag: 'discussion',
     });
   };
 
@@ -692,6 +715,12 @@ export default function App() {
       body: `${expData.title}: ৳${amount.toLocaleString()}`,
       onClick: () => setActiveTab('expenses'),
     });
+    sendBroadcastPush({
+      title: '💸 নতুন খরচ যুক্ত হয়েছে',
+      body: `${expData.title}: ৳${amount.toLocaleString()}`,
+      url: '/#expenses',
+      tag: 'expense',
+    });
   };
 
   const handleDeleteExpense = (id) => {
@@ -737,6 +766,14 @@ export default function App() {
       tab: 'expenses',
       time: 'এইমাত্র',
     });
+    if (Number(member.deposit || 0) > 0) {
+      sendBroadcastPush({
+        title: '💰 ফান্ডে জমা আপডেট',
+        body: `${member.name} এর মোট জমা: ৳${Number(member.deposit || 0).toLocaleString()}`,
+        url: '/#expenses',
+        tag: 'deposit',
+      });
+    }
   };
 
   const handleDeleteMember = (id) => {
@@ -777,6 +814,12 @@ export default function App() {
       body: loc.note || 'কক্সবাজার সমুদ্র সৈকত এলাকায় অবস্থান শেয়ার করেছেন',
       onClick: () => setActiveTab('dashboard'),
     });
+    sendBroadcastPush({
+      title: `📍 ${loc.name} অবস্থান শেয়ার করেছেন`,
+      body: loc.note || 'কক্সবাজার সমুদ্র সৈকত এলাকায় অবস্থান আপডেট হয়েছে',
+      url: '/',
+      tag: 'location',
+    });
   };
 
   const handleClearLocation = () => {
@@ -801,6 +844,12 @@ export default function App() {
       title: '📢 জরুরি নোটিশ জারি হয়েছে',
       body: notice.title || 'সকল ট্যুর সদস্যের জন্য নতুন নোটিশ',
       onClick: () => setActiveTab('notices'),
+    });
+    sendBroadcastPush({
+      title: '📢 জরুরি নোটিশ জারি হয়েছে',
+      body: notice.title || 'সকল ট্যুর সদস্যের জন্য নতুন নোটিশ',
+      url: '/#notices',
+      tag: 'notice',
     });
   };
 

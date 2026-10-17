@@ -84,7 +84,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   // Firebase, Google Drive, fonts and weather come straight from the network.
   if (url.origin !== self.location.origin) return;
-  if (url.pathname === '/api' || url.pathname === '/health' || url.pathname.endsWith('.apk')) return;
+  if (url.pathname.startsWith('/api') || url.pathname === '/health' || url.pathname.endsWith('.apk')) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirst(request));
@@ -97,3 +97,56 @@ self.addEventListener('fetch', (event) => {
   }
   event.respondWith(staleWhileRevalidate(request));
 });
+
+// Real Web Push Notification handler (works when app is closed / screen locked)
+self.addEventListener('push', (event) => {
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch {
+      data = { title: '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬', body: event.data.text() };
+    }
+  }
+
+  const title = data.title || '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬';
+  const options = {
+    body: data.body || 'নতুন ট্যুর আপডেট এসেছে!',
+    icon: data.icon || '/icon-192.png',
+    badge: data.badge || '/icon-192.png',
+    data: {
+      url: data.url || '/',
+      dateOfArrival: Date.now(),
+    },
+    vibrate: [200, 100, 200, 100, 200],
+    tag: data.tag || `tour_push_${Date.now()}`,
+    renotify: true,
+    requireInteraction: true,
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Notification click: Focus existing tab or open the app and go to the right section
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.focus();
+          if ('navigate' in client && targetUrl !== '/') {
+            client.navigate(targetUrl);
+          }
+          return;
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    }),
+  );
+});
+

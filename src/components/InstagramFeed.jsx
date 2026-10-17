@@ -251,11 +251,20 @@ export default function InstagramFeed({
 
   const getFileFromPhoto = async (src, post) => {
     if (src.startsWith('data:')) {
-      const res = await fetch(src);
-      const blob = await res.blob();
-      const mime = blob.type || 'image/jpeg';
-      const ext = mime.includes('png') ? 'png' : 'jpg';
-      return new File([blob], `Tour2026_${post.id}.${ext}`, { type: mime });
+      try {
+        const parts = src.split(',');
+        const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+        const byteCharacters = atob(parts[1]);
+        const byteNumbers = new Uint8Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const blob = new Blob([byteNumbers], { type: mime });
+        const ext = mime.includes('png') ? 'png' : 'jpg';
+        return new File([blob], `Tour2026_${post.id}.${ext}`, { type: mime });
+      } catch (err) {
+        console.warn('Base64 to blob conversion failed:', err);
+      }
     }
 
     const fileName = `Tour2026_${post.id}.jpg`;

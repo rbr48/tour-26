@@ -20,6 +20,7 @@ const SECURITY_HEADERS = {
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'X-Frame-Options': 'SAMEORIGIN',
   'Permissions-Policy': 'geolocation=(self), camera=(), microphone=()',
+  'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
 };
 
 // Files that must always be revalidated so deploys reach users immediately.

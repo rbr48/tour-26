@@ -271,3 +271,71 @@ describe('static web app', () => {
     expect(await response.text()).toBe('');
   });
 });
+
+describe('push API', () => {
+  it('serves the VAPID public key publicly', async () => {
+    const base = await startApp();
+    const response = await fetch(`${base}/api/push/vapid-public-key`);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(typeof body.publicKey).toBe('string');
+    expect(body.publicKey.length).toBeGreaterThan(30);
+  });
+
+  it('requires authentication to subscribe and send notifications', async () => {
+    const base = await startApp();
+    const unauthSub = await fetch(`${base}/api/push/subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: { endpoint: 'https://foo' } }),
+    });
+    expect(unauthSub.status).toBe(401);
+
+    const unauthSend = await fetch(`${base}/api/push/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Test', body: 'Test' }),
+    });
+    expect(unauthSend.status).toBe(401);
+  });
+
+  it('subscribes and dispatches push notifications', async () => {
+    const base = await startApp();
+    const token = tokenFor(FAMILY_EMAIL);
+
+    const subRes = await fetch(`${base}/api/push/subscribe`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        subscription: {
+          endpoint: 'https://fcm.googleapis.com/fcm/send/test_client',
+          keys: { p256dh: 'p256', auth: 'auth' },
+        },
+        deviceName: 'Chrome on Android',
+      }),
+    });
+    expect(subRes.status).toBe(200);
+    expect((await subRes.json()).status).toBe('subscribed');
+
+    // Send push broadcast
+    const sendRes = await fetch(`${base}/api/push/send`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: '📢 নতুন নোটিশ',
+        body: 'জরুরি বার্তা',
+        excludeSender: false,
+      }),
+    });
+    expect(sendRes.status).toBe(200);
+    const sendData = await sendRes.json();
+    expect(sendData.status).toBe('sent');
+  });
+});
+
