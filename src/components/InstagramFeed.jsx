@@ -116,11 +116,6 @@ export default function InstagramFeed({
   const [previewMedia, setPreviewMedia] = useState(null);
   const [sharingPostId, setSharingPostId] = useState(null);
 
-  // Phone Back Button Handlers for modals inside InstagramFeed
-  useBackHandler(Boolean(previewMedia), () => setPreviewMedia(null), 25);
-  useBackHandler(Boolean(editingPost), () => setEditingPost(null), 20);
-  useBackHandler(showCreateModal, () => setShowCreateModal(false), 15);
-
   // Deduplicated view tracker per session
   const viewedPostsRef = useRef(new Set());
 
@@ -193,6 +188,11 @@ export default function InstagramFeed({
   const [editingPost, setEditingPost] = useState(null);
   const [editCaption, setEditCaption] = useState('');
   const [editLocation, setEditLocation] = useState('');
+
+  // Phone Back Button Handlers for modals inside InstagramFeed
+  useBackHandler(Boolean(previewMedia), () => setPreviewMedia(null), 25);
+  useBackHandler(Boolean(editingPost), () => setEditingPost(null), 20);
+  useBackHandler(showCreateModal, () => setShowCreateModal(false), 15);
 
   const handleStartEditPost = (post) => {
     setEditingPost(post);

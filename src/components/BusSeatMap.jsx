@@ -74,10 +74,6 @@ export default function BusSeatMap({
   const [activeDeck, setActiveDeck] = useState('both'); // 'upper', 'lower', 'both'
   const [notification, setNotification] = useState('');
 
-  // Phone back button handlers
-  useBackHandler(Boolean(selectedSeat), () => setSelectedSeat(null), 15);
-  useBackHandler(isAddModalOpen, () => setIsAddModalOpen(false), 20);
-
   const [seats, setSeats] = useState(() => {
     if (Array.isArray(externalSeats) && externalSeats.length > 0) {
       return externalSeats;
@@ -143,6 +139,10 @@ export default function BusSeatMap({
     desc: '',
     member: '',
   });
+
+  // Phone back button handlers
+  useBackHandler(Boolean(selectedSeat), () => setSelectedSeat(null), 15);
+  useBackHandler(isAddModalOpen, () => setIsAddModalOpen(false), 20);
 
   // Open Add Seat Modal
   const handleOpenAddModal = () => {
