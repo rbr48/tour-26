@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "26498265392-a4f39aotrlt28q9ashg6t0bsdfdgjclr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.izhaanintellect.tour2026",
+            "certificate_hash": "c0b90a59e9093b2e1482f91bf4c6f2ed54ebf98c"
+          }
+        },
+        {
           "client_id": "26498265392-vvtrevaevere6otpl2dq5a1aenv66gs9.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
