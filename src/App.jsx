@@ -219,7 +219,7 @@ export default function App() {
 
   const addActivity = useCallback((activity) => {
     setActivities((prev) => {
-      const updated = [activity, ...prev.slice(0, 24)];
+      const updated = [{ ...activity, read: false }, ...prev.slice(0, 24)];
       try {
         localStorage.setItem(ACTIVITY_KEY, JSON.stringify(updated));
       } catch {
@@ -231,6 +231,43 @@ export default function App() {
     setTimeout(() => {
       setActiveToast((cur) => (cur?.id === activity.id ? null : cur));
     }, 5500);
+  }, []);
+
+  const markActivityRead = useCallback((id) => {
+    setActivities((prev) => {
+      const updated = prev.map((act) => (act.id === id ? { ...act, read: true } : act));
+      try {
+        localStorage.setItem(ACTIVITY_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, []);
+
+  const markAllActivitiesRead = useCallback(() => {
+    setActivities((prev) => {
+      const updated = prev.map((act) => ({ ...act, read: true }));
+      try {
+        localStorage.setItem(ACTIVITY_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, []);
+
+  const clearActivity = useCallback((id) => {
+    setActivities((prev) => {
+      const updated = prev.filter((act) => act.id !== id);
+      try {
+        localStorage.setItem(ACTIVITY_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, []);
+
+  const clearAllActivities = useCallback(() => {
+    setActivities([]);
+    try {
+      localStorage.removeItem(ACTIVITY_KEY);
+    } catch {}
   }, []);
 
   const closeConfirm = useCallback(() => setConfirmRequest(null), []);
@@ -596,7 +633,19 @@ export default function App() {
 
   // Media Feed Handlers
   const handleAddPost = (post) => {
-    save(addItem(['posts'], { ...post, authorEmail: emailRef.current }));
+    const userEmail = emailRef.current || (currentUser?.email ? currentUser.email.toLowerCase() : null);
+    if (!userEmail) {
+      setActiveToast({
+        id: newId(),
+        type: 'error',
+        title: 'লগইন প্রয়োজন',
+        body: 'ছবি পোস্ট করার জন্য গুগল দিয়ে লগইন করুন।',
+        tab: 'feed',
+        time: 'এইমাত্র',
+      });
+      return;
+    }
+    save(addItem(['posts'], { ...post, authorEmail: userEmail }));
     addActivity({
       id: newId(),
       type: 'feed',
@@ -1477,6 +1526,10 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 onNavigate={(tab) => setActiveTab(tab)}
                 activeToast={activeToast}
                 onDismissToast={() => setActiveToast(null)}
+                onMarkAsRead={markActivityRead}
+                onMarkAllAsRead={markAllActivitiesRead}
+                onClearActivity={clearActivity}
+                onClearAllActivities={clearAllActivities}
               />
 
               {/* User Profile Button in Header */}

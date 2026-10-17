@@ -38,19 +38,31 @@ export async function shrinkProfilePhoto(value) {
  */
 export async function preparePhotoFromDataUrl({ dataUrl, authorName, caption }) {
   const thumb = await makeThumbnail(dataUrl);
-  const upload = await uploadToGoogleDrive({
-    imageDataUrl: dataUrl,
-    fileName: `Tour2026_${authorName.replace(/\s+/g, '_')}_${Date.now()}.jpg`,
-    caption,
-  });
-  if (!upload?.success || !upload.fileId) {
-    throw new Error('গুগল ড্রাইভে ছবি সংরক্ষণ হয়নি। ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।');
+  let upload = null;
+  try {
+    upload = await uploadToGoogleDrive({
+      imageDataUrl: dataUrl,
+      fileName: `Tour2026_${authorName.replace(/\s+/g, '_')}_${Date.now()}.jpg`,
+      caption,
+    });
+  } catch (err) {
+    console.warn('Google Drive photo upload failed or skipped, saving thumbnail directly:', err);
   }
+
+  if (upload?.success && upload.fileId) {
+    return {
+      thumb,
+      driveBackedUp: true,
+      driveFileId: upload.fileId,
+      driveViewUrl: upload.webViewLink,
+    };
+  }
+
   return {
     thumb,
-    driveBackedUp: true,
-    driveFileId: upload.fileId,
-    driveViewUrl: upload.webViewLink,
+    driveBackedUp: false,
+    driveFileId: null,
+    driveViewUrl: null,
   };
 }
 

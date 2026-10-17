@@ -3,6 +3,8 @@ import {
   Bell,
   BellRing,
   Check,
+  CheckCheck,
+  Trash2,
   Sparkles,
   MessageCircle,
   Image as ImageIcon,
@@ -26,13 +28,18 @@ export default function NotificationCenter({
   onNavigate,
   activeToast,
   onDismissToast,
+  onMarkAsRead,
+  onMarkAllAsRead,
+  onClearActivity,
+  onClearAllActivities,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [permission, setPermission] = useState(() => getNotificationPermission());
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [feedback, setFeedback] = useState(null);
-  // Calculate unread items
-  const [unreadCount, setUnreadCount] = useState(activities.length);
+
+  // Unread count
+  const unreadCount = activities.filter((a) => !a.read).length;
 
   const handleRequestPermission = async () => {
     setIsSubscribing(true);
@@ -66,7 +73,6 @@ export default function NotificationCenter({
       if (res.success) {
         setFeedback({ type: 'success', text: '🔔 টেস্ট সফল! ফোনের স্ট্যাটাস বার চেক করুন।' });
       } else {
-        // Fallback local notification
         sendPushNotification({
           title: '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
           body: 'টেস্ট নোটিফিকেশন সফল! নতুন কোনো অ্যাক্টিভিটি হলে এভাবে তাৎক্ষণিক নোটিফিকেশন আসবে।',
@@ -105,10 +111,7 @@ export default function NotificationCenter({
       {/* HEADER BELL BUTTON */}
       <button
         type="button"
-        onClick={() => {
-          setIsOpen(!isOpen);
-          setUnreadCount(0);
-        }}
+        onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer active:scale-95"
         title="নোটিফিকেশন ও অ্যাক্টিভিটি"
         aria-label="Notifications"
@@ -124,9 +127,14 @@ export default function NotificationCenter({
       {/* NOTIFICATION DROPDOWN MODAL / POPUP */}
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-40"role="presentation"
- onClick={() => setIsOpen(false)}
-onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }} />
+          <div
+            className="fixed inset-0 z-40"
+            role="presentation"
+            onClick={() => setIsOpen(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') e.currentTarget.click();
+            }}
+          />
           <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden text-slate-800 animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="p-3.5 bg-gradient-to-r from-teal-900 to-slate-900 text-white flex items-center justify-between">
@@ -135,6 +143,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }} />
                 <h4 className="font-bold text-xs sm:text-sm">ট্যুর নোটিফিকেশন সেন্টার</h4>
               </div>
               <button
+                type="button"
                 onClick={() => setIsOpen(false)}
                 className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs cursor-pointer"
               >
@@ -168,6 +177,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }} />
                   নতুন নোটিশ, ইনস্টাফিড ছবি বা চ্যাটের মেসেজ রিয়েল-টাইমে পেতে পুশ নোটিফিকেশন চালু করুন।
                 </p>
                 <button
+                  type="button"
                   onClick={handleRequestPermission}
                   disabled={isSubscribing}
                   className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-teal-950 font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
@@ -181,6 +191,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }} />
                   <Check size={12} className="text-emerald-600" /> পুশ নোটিফিকেশন সক্রিয়
                 </span>
                 <button
+                  type="button"
                   onClick={handleTestNotification}
                   className="text-[10px] text-teal-700 hover:underline cursor-pointer font-bold"
                 >
@@ -189,32 +200,124 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }} />
               </div>
             )}
 
+            {/* Action Toolbar (Mark all read & Clear all) */}
+            {activities.length > 0 && (
+              <div className="px-3.5 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                  <span>হিস্ট্রি ({activities.length})</span>
+                  {unreadCount > 0 && (
+                    <span className="px-1.5 py-0.2 bg-teal-100 text-teal-800 font-bold rounded-full text-[10px]">
+                      {unreadCount} নতুন
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2.5">
+                  {unreadCount > 0 && onMarkAllAsRead && (
+                    <button
+                      type="button"
+                      onClick={onMarkAllAsRead}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 hover:text-teal-900 transition cursor-pointer"
+                      title="সকল নোটিফিকেশন পঠিত হিসেবে চিহ্নিত করুন"
+                    >
+                      <CheckCheck size={13} /> সব পঠিত
+                    </button>
+                  )}
+                  {onClearAllActivities && (
+                    <button
+                      type="button"
+                      onClick={onClearAllActivities}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 hover:text-rose-800 transition cursor-pointer"
+                      title="সকল নোটিফিকেশন মুছে ফেলুন"
+                    >
+                      <Trash2 size={12} /> সব মুছুন
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Activities List */}
             <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
               {activities.length > 0 ? (
-                activities.slice(0, 10).map((act, idx) => (
-                  <div
-                    key={act.id || idx}
-                   role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}  onClick={() => {
-                      if (act.tab) onNavigate(act.tab);
-                      setIsOpen(false);
-                    }}
-                    className="p-3 hover:bg-slate-50 transition cursor-pointer flex items-start gap-2.5"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 mt-0.5">
-                      {getActivityIcon(act.type)}
+                activities.slice(0, 15).map((act, idx) => {
+                  const isUnread = !act.read;
+                  return (
+                    <div
+                      key={act.id || idx}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.currentTarget.click();
+                        }
+                      }}
+                      onClick={() => {
+                        if (onMarkAsRead) onMarkAsRead(act.id);
+                        if (act.tab) onNavigate(act.tab);
+                        setIsOpen(false);
+                      }}
+                      className={`p-3 transition cursor-pointer flex items-start gap-2.5 group relative ${
+                        isUnread ? 'bg-teal-50/50 hover:bg-teal-50/90' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 shadow-2xs flex items-center justify-center shrink-0 mt-0.5">
+                        {getActivityIcon(act.type)}
+                      </div>
+
+                      <div className="flex-1 min-w-0 pr-1">
+                        <div className="flex items-center gap-1.5">
+                          <p className={`text-xs truncate ${isUnread ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'}`}>
+                            {act.title}
+                          </p>
+                          {isUnread && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-teal-600 shrink-0" title="অপঠিত" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-600 line-clamp-2 leading-tight mt-0.5">{act.body}</p>
+                        <span className="text-[9px] text-slate-400 mt-0.5 block">{act.time || 'এইমাত্র'}</span>
+                      </div>
+
+                      {/* Action buttons (Mark read & Delete) */}
+                      <div className="flex items-center gap-1 shrink-0 self-center">
+                        {isUnread && onMarkAsRead && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onMarkAsRead(act.id);
+                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-teal-700 hover:bg-slate-200/60 transition cursor-pointer"
+                            title="পঠিত হিসেবে চিহ্নিত করুন"
+                            aria-label="Mark as read"
+                          >
+                            <Check size={13} />
+                          </button>
+                        )}
+                        {onClearActivity && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onClearActivity(act.id);
+                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            title="এই নোটিফিকেশনটি মুছুন"
+                            aria-label="Delete notification"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                        <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-500 transition" />
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-slate-800 truncate">{act.title}</p>
-                      <p className="text-[11px] text-slate-600 line-clamp-2 leading-tight">{act.body}</p>
-                      <span className="text-[9px] text-slate-400 mt-0.5 block">{act.time || 'এইমাত্র'}</span>
-                    </div>
-                    <ChevronRight size={14} className="text-slate-300 shrink-0 self-center" />
-                  </div>
-                ))
+                  );
+                })
               ) : (
-                <div className="p-6 text-center text-slate-400 text-xs">
-                  <p>এখনো কোনো নতুন নোটিফিকেশন নেই</p>
+                <div className="p-8 text-center text-slate-400 text-xs space-y-1">
+                  <Sparkles size={20} className="mx-auto text-slate-300 mb-1" />
+                  <p className="font-semibold text-slate-500">কোনো নোটিফিকেশন নেই</p>
+                  <p className="text-[11px] text-slate-400">নতুন আপডেট এলে এখানে দেখা যাবে</p>
                 </div>
               )}
             </div>
@@ -236,11 +339,21 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }} />
         </>
       )}
 
-      {/* IN-APP FLOATING TOAST BANNER (Slides down at top of the screen on new activity) */}
+      {/* IN-APP FLOATING TOAST BANNER */}
       {activeToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-md animate-in slide-in-from-top duration-300">
           <div
-           role="button" tabIndex={0} aria-label={activeToast.title} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}  onClick={() => {
+            role="button"
+            tabIndex={0}
+            aria-label={activeToast.title}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.currentTarget.click();
+              }
+            }}
+            onClick={() => {
+              if (onMarkAsRead) onMarkAsRead(activeToast.id);
               if (activeToast.tab) onNavigate(activeToast.tab);
               onDismissToast();
             }}
