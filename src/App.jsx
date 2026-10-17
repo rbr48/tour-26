@@ -99,6 +99,7 @@ function writeCache(data) {
         ...post,
         thumb: post.thumb || post.image || null,
         image: post.image || post.thumb || null,
+        images: Array.isArray(post.images) ? post.images.slice(0, 10) : undefined,
       })),
       familyLocations: {},
     };
@@ -623,11 +624,15 @@ export default function App() {
   // Media Feed Handlers
   const handleAddPost = (post) => {
     const userEmail = emailRef.current || (currentUser?.email ? currentUser.email.toLowerCase() : null) || 'member@tour.family';
+    const postImages = Array.isArray(post.images) && post.images.length > 0
+      ? post.images
+      : (post.image || post.thumb ? [post.image || post.thumb] : []);
     const completePost = {
       ...post,
       authorEmail: userEmail,
-      thumb: post.thumb || post.image || null,
-      image: post.image || post.thumb || null,
+      thumb: post.thumb || post.image || (postImages[0] || null),
+      image: post.image || post.thumb || (postImages[0] || null),
+      images: postImages,
     };
 
     // 1. Instant optimistic feed update

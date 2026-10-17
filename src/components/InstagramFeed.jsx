@@ -14,21 +14,55 @@ import {
   Check,
   Trash2,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
+  Images,
 } from 'lucide-react';
 import { compressImageFile } from '../utils/imageCompressor';
 import {
   getDriveAccessToken,
   getAppsScriptWebhook,
   GOOGLE_DRIVE_FOLDER_URL,
+  uploadToGoogleDrive,
 } from '../services/googleDriveService';
 import {
   isDataImage,
+  makeThumbnail,
   preparePhotoFromDataUrl,
   preparePhotoFromUrl,
   syncLegacyPhotoToDrive,
 } from '../services/photos';
 import { newId } from '../services/tourStore';
 import { connectGoogleDrive } from '../firebase';
+
+// Bengali numeral formatter
+export const toBnNum = (n) => String(n).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[d]);
+
+// Extract all images from a post (carousel or single)
+export const getPostImages = (post) => {
+  if (!post) return [];
+  if (Array.isArray(post.images) && post.images.length > 0) {
+    return post.images.filter((img) => typeof img === 'string' && img.trim().length > 0);
+  }
+  const single = photoSource(post);
+  return single ? [single] : [];
+};
+
+export const photoSource = (post) => {
+  if (!post) return null;
+  if (Array.isArray(post.images) && post.images.length > 0 && typeof post.images[0] === 'string') {
+    return post.images[0];
+  }
+  if (post.thumb && typeof post.thumb === 'string') return post.thumb;
+  if (post.image && typeof post.image === 'string' && !post.image.includes('drive.google.com/file/d/')) return post.image;
+  if (post.photo && typeof post.photo === 'string') return post.photo;
+  if (post.url && typeof post.url === 'string') return post.url;
+  if (post.imageUrl && typeof post.imageUrl === 'string') return post.imageUrl;
+  if (post.driveFileId) {
+    return `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1000`;
+  }
+  return post.image || post.thumb || null;
+};
 
 // Preset Default Locations for Tour
 const DEFAULT_LOCATIONS = [
@@ -87,8 +121,11 @@ export default function InstagramFeed({
   const [locationNotification, setLocationNotification] = useState('');
 
   const [imageInput, setImageInput] = useState('');
-  const [imageFilePreview, setImageFilePreview] = useState(null);
+  const [selectedImages, setSelectedImages] = useState([]);
+  const [isProcessingImages, setIsProcessingImages] = useState(false);
   const [postError, setPostError] = useState('');
+  const [postActiveIndices, setPostActiveIndices] = useState({});
+  const [touchCoordinates, setTouchCoordinates] = useState({});
 
   // Google Drive state & handlers
   const [isDriveUploading, setIsDriveUploading] = useState(false);
@@ -228,43 +265,100 @@ export default function InstagramFeed({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Handle local file upload (converts & compresses to web-optimized DataURL)
+  // Handle local file uploads (converts & compresses to web-optimized DataURL)
   const handleFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 25 * 1024 * 1024) {
-        alert('ছবির সাইজ ২৫MB এর কম হতে হবে');
-        return;
-      }
-      setPostError('');
-      try {
-        const compressed = await compressImageFile(file, 900, 900, 0.7);
-        setImageFilePreview(compressed);
-      } catch (err) {
-        console.warn('Image compression fallback to direct FileReader:', err);
-        const reader = new FileReader();
-        reader.onload = (loadEvt) => {
-          if (loadEvt.target?.result) {
-            setImageFilePreview(loadEvt.target.result);
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    if (selectedImages.length + files.length > 10) {
+      alert(`একসাথে সর্বোচ্চ ১০টি ছবি বাছাই করা যাবে। (বর্তমানে ${selectedImages.length}টি আছে)`);
+    }
+
+    const availableSlots = Math.max(0, 10 - selectedImages.length);
+    const filesToProcess = files.slice(0, availableSlots);
+
+    setPostError('');
+    setIsProcessingImages(true);
+
+    try {
+      const processed = await Promise.all(
+        filesToProcess.map(async (file) => {
+          if (file.size > 25 * 1024 * 1024) {
+            console.warn(`File ${file.name} is too large (>25MB)`);
+            return null;
           }
-        };
-        reader.readAsDataURL(file);
-      }
+          try {
+            return await compressImageFile(file, 900, 900, 0.7);
+          } catch (err) {
+            console.warn('Image compression fallback to direct FileReader:', err);
+            return new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (loadEvt) => resolve(loadEvt.target?.result || null);
+              reader.onerror = () => resolve(null);
+              reader.readAsDataURL(file);
+            });
+          }
+        })
+      );
+
+      const validNew = processed.filter(Boolean);
+      setSelectedImages((prev) => [...prev, ...validNew]);
+    } catch (err) {
+      console.error('Error reading files:', err);
+      setPostError('ছবি প্রসেস করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
+    } finally {
+      setIsProcessingImages(false);
       e.target.value = '';
     }
   };
 
-  const photoSource = (post) => {
-    if (!post) return null;
-    if (post.thumb && typeof post.thumb === 'string') return post.thumb;
-    if (post.image && typeof post.image === 'string' && !post.image.includes('drive.google.com/file/d/')) return post.image;
-    if (post.photo && typeof post.photo === 'string') return post.photo;
-    if (post.url && typeof post.url === 'string') return post.url;
-    if (post.imageUrl && typeof post.imageUrl === 'string') return post.imageUrl;
-    if (post.driveFileId) {
-      return `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1000`;
+  const handleRemoveSelectedImage = (indexToRemove) => {
+    setSelectedImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  const handleAddUrlImage = () => {
+    const url = imageInput.trim();
+    if (!url) return;
+    if (selectedImages.length >= 10) {
+      alert('একসাথে সর্বোচ্চ ১০টি ছবি যোগ করা যাবে।');
+      return;
     }
-    return post.image || post.thumb || null;
+    setSelectedImages((prev) => [...prev, url]);
+    setImageInput('');
+  };
+
+  // Touch swipe gestures for carousels in feed
+  const handleTouchStart = (postId, e) => {
+    if (!e.targetTouches?.[0]) return;
+    setTouchCoordinates((prev) => ({
+      ...prev,
+      [postId]: { start: e.targetTouches[0].clientX, end: null },
+    }));
+  };
+
+  const handleTouchMove = (postId, e) => {
+    if (!e.targetTouches?.[0]) return;
+    setTouchCoordinates((prev) => {
+      const cur = prev[postId] || {};
+      return { ...prev, [postId]: { ...cur, end: e.targetTouches[0].clientX } };
+    });
+  };
+
+  const handleTouchEnd = (postId, total) => {
+    const coords = touchCoordinates[postId];
+    if (!coords || coords.start == null || coords.end == null) return;
+    const distance = coords.start - coords.end;
+    const current = postActiveIndices[postId] || 0;
+    if (distance > 45 && current < total - 1) {
+      setPostActiveIndices((prev) => ({ ...prev, [postId]: current + 1 }));
+    } else if (distance < -45 && current > 0) {
+      setPostActiveIndices((prev) => ({ ...prev, [postId]: current - 1 }));
+    }
+    setTouchCoordinates((prev) => {
+      const next = { ...prev };
+      delete next[postId];
+      return next;
+    });
   };
 
   const getFileFromPhoto = async (src, post) => {
@@ -324,8 +418,8 @@ export default function InstagramFeed({
     a.remove();
   };
 
-  const handleShareMedia = async (post) => {
-    const src = photoSource(post);
+  const handleShareMedia = async (post, customSrc = null) => {
+    const src = customSrc || photoSource(post);
     if (!src) return;
     setSharingPostId(post.id);
 
@@ -361,10 +455,14 @@ export default function InstagramFeed({
 
   const handleCreatePost = async (e) => {
     e.preventDefault();
+    let finalImages = [...selectedImages];
     const link = imageInput.trim();
-    const hasFile = Boolean(imageFilePreview);
-    if (!hasFile && !link) {
-      setPostError('অনুগ্রহ করে একটি ছবি নির্বাচন করুন বা ছবির লিংক দিন');
+    if (link && finalImages.length < 10) {
+      finalImages.push(link);
+    }
+
+    if (finalImages.length === 0) {
+      setPostError('অনুগ্রহ করে অন্তত একটি ছবি নির্বাচন করুন বা ছবির লিংক দিন');
       return;
     }
     setPostError('');
@@ -376,13 +474,17 @@ export default function InstagramFeed({
     }
     const postCaption = caption || 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬ এর আনন্দঘন মুহূর্ত! 🏖️✨';
 
-    const basePhoto = imageFilePreview || link || null;
-    let finalThumb = basePhoto;
-    try {
-      finalThumb = await makeThumbnail(basePhoto);
-    } catch (e) {
-      console.warn('Thumbnail generation warning:', e);
-    }
+    // Generate thumbnails for all images
+    const thumbnailImages = await Promise.all(
+      finalImages.map(async (img) => {
+        try {
+          return await makeThumbnail(img);
+        } catch (e) {
+          console.warn('Thumbnail generation warning:', e);
+          return img;
+        }
+      })
+    );
 
     const postId = newId();
     const profilePhoto = currentProfile?.customPhotoURL;
@@ -398,8 +500,9 @@ export default function InstagramFeed({
       location: finalLocation,
       likes: [],
       comments: [],
-      thumb: finalThumb,
-      image: finalThumb,
+      images: thumbnailImages,
+      thumb: thumbnailImages[0] || null,
+      image: thumbnailImages[0] || null,
       driveBackedUp: false,
       driveFileId: null,
       driveViewUrl: null,
@@ -410,7 +513,7 @@ export default function InstagramFeed({
     onAddPost(newPost);
     setCaption('');
     setImageInput('');
-    setImageFilePreview(null);
+    setSelectedImages([]);
     setIsCustomLocMode(false);
     setCustomLocInput('');
     try {
@@ -419,22 +522,32 @@ export default function InstagramFeed({
     setShowCreateModal(false);
 
     // 2. Upload to Google Drive in the background (zero blocking)
-    if (hasFile && basePhoto) {
-      uploadToGoogleDrive({
-        imageDataUrl: basePhoto,
-        fileName: `Tour2026_${authorName.replace(/\s+/g, '_')}_${Date.now()}.jpg`,
-        caption: postCaption,
-      }).then((upload) => {
-        if (upload?.success && upload.fileId) {
+    const filesToUpload = finalImages.filter((img) => isDataImage(img));
+    if (filesToUpload.length > 0) {
+      (async () => {
+        let firstUploaded = null;
+        for (let i = 0; i < filesToUpload.length; i++) {
+          try {
+            const upload = await uploadToGoogleDrive({
+              imageDataUrl: filesToUpload[i],
+              fileName: `Tour2026_${authorName.replace(/\s+/g, '_')}_${Date.now()}_${i + 1}.jpg`,
+              caption: `${postCaption} (${i + 1}/${filesToUpload.length})`,
+            });
+            if (upload?.success && !firstUploaded) {
+              firstUploaded = upload;
+            }
+          } catch (err) {
+            console.warn(`Background Drive backup skipped for image ${i + 1}:`, err);
+          }
+        }
+        if (firstUploaded?.fileId) {
           onUpdatePost?.(postId, {
             driveBackedUp: true,
-            driveFileId: upload.fileId,
-            driveViewUrl: upload.webViewLink,
+            driveFileId: firstUploaded.fileId,
+            driveViewUrl: firstUploaded.webViewLink,
           });
         }
-      }).catch((err) => {
-        console.warn('Background Drive backup skipped or delayed:', err?.message || err);
-      });
+      })();
     }
   };
 
@@ -609,6 +722,10 @@ export default function InstagramFeed({
             const isLiked = post.likes?.includes(currentUser?.displayName || 'user') || post.likes?.includes('রাজু ভাই');
             const likeCount = (post.likes || []).length;
             const isSharing = sharingPostId === post.id;
+            const postImages = getPostImages(post);
+            const totalImages = postImages.length;
+            const currentIdx = Math.min(postActiveIndices[post.id] || 0, Math.max(0, totalImages - 1));
+            const currentMediaSrc = postImages[currentIdx] || photoSource(post);
 
             return (
               <div
@@ -654,22 +771,104 @@ export default function InstagramFeed({
                   </div>
                 </div>
 
-                {/* Media Image */}
+                {/* Media Image / Carousel */}
                 <div
-                  className="relative bg-slate-900 cursor-pointer overflow-hidden max-h-[500px] flex items-center justify-center"
-                 role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}  onClick={() => setPreviewMedia(photoSource(post))}
+                  className="relative bg-slate-900 cursor-pointer overflow-hidden max-h-[500px] min-h-[220px] flex items-center justify-center select-none group"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setPreviewMedia({ images: postImages, index: currentIdx });
+                    } else if (e.key === 'ArrowLeft' && currentIdx > 0) {
+                      setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx - 1 }));
+                    } else if (e.key === 'ArrowRight' && currentIdx < totalImages - 1) {
+                      setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx + 1 }));
+                    }
+                  }}
+                  onClick={() => setPreviewMedia({ images: postImages, index: currentIdx })}
+                  onTouchStart={(e) => handleTouchStart(post.id, e)}
+                  onTouchMove={(e) => handleTouchMove(post.id, e)}
+                  onTouchEnd={() => handleTouchEnd(post.id, totalImages)}
                 >
                   <img
-                    src={photoSource(post)}
+                    src={currentMediaSrc}
                     alt={post.caption}
-                    className="w-full object-contain max-h-[500px] hover:scale-102 transition duration-300"
+                    className="w-full object-contain max-h-[500px] hover:scale-101 transition duration-300"
+                    loading="lazy"
                   />
+
+                  {/* Multi-photo Counter Badge */}
+                  {totalImages > 1 && (
+                    <div className="absolute top-2.5 right-2.5 bg-black/60 backdrop-blur-md text-white text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md border border-white/20 pointer-events-none z-10">
+                      <Images size={13} className="text-pink-300" />
+                      <span>{toBnNum(currentIdx + 1)}/{toBnNum(totalImages)}</span>
+                    </div>
+                  )}
+
+                  {/* Left Carousel Arrow */}
+                  {totalImages > 1 && currentIdx > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx - 1 }));
+                      }}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/55 hover:bg-black/80 text-white flex items-center justify-center transition shadow-lg z-10 cursor-pointer backdrop-blur-xs active:scale-90"
+                      title="পূর্ববর্তী ছবি"
+                      aria-label="Previous photo"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+                  )}
+
+                  {/* Right Carousel Arrow */}
+                  {totalImages > 1 && currentIdx < totalImages - 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx + 1 }));
+                      }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/55 hover:bg-black/80 text-white flex items-center justify-center transition shadow-lg z-10 cursor-pointer backdrop-blur-xs active:scale-90"
+                      title="পরবর্তী ছবি"
+                      aria-label="Next photo"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                  )}
+
+                  {/* Bottom Dots Indicator */}
+                  {totalImages > 1 && (
+                    <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 backdrop-blur-xs z-10">
+                      {postImages.map((_, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPostActiveIndices((prev) => ({ ...prev, [post.id]: idx }));
+                          }}
+                          className={`transition-all duration-300 cursor-pointer rounded-full ${
+                            idx === currentIdx
+                              ? 'w-4 h-1.5 bg-white shadow-xs'
+                              : 'w-1.5 h-1.5 bg-white/50 hover:bg-white/80'
+                          }`}
+                          title={`ছবি ${toBnNum(idx + 1)}`}
+                          aria-label={`Jump to photo ${idx + 1}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Drive Backup Status Pill */}
                   {post.driveBackedUp ? (
                     <a
                       href={post.driveViewUrl || GOOGLE_DRIVE_FOLDER_URL}
                       target="_blank"
                       rel="noreferrer"
-                      className="absolute top-2 right-2 bg-emerald-950/80 hover:bg-emerald-900 backdrop-blur-xs text-emerald-300 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 transition shadow-xs border border-emerald-500/30"
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute top-2.5 left-2.5 bg-emerald-950/80 hover:bg-emerald-900 backdrop-blur-xs text-emerald-300 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 transition shadow-xs border border-emerald-500/30 z-10"
                       title="গুগল ড্রাইভ ফোল্ডারে ছবিটি দেখুন"
                     >
                       <HardDrive size={10} className="text-emerald-400" /> ✓ ড্রাইভে সংরক্ষিত
@@ -677,9 +876,12 @@ export default function InstagramFeed({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => handleManualDriveBackup(post)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleManualDriveBackup(post);
+                      }}
                       disabled={manualDriveUploadId === post.id}
-                      className="absolute top-2 right-2 bg-black/60 hover:bg-slate-900 backdrop-blur-xs text-white hover:text-emerald-300 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 transition cursor-pointer border border-white/20"
+                      className="absolute top-2.5 left-2.5 bg-black/60 hover:bg-slate-900 backdrop-blur-xs text-white hover:text-emerald-300 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 transition cursor-pointer border border-white/20 z-10"
                       title="গুগল ড্রাইভ ফোল্ডারে ব্যাকআপ পাঠান"
                     >
                       {manualDriveUploadId === post.id ? (
@@ -715,10 +917,10 @@ export default function InstagramFeed({
 
                       {/* Share Original Media Button */}
                       <button
-                        onClick={() => handleShareMedia(post)}
+                        onClick={() => handleShareMedia(post, currentMediaSrc)}
                         disabled={isSharing}
                         className="flex items-center gap-1 text-slate-700 hover:text-teal-600 transition cursor-pointer disabled:opacity-50"
-                        title="সরাসরি মূল ছবিটি শেয়ার করুন"
+                        title="সরাসরি এই ছবিটি শেয়ার করুন"
                       >
                         {isSharing ? (
                           <Loader2 size={20} className="animate-spin text-teal-600" />
@@ -730,8 +932,8 @@ export default function InstagramFeed({
                     </div>
 
                     <a
-                      href={photoSource(post)}
-                      download={`CoxsBazar_Tour2026_${post.id}.jpg`}
+                      href={currentMediaSrc}
+                      download={`CoxsBazar_Tour2026_${post.id}_${currentIdx + 1}.jpg`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-slate-400 hover:text-slate-800 transition p-1"
@@ -829,65 +1031,139 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
             <form id="create-post-form" onSubmit={handleCreatePost} className="flex-1 flex flex-col min-h-0 overflow-hidden">
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
                 {/* Media Selection / Upload */}
-                <div className="space-y-2">
-                  <p id="feed-media-label" className="text-xs font-bold text-slate-700 block">ছবি আপলোড বা ছবি নির্বাচন</p>
-
-                  {/* File picker */}
-                  <div className="flex items-center gap-2">
-                    <label
-                      htmlFor="feed-photo-file-input"
-                      className="flex-1 py-4 px-4 bg-teal-50 hover:bg-teal-100 text-teal-900 border-2 border-dashed border-teal-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition text-xs font-semibold shadow-xs active:scale-98"
-                    >
-                      <Camera size={22} className="mb-1.5 text-teal-600" />
-                      <span className="text-sm font-bold text-teal-950">ডিভাইস বা ক্যামেরা থেকে ছবি তুলুন</span>
-                      <span className="text-[11px] text-teal-700 mt-0.5">গ্যালারি বা ক্যামেরা থেকে ছবি বাছাই করতে এখানে ট্যাপ করুন</span>
-                      <input
-                        id="feed-photo-file-input"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileChange}
-                        className="sr-only"
-                      />
-                    </label>
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <p id="feed-media-label" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Camera size={14} className="text-pink-600" />
+                      ছবি আপলোড বা ছবি নির্বাচন (সর্বোচ্চ ১০টি)
+                    </p>
+                    {selectedImages.length > 0 && (
+                      <span className="text-[11px] font-bold text-teal-800 bg-teal-100/70 px-2 py-0.5 rounded-full">
+                        {toBnNum(selectedImages.length)}/১০টি নির্বাচিত
+                      </span>
+                    )}
                   </div>
 
-                  {/* Image preview */}
-                  {imageFilePreview && (
-                    <div className="space-y-1.5 animate-in fade-in duration-150">
-                      <div className="flex items-center justify-between text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                        <span className="flex items-center gap-1">✓ ছবি সফলভাবে নির্বাচন করা হয়েছে!</span>
+                  {/* Empty state: big file picker box */}
+                  {selectedImages.length === 0 ? (
+                    <div className="flex items-center gap-2">
+                      <label
+                        htmlFor="feed-photo-file-input"
+                        className="flex-1 py-5 px-4 bg-teal-50 hover:bg-teal-100/80 text-teal-900 border-2 border-dashed border-teal-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition text-xs font-semibold shadow-xs active:scale-98"
+                      >
+                        <Camera size={26} className="mb-1.5 text-teal-600" />
+                        <span className="text-sm font-bold text-teal-950">ডিভাইস বা ক্যামেরা থেকে ছবি তুলুন</span>
+                        <span className="text-[11px] text-teal-700 mt-0.5">এক বা একাধিক (সর্বোচ্চ ১০টি) ছবি বাছাই করতে ট্যাপ করুন</span>
+                        <input
+                          id="feed-photo-file-input"
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleFileChange}
+                          className="sr-only"
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    /* Multi-image preview grid */
+                    <div className="space-y-2 animate-in fade-in duration-150">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200">
+                        <span className="flex items-center gap-1">
+                          ✓ {toBnNum(selectedImages.length)}টি ছবি অ্যালবাম আকারে সাজানো হয়েছে
+                        </span>
                         <button
                           type="button"
-                          onClick={() => setImageFilePreview(null)}
+                          onClick={() => setSelectedImages([])}
                           className="text-rose-600 hover:text-rose-800 text-[10px] underline cursor-pointer"
                         >
-                          মুছে ফেলুন
+                          সব মুছুন
                         </button>
                       </div>
-                      <div className="relative rounded-2xl overflow-hidden border-2 border-emerald-400 max-h-56 flex items-center justify-center bg-slate-900 shadow-inner">
-                        <img src={imageFilePreview} alt="Preview" className="max-h-56 object-contain" />
-                        <button
-                          type="button"
-                          onClick={() => setImageFilePreview(null)}
-                          className="absolute top-2 right-2 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-1.5 text-xs cursor-pointer shadow-md"
-                          title="ছবি বাতিল করুন"
-                        >
-                          <X size={14} />
-                        </button>
+
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-2 bg-slate-50 rounded-2xl border border-slate-200 max-h-56 overflow-y-auto">
+                        {selectedImages.map((img, idx) => (
+                          <div
+                            key={idx}
+                            className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-900 group shadow-2xs"
+                          >
+                            <img
+                              src={img}
+                              alt={`Selected ${idx + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                            {/* Sequence number badge */}
+                            <span className="absolute top-1 left-1 bg-black/75 backdrop-blur-xs text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                              {toBnNum(idx + 1)}
+                            </span>
+                            {/* Remove button */}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSelectedImage(idx)}
+                              className="absolute top-1 right-1 bg-rose-600/90 hover:bg-rose-700 text-white rounded-full p-1 text-xs cursor-pointer shadow-sm transition active:scale-90"
+                              title="ছবিটি বাতিল করুন"
+                              aria-label={`Remove photo ${idx + 1}`}
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+
+                        {/* + Add more tile if slots available */}
+                        {selectedImages.length < 10 && (
+                          <label
+                            htmlFor="feed-photo-file-input"
+                            className="aspect-square rounded-xl border-2 border-dashed border-teal-300 hover:border-teal-500 hover:bg-teal-50/70 flex flex-col items-center justify-center cursor-pointer transition text-teal-700 active:scale-95"
+                            title="আরও ছবি যোগ করুন"
+                          >
+                            <Plus size={20} />
+                            <span className="text-[10px] font-bold mt-1">+ যোগ করুন</span>
+                            <input
+                              id="feed-photo-file-input"
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              onChange={handleFileChange}
+                              className="sr-only"
+                            />
+                          </label>
+                        )}
                       </div>
                     </div>
                   )}
 
-                  {/* Or image URL input */}
+                  {isProcessingImages && (
+                    <div className="flex items-center gap-2 text-xs text-teal-800 bg-teal-50 px-3 py-1.5 rounded-xl border border-teal-200 font-medium">
+                      <Loader2 size={14} className="animate-spin text-teal-600" />
+                      <span>ছবি প্রক্রিয়াকরণ ও অপ্টিমাইজেশন হচ্ছে...</span>
+                    </div>
+                  )}
+
+                  {/* Or image URL input with + Add button */}
                   <div>
-                    <span className="text-[10px] text-slate-400 block mb-1">অথবা ছবির সরাসরি ওয়েব/ড্রাইভ লিংক দিন:</span>
-                    <input
-                      type="url"
-                      placeholder="https://... (ইমেজ লিংক)"
-                      value={imageInput}
-                      onChange={e => setImageInput(e.target.value)}
-                      className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                    />
+                    <span className="text-[10px] text-slate-500 block mb-1">অথবা ছবির সরাসরি ওয়েব/ড্রাইভ লিংক দিন:</span>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        placeholder="https://... (ইমেজ লিংক)"
+                        value={imageInput}
+                        onChange={(e) => setImageInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddUrlImage();
+                          }
+                        }}
+                        className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddUrlImage}
+                        disabled={!imageInput.trim() || selectedImages.length >= 10}
+                        className="px-3 py-2 bg-teal-700 hover:bg-teal-800 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-xs whitespace-nowrap"
+                      >
+                        + যোগ করুন
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1106,24 +1382,92 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       {/* FULLSCREEN PHOTO PREVIEW MODAL */}
       {previewMedia && (
         <div
-          className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50 cursor-pointer"
-         role="presentation"
- onClick={() => setPreviewMedia(null)}
-onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
+          className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 z-50 cursor-pointer animate-in fade-in duration-150"
+          role="presentation"
+          onClick={() => setPreviewMedia(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         >
-          <div className="relative max-w-2xl w-full">
-            <button
-              onClick={() => setPreviewMedia(null)}
-              className="absolute -top-10 right-0 text-white hover:text-rose-400 font-bold text-sm bg-white/20 p-1.5 rounded-full cursor-pointer"
-            >
-              <X size={18} />
-            </button>
-            <img
-              src={previewMedia}
-              alt="Fullscreen Preview"
-              className="w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl"
-            />
-          </div>
+          {(() => {
+            const isGallery = typeof previewMedia === 'object' && Array.isArray(previewMedia?.images);
+            const galleryImages = isGallery ? previewMedia.images : [previewMedia];
+            const currentGalleryIdx = isGallery ? (previewMedia.index || 0) : 0;
+            const currentImg = galleryImages[currentGalleryIdx] || (typeof previewMedia === 'string' ? previewMedia : '');
+
+            return (
+              <div
+                className="relative max-w-4xl w-full flex flex-col items-center justify-center cursor-default"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header Controls */}
+                <div className="w-full flex items-center justify-between py-2 text-white mb-1">
+                  <div className="flex items-center gap-2">
+                    {galleryImages.length > 1 && (
+                      <span className="text-xs bg-white/20 backdrop-blur-xs px-2.5 py-1 rounded-full font-bold flex items-center gap-1.5 shadow-sm">
+                        <Images size={13} className="text-pink-300" />
+                        {toBnNum(currentGalleryIdx + 1)} / {toBnNum(galleryImages.length)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <a
+                      href={currentImg}
+                      download={`Tour2026_${currentGalleryIdx + 1}.jpg`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-1.5 rounded-full bg-white/15 hover:bg-white/30 text-white transition cursor-pointer"
+                      title="ছবিটি ডাউনলোড করুন"
+                    >
+                      <Download size={18} />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewMedia(null)}
+                      className="text-white hover:text-rose-400 bg-white/20 hover:bg-white/30 p-1.5 rounded-full transition cursor-pointer active:scale-95"
+                      title="বন্ধ করুন"
+                      aria-label="Close lightbox"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Main Preview Image */}
+                <div className="relative w-full flex items-center justify-center max-h-[82vh] overflow-hidden">
+                  <img
+                    src={currentImg}
+                    alt="Fullscreen Preview"
+                    className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-2xl select-none"
+                  />
+
+                  {/* Prev Button in Lightbox */}
+                  {galleryImages.length > 1 && currentGalleryIdx > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewMedia({ images: galleryImages, index: currentGalleryIdx - 1 })}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center transition shadow-lg cursor-pointer active:scale-90"
+                      title="পূর্ববর্তী ছবি"
+                      aria-label="Previous image"
+                    >
+                      <ChevronLeft size={24} />
+                    </button>
+                  )}
+
+                  {/* Next Button in Lightbox */}
+                  {galleryImages.length > 1 && currentGalleryIdx < galleryImages.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewMedia({ images: galleryImages, index: currentGalleryIdx + 1 })}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center transition shadow-lg cursor-pointer active:scale-90"
+                      title="পরবর্তী ছবি"
+                      aria-label="Next image"
+                    >
+                      <ChevronRight size={24} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
