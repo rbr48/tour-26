@@ -29,7 +29,7 @@ self.addEventListener('activate', (event) => {
       const keys = await caches.keys();
       await Promise.all(
         keys
-          .filter((key) => key.startsWith('tour2026-') && key !== CACHE_NAME)
+          .filter((key) => key !== CACHE_NAME)
           .map((key) => caches.delete(key)),
       );
       await self.clients.claim();

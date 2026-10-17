@@ -418,7 +418,6 @@ export default function App() {
     } else {
       setRemoteReady(false);
       setTourExists(false);
-      setAdmins([]);
     }
   }), []);
 

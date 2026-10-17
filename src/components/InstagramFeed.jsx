@@ -236,12 +236,21 @@ export default function InstagramFeed({
         alert('ছবির সাইজ ২৫MB এর কম হতে হবে');
         return;
       }
+      setPostError('');
       try {
         const compressed = await compressImageFile(file, 900, 900, 0.7);
         setImageFilePreview(compressed);
       } catch (err) {
-        console.error('Image compression failed:', err);
+        console.warn('Image compression fallback to direct FileReader:', err);
+        const reader = new FileReader();
+        reader.onload = (loadEvt) => {
+          if (loadEvt.target?.result) {
+            setImageFilePreview(loadEvt.target.result);
+          }
+        };
+        reader.readAsDataURL(file);
       }
+      e.target.value = '';
     }
   };
 
@@ -367,33 +376,19 @@ export default function InstagramFeed({
     }
     const postCaption = caption || 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬ এর আনন্দঘন মুহূর্ত! 🏖️✨';
 
-    // A photo is saved only after its full-size copy reached Drive, so a failed upload
-    // never leaves a half-finished post behind.
-    setIsDriveUploading(true);
-    let photo;
+    const basePhoto = imageFilePreview || link || null;
+    let finalThumb = basePhoto;
     try {
-      photo = hasFile
-        ? await preparePhotoFromDataUrl({ dataUrl: imageFilePreview, authorName, caption: postCaption })
-        : preparePhotoFromUrl(link);
-    } catch (err) {
-      console.warn('Drive upload warning, proceeding with thumbnail:', err.message);
-      photo = {
-        thumb: imageFilePreview || link,
-        driveBackedUp: false,
-        driveFileId: null,
-        driveViewUrl: null,
-      };
-    } finally {
-      setIsDriveUploading(false);
+      finalThumb = await makeThumbnail(basePhoto);
+    } catch (e) {
+      console.warn('Thumbnail generation warning:', e);
     }
 
+    const postId = newId();
     const profilePhoto = currentProfile?.customPhotoURL;
-    const basePhoto = imageFilePreview || link || null;
-    const finalThumb = photo?.thumb || basePhoto;
-    const finalImage = photo?.image || photo?.thumb || basePhoto;
 
     const newPost = {
-      id: newId(),
+      id: postId,
       author: authorName,
       authorEmail: currentUser?.email || 'member@tour.family',
       authorPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:')
@@ -403,12 +398,15 @@ export default function InstagramFeed({
       location: finalLocation,
       likes: [],
       comments: [],
-      ...photo,
       thumb: finalThumb,
-      image: finalImage,
+      image: finalThumb,
+      driveBackedUp: false,
+      driveFileId: null,
+      driveViewUrl: null,
       createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' }),
     };
 
+    // 1. Post is added to feed and Firestore instantly!
     onAddPost(newPost);
     setCaption('');
     setImageInput('');
@@ -417,10 +415,27 @@ export default function InstagramFeed({
     setCustomLocInput('');
     try {
       localStorage.removeItem('tour_post_draft_caption');
-    } catch {
-      // Draft cleanup is optional.
-    }
+    } catch {}
     setShowCreateModal(false);
+
+    // 2. Upload to Google Drive in the background (zero blocking)
+    if (hasFile && basePhoto) {
+      uploadToGoogleDrive({
+        imageDataUrl: basePhoto,
+        fileName: `Tour2026_${authorName.replace(/\s+/g, '_')}_${Date.now()}.jpg`,
+        caption: postCaption,
+      }).then((upload) => {
+        if (upload?.success && upload.fileId) {
+          onUpdatePost?.(postId, {
+            driveBackedUp: true,
+            driveFileId: upload.fileId,
+            driveViewUrl: upload.webViewLink,
+          });
+        }
+      }).catch((err) => {
+        console.warn('Background Drive backup skipped or delayed:', err?.message || err);
+      });
+    }
   };
 
   const handleCommentSubmit = (postId) => {
@@ -790,6 +805,7 @@ export default function InstagramFeed({
 onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
             className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full shadow-2xl max-h-[88vh] flex flex-col overflow-hidden my-auto border border-slate-100"
           >
             {/* PINNED HEADER */}
@@ -815,29 +831,47 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
 
                   {/* File picker */}
                   <div className="flex items-center gap-2">
-                    <label className="flex-1 py-3 px-4 bg-teal-50 hover:bg-teal-100 text-teal-800 border-2 border-dashed border-teal-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition text-xs font-semibold">
-                      <Camera size={20} className="mb-1 text-teal-600" />
-                      <span>ডিভাইস বা ক্যামেরা থেকে ছবি তুলুন</span>
+                    <label
+                      htmlFor="feed-photo-file-input"
+                      className="flex-1 py-4 px-4 bg-teal-50 hover:bg-teal-100 text-teal-900 border-2 border-dashed border-teal-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition text-xs font-semibold shadow-xs active:scale-98"
+                    >
+                      <Camera size={22} className="mb-1.5 text-teal-600" />
+                      <span className="text-sm font-bold text-teal-950">ডিভাইস বা ক্যামেরা থেকে ছবি তুলুন</span>
+                      <span className="text-[11px] text-teal-700 mt-0.5">গ্যালারি বা ক্যামেরা থেকে ছবি বাছাই করতে এখানে ট্যাপ করুন</span>
                       <input
+                        id="feed-photo-file-input"
                         type="file"
                         accept="image/*"
                         onChange={handleFileChange}
-                        className="hidden"
+                        className="sr-only"
                       />
                     </label>
                   </div>
 
                   {/* Image preview */}
                   {imageFilePreview && (
-                    <div className="relative rounded-2xl overflow-hidden border border-teal-200 max-h-48 flex items-center justify-center bg-slate-900">
-                      <img src={imageFilePreview} alt="Preview" className="max-h-48 object-contain" />
-                      <button
-                        type="button"
-                        onClick={() => setImageFilePreview(null)}
-                        className="absolute top-2 right-2 bg-rose-600 text-white rounded-full p-1 text-xs cursor-pointer"
-                      >
-                        <X size={14} />
-                      </button>
+                    <div className="space-y-1.5 animate-in fade-in duration-150">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                        <span className="flex items-center gap-1">✓ ছবি সফলভাবে নির্বাচন করা হয়েছে!</span>
+                        <button
+                          type="button"
+                          onClick={() => setImageFilePreview(null)}
+                          className="text-rose-600 hover:text-rose-800 text-[10px] underline cursor-pointer"
+                        >
+                          মুছে ফেলুন
+                        </button>
+                      </div>
+                      <div className="relative rounded-2xl overflow-hidden border-2 border-emerald-400 max-h-56 flex items-center justify-center bg-slate-900 shadow-inner">
+                        <img src={imageFilePreview} alt="Preview" className="max-h-56 object-contain" />
+                        <button
+                          type="button"
+                          onClick={() => setImageFilePreview(null)}
+                          className="absolute top-2 right-2 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-1.5 text-xs cursor-pointer shadow-md"
+                          title="ছবি বাতিল করুন"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
                     </div>
                   )}
 
