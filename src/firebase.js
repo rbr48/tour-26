@@ -60,17 +60,20 @@ export const signInWithGoogle = async () => {
   try {
     if (Capacitor.isNativePlatform()) {
       // Native Android sign-in through Google Play Services / Credential Manager.
+      const webClientId = '26498265392-seil3pfcqcj6ie5049askpblsnvuq7nn.apps.googleusercontent.com';
       let result;
       try {
         result = await FirebaseAuthentication.signInWithGoogle({
           skipNativeAuth: true,
           useCredentialManager: true,
+          webClientId,
         });
       } catch (err1) {
         console.warn('Native Google Sign-In with CredentialManager failed, trying legacy GoogleSignInClient:', err1);
         result = await FirebaseAuthentication.signInWithGoogle({
           skipNativeAuth: true,
           useCredentialManager: false,
+          webClientId,
         });
       }
 
