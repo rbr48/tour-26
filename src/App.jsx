@@ -22,6 +22,7 @@ import {
   sendPushNotification,
   sendBroadcastPush,
   subscribeToPushNotifications,
+  initNativePushListeners,
 } from './services/notificationService';
 import { SEED_DATA } from './data/seed';
 import {
@@ -338,6 +339,7 @@ export default function App() {
     StatusBar.setBackgroundColor({ color: '#134e4a' }).catch(() => {});
     const splashTimer = setTimeout(() => {
       SplashScreen.hide({ fadeOutDuration: 350 }).catch(() => {});
+      initNativePushListeners((tab) => setActiveTab(tab));
     }, 300);
     const networkListener = Network.addListener('networkStatusChange', (status) => {
       setSyncStatus(status.connected ? 'ইন্টারনেট সংযুক্ত' : 'ইন্টারনেট অফলাইন (লোকাল মোড)');
@@ -468,9 +470,12 @@ export default function App() {
   const uid = currentUser?.uid ?? null;
   const isAdmin = Boolean(currentUser?.email);
 
-  // Auto-subscribe to Web Push if browser permission is already granted
+  // Auto-subscribe to Push if permission is granted or on native platform
   useEffect(() => {
-    if (uid && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    if (!uid) return;
+    if (Capacitor.isNativePlatform()) {
+      subscribeToPushNotifications(currentUser).catch(() => {});
+    } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       subscribeToPushNotifications(currentUser).catch(() => {});
     }
   }, [uid, currentUser]);
@@ -479,7 +484,7 @@ export default function App() {
   //    other people added. Writes made on this device are not announced.
   useEffect(() => {
     const announce = ({ title, body, tab, type }) => {
-      sendPushNotification({ title, body, onClick: () => setActiveTab(tab) });
+      sendPushNotification({ title, body, tab, onClick: () => setActiveTab(tab) });
       addActivity({ id: newId(), type, title, body, tab, time: 'এইমাত্র' });
     };
 
@@ -1363,7 +1368,7 @@ export default function App() {
             </button>
 
             <a
-              href="/Tour2026.apk?v=20261017b"
+              href="/Tour2026.apk?v=20261017e"
               download="Tour2026.apk"
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-950 hover:bg-emerald-900 text-emerald-200 hover:text-white transition cursor-pointer border border-emerald-500/50 shadow-xs"
             >
@@ -1577,7 +1582,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </button>
 
                 <a
-                  href="/Tour2026.apk?v=20261017c"
+                  href="/Tour2026.apk?v=20261017e"
                   download="Tour2026.apk"
                   className="w-full py-2 px-3 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 rounded-xl text-xs font-semibold flex items-center justify-between border border-emerald-600/60 transition cursor-pointer"
                 >

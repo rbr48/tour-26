@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Bell,
   BellRing,
@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Volume2,
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import {
   requestNotificationPermission,
   getNotificationPermission,
@@ -36,9 +37,19 @@ export default function NotificationCenter({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   useBackHandler(isOpen, () => setIsOpen(false), 20);
-  const [permission, setPermission] = useState(() => getNotificationPermission());
+  const [permission, setPermission] = useState('default');
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [feedback, setFeedback] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    getNotificationPermission().then((perm) => {
+      if (active) setPermission(perm || 'default');
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Unread count
   const unreadCount = activities.filter((a) => !a.read).length;
@@ -48,8 +59,8 @@ export default function NotificationCenter({
     setFeedback(null);
     try {
       const res = await subscribeToPushNotifications();
-      const currentPerm = getNotificationPermission();
-      setPermission(currentPerm);
+      const currentPerm = await getNotificationPermission();
+      setPermission(currentPerm || 'default');
       if (res.success) {
         setFeedback({ type: 'success', text: '✅ পুশ নোটিফিকেশন সফলভাবে সক্রিয় হয়েছে!' });
         sendPushNotification({
@@ -71,6 +82,18 @@ export default function NotificationCenter({
     setFeedback({ type: 'info', text: '📡 টেস্ট নোটিফিকেশন পাঠানো হচ্ছে...' });
     playNotificationSound();
     try {
+      if (Capacitor.isNativePlatform()) {
+        sendPushNotification({
+          title: '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
+          body: 'টেস্ট নোটিফিকেশন সফল! নতুন কোনো অ্যাক্টিভিটি হলে আপনার ফোনের নোটিফিকেশন বারে এভাবে অ্যালার্ট আসবে।',
+          tab: 'feed',
+          onClick: () => {
+            if (onNavigate) onNavigate('feed');
+          },
+        });
+        setFeedback({ type: 'success', text: '🔔 টেস্ট সফল! ফোনের স্ট্যাটাস বার চেক করুন।' });
+        return;
+      }
       const res = await sendTestPush();
       if (res.success) {
         setFeedback({ type: 'success', text: '🔔 টেস্ট সফল! ফোনের স্ট্যাটাস বার চেক করুন।' });
@@ -78,9 +101,10 @@ export default function NotificationCenter({
         sendPushNotification({
           title: '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
           body: 'টেস্ট নোটিফিকেশন সফল! নতুন কোনো অ্যাক্টিভিটি হলে এভাবে তাৎক্ষণিক নোটিফিকেশন আসবে।',
+          tab: 'feed',
           onClick: () => {
             window.focus();
-            onNavigate('feed');
+            if (onNavigate) onNavigate('feed');
           },
         });
         setFeedback({ type: 'info', text: res.error ? `সার্ভার: ${res.error}` : 'লোকাল টেস্ট সম্পন্ন হয়েছে।' });

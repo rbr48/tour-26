@@ -1,6 +1,12 @@
 import { Capacitor } from '@capacitor/core';
 import { auth } from '../firebase';
 
+export const API_BASE = Capacitor.isNativePlatform()
+  ? 'https://tour2026.izhaanintellect.fun'
+  : '';
+
+export const NOTIFICATION_CHANNEL_ID = 'tour_2026_channel';
+
 // Helper: Convert URL-safe base64 string to Uint8Array for PushManager
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -46,10 +52,16 @@ export const playNotificationSound = () => {
 export const requestNotificationPermission = async () => {
   if (Capacitor.isNativePlatform()) {
     try {
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
+      const localPerm = await LocalNotifications.requestPermissions();
+
       const { PushNotifications } = await import('@capacitor/push-notifications');
-      const perm = await PushNotifications.requestPermissions();
-      return perm.receive === 'granted' ? 'granted' : 'denied';
-    } catch {
+      const pushPerm = await PushNotifications.requestPermissions().catch(() => ({ receive: 'denied' }));
+
+      const granted = localPerm.display === 'granted' || pushPerm.receive === 'granted';
+      return granted ? 'granted' : 'denied';
+    } catch (e) {
+      console.warn('Native notification permission error:', e);
       return 'denied';
     }
   }
@@ -67,13 +79,97 @@ export const requestNotificationPermission = async () => {
 };
 
 // 3. Check current permission
-export const getNotificationPermission = () => {
-  if (Capacitor.isNativePlatform()) return 'granted';
+export const getNotificationPermission = async () => {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
+      const perm = await LocalNotifications.checkPermissions();
+      return perm.display;
+    } catch {
+      return 'granted';
+    }
+  }
   if (!('Notification' in window)) return 'unsupported';
   return Notification.permission;
 };
 
-// 4. Register Device with Web Push Server (Real remote push)
+// 4. Ensure high-importance Android Notification Channel exists
+export const ensureNotificationChannel = async () => {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    await LocalNotifications.createChannel({
+      id: NOTIFICATION_CHANNEL_ID,
+      name: 'ট্যুর ২০২৬ নোটিফিকেশন',
+      description: 'জরুরি নোটিশ, ফটো আপডেট, আলোচনা ও খরচ সংক্রান্ত তথ্য',
+      importance: 5, // High / Heads-up
+      visibility: 1, // Public on lockscreen
+      vibration: true,
+      sound: 'default',
+    }).catch(() => {});
+
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+    await PushNotifications.createChannel({
+      id: NOTIFICATION_CHANNEL_ID,
+      name: 'ট্যুর ২০২৬ নোটিফিকেশন',
+      description: 'জরুরি নোটিশ, ফটো আপডেট, আলোচনা ও খরচ সংক্রান্ত তথ্য',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      sound: 'default',
+    }).catch(() => {});
+  } catch (err) {
+    console.warn('Failed to ensure notification channel:', err);
+  }
+};
+
+// 5. Initialize native push and local listeners on startup
+export const initNativePushListeners = async (onNavigate) => {
+  if (!Capacitor.isNativePlatform()) return;
+
+  try {
+    await ensureNotificationChannel();
+
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+
+    // Action when user taps local notification in Android notification bar
+    await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+      const tab = action.notification?.extra?.tab;
+      if (tab && typeof onNavigate === 'function') {
+        onNavigate(tab);
+      }
+    }).catch(() => {});
+
+    // Action when user taps remote push notification
+    await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+      const tab = action.notification?.data?.tab;
+      if (tab && typeof onNavigate === 'function') {
+        onNavigate(tab);
+      }
+    }).catch(() => {});
+
+    // Show heads-up banner when push is received in foreground
+    await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      LocalNotifications.schedule({
+        notifications: [
+          {
+            title: notification.title || '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
+            body: notification.body || '',
+            id: Math.floor(Math.random() * 1000000) + 1,
+            channelId: NOTIFICATION_CHANNEL_ID,
+            sound: 'default',
+            extra: { tab: notification.data?.tab || 'feed' },
+          },
+        ],
+      }).catch(() => {});
+    }).catch(() => {});
+  } catch (err) {
+    console.warn('Native notification listener setup failed:', err);
+  }
+};
+
+// 6. Register Device with Web Push Server (Real remote push)
 export const subscribeToPushNotifications = async (currentUser) => {
   const user = currentUser || auth.currentUser;
   if (!user) {
@@ -83,19 +179,29 @@ export const subscribeToPushNotifications = async (currentUser) => {
   // Handle Native Capacitor platform
   if (Capacitor.isNativePlatform()) {
     try {
+      await ensureNotificationChannel();
+
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
       const { PushNotifications } = await import('@capacitor/push-notifications');
-      let perm = await PushNotifications.checkPermissions();
-      if (perm.receive !== 'granted') {
-        perm = await PushNotifications.requestPermissions();
+
+      let localPerm = await LocalNotifications.checkPermissions();
+      if (localPerm.display !== 'granted') {
+        localPerm = await LocalNotifications.requestPermissions();
       }
-      if (perm.receive === 'granted') {
-        await PushNotifications.register();
-        localStorage.setItem('tour_push_active', 'true');
-        return { success: true };
+
+      let pushPerm = await PushNotifications.checkPermissions().catch(() => ({ receive: 'prompt' }));
+      if (pushPerm.receive !== 'granted') {
+        pushPerm = await PushNotifications.requestPermissions().catch(() => ({ receive: 'denied' }));
       }
-      return { success: false, error: 'নোটিফিকেশন পারমিশন দেওয়া হয়নি' };
+
+      if (pushPerm.receive === 'granted') {
+        await PushNotifications.register().catch(() => {});
+      }
+
+      localStorage.setItem('tour_push_active', 'true');
+      return { success: true };
     } catch (err) {
-      console.warn('Native push error:', err);
+      console.warn('Native push registration error:', err);
       return { success: false, error: err.message };
     }
   }
@@ -114,7 +220,7 @@ export const subscribeToPushNotifications = async (currentUser) => {
     const reg = await navigator.serviceWorker.ready;
 
     // 1. Fetch server's VAPID public key
-    const keyRes = await fetch('/api/push/vapid-public-key');
+    const keyRes = await fetch(`${API_BASE}/api/push/vapid-public-key`);
     if (!keyRes.ok) {
       throw new Error('পুশ কী সার্ভার থেকে পাওয়া যায়নি');
     }
@@ -132,7 +238,7 @@ export const subscribeToPushNotifications = async (currentUser) => {
 
     // 3. Send subscription to server
     const idToken = await user.getIdToken();
-    const subRes = await fetch('/api/push/subscribe', {
+    const subRes = await fetch(`${API_BASE}/api/push/subscribe`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${idToken}`,
@@ -156,14 +262,14 @@ export const subscribeToPushNotifications = async (currentUser) => {
   }
 };
 
-// 5. Broadcast Push Notification from Server to all family members
-export const sendBroadcastPush = async ({ title, body, url = '/', tag, excludeSender = true }) => {
+// 7. Broadcast Push Notification from Server to all family members
+export const sendBroadcastPush = async ({ title, body, url = '/', tag, tab, excludeSender = true }) => {
   const user = auth.currentUser;
   if (!user) return { success: false };
 
   try {
     const idToken = await user.getIdToken();
-    const res = await fetch('/api/push/send', {
+    const res = await fetch(`${API_BASE}/api/push/send`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${idToken}`,
@@ -174,6 +280,7 @@ export const sendBroadcastPush = async ({ title, body, url = '/', tag, excludeSe
         body,
         url,
         tag,
+        tab,
         excludeSender,
       }),
     });
@@ -186,14 +293,14 @@ export const sendBroadcastPush = async ({ title, body, url = '/', tag, excludeSe
   return { success: false };
 };
 
-// 6. Send Test Push Notification directly to current user's phone
+// 8. Send Test Push Notification directly to current user's phone
 export const sendTestPush = async (currentUser) => {
   const user = currentUser || auth.currentUser;
   if (!user) return { success: false, error: 'অনুগ্রহ করে প্রথমে লগইন করুন' };
 
   try {
     const idToken = await user.getIdToken();
-    const res = await fetch('/api/push/test', {
+    const res = await fetch(`${API_BASE}/api/push/test`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${idToken}`,
@@ -211,19 +318,41 @@ export const sendTestPush = async (currentUser) => {
   }
 };
 
-// 7. Trigger Local/Foreground Notification safely (Compatible with mobile Chrome)
-export const sendPushNotification = ({ title, body, icon = '/logo.png', tag, onClick }) => {
-  // Sound
+// 9. Trigger System Notification in Android Status Bar or Browser
+export const sendPushNotification = ({ title, body, icon = '/logo.png', tag, tab, onClick }) => {
+  // 1. Play sound chime
   playNotificationSound();
 
-  // Vibration on mobile phones
+  // 2. Vibration on mobile phones
   if ('vibrate' in navigator) {
     try {
       navigator.vibrate([120, 60, 120]);
     } catch {}
   }
 
-  // Safe system notification (ServiceWorker showNotification avoids Chrome Android illegal constructor error)
+  // 3. Native Android status bar notification via @capacitor/local-notifications
+  if (Capacitor.isNativePlatform()) {
+    import('@capacitor/local-notifications')
+      .then(({ LocalNotifications }) => {
+        LocalNotifications.schedule({
+          notifications: [
+            {
+              title: title || '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
+              body: body || '',
+              id: Math.floor(Math.random() * 1000000) + 1,
+              channelId: NOTIFICATION_CHANNEL_ID,
+              smallIcon: 'ic_launcher',
+              sound: 'default',
+              extra: { tab, tag },
+            },
+          ],
+        }).catch((err) => console.warn('Native LocalNotifications schedule error:', err));
+      })
+      .catch((err) => console.warn('LocalNotifications load error:', err));
+    return;
+  }
+
+  // 4. Safe system notification for Web (ServiceWorker or Notification constructor)
   if ('Notification' in window && Notification.permission === 'granted') {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready
@@ -234,6 +363,7 @@ export const sendPushNotification = ({ title, body, icon = '/logo.png', tag, onC
             badge: icon,
             tag: tag || `tour_local_${Date.now()}`,
             renotify: true,
+            data: { tab },
           });
         })
         .catch(() => {
