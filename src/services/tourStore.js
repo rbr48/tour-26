@@ -139,6 +139,12 @@ export function subscribeToTour({ onUpdate, onError, onChange }) {
     });
   };
 
+  const handleListenerError = (sourceName, err) => {
+    state.loaded.add(sourceName);
+    publish();
+    onError?.(err);
+  };
+
   unsubscribers.push(
     onSnapshot(
       tourRef(),
@@ -148,7 +154,7 @@ export function subscribeToTour({ onUpdate, onError, onChange }) {
         state.loaded.add('tour');
         publish();
       },
-      onError,
+      (err) => handleListenerError('tour', err),
     ),
   );
 
@@ -169,7 +175,7 @@ export function subscribeToTour({ onUpdate, onError, onChange }) {
           state.loaded.add(name);
           publish();
         },
-        onError,
+        (err) => handleListenerError(name, err),
       ),
     );
   }
@@ -192,7 +198,7 @@ export function subscribeToTour({ onUpdate, onError, onChange }) {
           state.loaded.add(key);
           publish();
         },
-        onError,
+        (err) => handleListenerError(key, err),
       ),
     );
   }

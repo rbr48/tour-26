@@ -247,7 +247,7 @@ export default function InstagramFeed({
 
   // Drive-backed posts keep only a preview on this device, so sharing uses the best
   // copy available: the full-size image when it is stored, otherwise the preview.
-  const photoSource = (post) => post.image || post.thumb || null;
+  const photoSource = (post) => post.image || post.thumb || post.photo || post.url || post.imageUrl || null;
 
   const getFileFromPhoto = async (src, post) => {
     if (src.startsWith('data:')) {

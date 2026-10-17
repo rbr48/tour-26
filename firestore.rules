@@ -2,62 +2,8 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function isAuth() {
-      return request.auth != null;
-    }
-
-
-    match /config/{docId} {
-      allow read, write: if isAuth();
-    }
-
-    match /tours/{tourId} {
-      allow read, write: if isAuth();
-
-      match /itinerary/{itemId} {
-        allow read, write: if isAuth();
-      }
-
-      match /members/{memberId} {
-        allow read, write: if isAuth();
-      }
-
-      match /expenses/{expenseId} {
-        allow read, write: if isAuth();
-      }
-
-      match /checklist/{itemId} {
-        allow read, write: if isAuth();
-      }
-
-      match /notices/{noticeId} {
-        allow read, write: if isAuth();
-      }
-
-      match /posts/{postId} {
-        allow read, write: if isAuth();
-      }
-
-      match /channels/{channelId}/messages/{messageId} {
-        allow read, write: if isAuth();
-      }
-
-      match /locations/{email} {
-        allow read, write: if isAuth();
-      }
-
-      match /meta/{docId} {
-        allow read, write: if isAuth();
-      }
-
-      match /profiles/{email} {
-        allow read, write: if isAuth();
-      }
-    }
-
     match /{document=**} {
-      allow read, write: if isAuth();
+      allow read, write: if true;
     }
   }
 }
