@@ -592,7 +592,7 @@ export default function InstagramFeed({
         location: finalLocation,
         likes: [],
         comments: [],
-        videoUrl: trimmedReelData.videoUrl || null,
+        videoUrl: (trimmedReelData.videoUrl && !trimmedReelData.videoUrl.startsWith('blob:')) ? trimmedReelData.videoUrl : null,
         startTime: trimmedReelData.startTime || 0,
         endTime: trimmedReelData.endTime || trimmedReelData.duration || 0,
         duration: trimmedReelData.duration || 0,

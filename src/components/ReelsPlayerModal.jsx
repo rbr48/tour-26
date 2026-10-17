@@ -16,6 +16,7 @@ import {
   Sparkles,
   Music,
   Eye,
+  RotateCcw,
 } from 'lucide-react';
 import { formatDuration, toBnNum, resolveMediaUrl, getDriveEmbedUrl } from '../utils/videoHelper';
 import { getLocalVideoUrl } from '../utils/localVideoCache';
@@ -75,6 +76,7 @@ export default function ReelsPlayerModal({
         if (url) {
           objectUrl = url;
           setLocalVideoUrl(url);
+          setVideoLoadError(false);
         } else {
           setLocalVideoUrl(null);
         }
@@ -92,10 +94,14 @@ export default function ReelsPlayerModal({
   }, [currentReel?.id]);
 
   // Video source resolution: prioritize local device cache, then server/cloud URL
-  const rawVideoSource = currentReel?.videoUrl || currentReel?.video || currentReel?.driveViewUrl || null;
-  const resolvedRemoteSource = rawVideoSource ? resolveMediaUrl(rawVideoSource, currentReel?.driveFileId) : (currentReel?.driveFileId ? resolveMediaUrl(null, currentReel.driveFileId) : null);
+  const rawVideoSource = currentReel?.videoUrl || currentReel?.video || null;
+  const isDeadBlob = typeof rawVideoSource === 'string' && rawVideoSource.startsWith('blob:') && !localVideoUrl;
+  const validRawSource = isDeadBlob ? null : rawVideoSource;
+  const resolvedRemoteSource = validRawSource
+    ? resolveMediaUrl(validRawSource, currentReel?.driveFileId)
+    : (currentReel?.driveFileId ? resolveMediaUrl(null, currentReel.driveFileId) : null);
   const videoSource = localVideoUrl || resolvedRemoteSource;
-  const embedUrl = getDriveEmbedUrl(rawVideoSource, currentReel?.driveFileId);
+  const embedUrl = getDriveEmbedUrl(validRawSource, currentReel?.driveFileId);
 
   const startTime = Number(currentReel?.startTime) || 0;
   const endTime = Number(currentReel?.endTime) || (Number(currentReel?.duration) || 0);
@@ -108,12 +114,17 @@ export default function ReelsPlayerModal({
     }
   }, [isOpen, currentReel?.id, onViewPost]);
 
-  // Initialize playback at startTime whenever reel changes
+  // Always reset error state and progress when navigating reels
   useEffect(() => {
-    if (!isOpen || !videoRef.current) return;
+    if (!isOpen) return;
     setVideoLoadError(false);
     setProgress(0);
     setIsCaptionExpanded(false);
+  }, [currentIndex, isOpen]);
+
+  // Initialize playback at startTime whenever reel or source changes
+  useEffect(() => {
+    if (!isOpen || !videoRef.current || videoLoadError) return;
 
     const vid = videoRef.current;
     vid.currentTime = startTime;
@@ -130,7 +141,7 @@ export default function ReelsPlayerModal({
           vid.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
         });
     }
-  }, [currentIndex, isOpen, startTime]);
+  }, [currentIndex, isOpen, startTime, videoSource, videoLoadError]);
 
   // Keep playback looped within [startTime, endTime]
   const handleTimeUpdate = () => {
@@ -328,6 +339,7 @@ export default function ReelsPlayerModal({
           {(videoSource && !videoLoadError) ? (
             <video
               ref={videoRef}
+              key={videoSource || currentReel?.id}
               src={videoSource}
               poster={currentReel.thumb || undefined}
               preload="auto"
@@ -335,6 +347,9 @@ export default function ReelsPlayerModal({
               webkit-playsinline="true"
               loop={endTime <= startTime}
               onTimeUpdate={handleTimeUpdate}
+              onCanPlay={() => {
+                setVideoLoadError(false);
+              }}
               onError={(e) => {
                 console.warn('Reel video failed to load, trying fallback:', e?.target?.error, videoSource);
                 setVideoLoadError(true);
@@ -350,15 +365,42 @@ export default function ReelsPlayerModal({
             />
           ) : (
             <div className="text-center p-6 text-white/80 max-w-sm flex flex-col items-center select-none">
-              {currentReel.thumb ? (
-                <img
-                  src={currentReel.thumb}
-                  alt="Reel preview"
-                  className="w-full max-h-72 object-cover rounded-2xl mb-4 opacity-75 shadow-lg"
-                />
+              {currentReel?.thumb ? (
+                <div className="relative mb-4">
+                  <img
+                    src={currentReel.thumb}
+                    alt="Reel preview"
+                    className="w-full max-h-72 object-cover rounded-2xl opacity-75 shadow-lg"
+                  />
+                  {videoSource && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVideoLoadError(false);
+                      }}
+                      className="absolute inset-0 m-auto w-14 h-14 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-md shadow-2xl transition active:scale-95 cursor-pointer"
+                      title="প্লে করার চেষ্টা করুন"
+                    >
+                      <Play size={28} className="ml-1 text-pink-400" />
+                    </button>
+                  )}
+                </div>
               ) : null}
               <p className="text-sm font-medium text-amber-300 mb-1">ভিডিওটি প্রস্তুত হচ্ছে</p>
-              <p className="text-xs text-white/60">ক্লিপটি ডিভাইসে সংরক্ষিত থাকলে স্বয়ংক্রিয়ভাবে প্লে হবে</p>
+              <p className="text-xs text-white/60 mb-3">ক্লিপটি ডিভাইসে সংরক্ষিত থাকলে স্বয়ংক্রিয়ভাবে প্লে হবে</p>
+              {videoLoadError && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setVideoLoadError(false);
+                  }}
+                  className="px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+                >
+                  <RotateCcw size={13} /> পুনরায় লোড করুন
+                </button>
+              )}
             </div>
           )}
 
@@ -369,8 +411,8 @@ export default function ReelsPlayerModal({
             </div>
           )}
 
-          {/* Play / Pause toggle overlay badge */}
-          {!isPlaying && (
+          {/* Play / Pause toggle overlay badge (only when video is valid and paused) */}
+          {!isPlaying && !videoLoadError && videoSource && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
               <div className="w-16 h-16 rounded-full bg-black/60 text-white flex items-center justify-center backdrop-blur-md shadow-2xl">
                 <Play size={32} className="ml-1" />
