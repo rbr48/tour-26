@@ -639,11 +639,14 @@ export default function InstagramFeed({
 
                   <div className="flex items-center gap-2 text-slate-400">
                     <span className="text-[10px] text-slate-400">{post.createdAt}</span>
-                    {onDeletePost && (
+                    {onDeletePost && Boolean(
+                      (currentUser?.email && post.authorEmail && post.authorEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
+                      (!post.authorEmail && (currentProfile?.displayName || currentUser?.displayName) && post.author === (currentProfile?.displayName || currentUser?.displayName))
+                    ) && (
                       <button
                         onClick={() => onDeletePost(post.id)}
-                        className="text-slate-300 hover:text-rose-500 p-1 transition cursor-pointer"
-                        title="পোস্ট মুছুন"
+                        className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
+                        title="নিজের পোস্ট মুছুন"
                       >
                         <Trash2 size={14} />
                       </button>

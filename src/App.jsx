@@ -681,10 +681,44 @@ export default function App() {
   };
 
   const handleDeletePost = (postId) => {
+    const post = (data.posts || []).find((p) => String(p.id) === String(postId));
+    const myEmail = (currentUser?.email || '').toLowerCase();
+    const myName = (currentProfile?.displayName || currentUser?.displayName || '').trim().toLowerCase();
+    const isAuthor = Boolean(
+      (myEmail && post?.authorEmail && post.authorEmail.toLowerCase() === myEmail) ||
+      (!post?.authorEmail && myName && post?.author && post.author.trim().toLowerCase() === myName)
+    );
+
+    if (!isAuthor && (myEmail || myName)) {
+      setActiveToast({
+        id: newId(),
+        type: 'error',
+        title: 'মুছতে পারবেন না',
+        body: 'শুধুমাত্র যিনি পোস্ট করেছেন তিনি নিজের ছবি মুছতে পারবেন।',
+        tab: 'feed',
+        time: 'এইমাত্র',
+      });
+      return;
+    }
+
     askConfirm({
       title: 'ছবিটি মুছে ফেলবেন?',
       message: 'এই পোস্টটি সবার ইনস্টাফিড থেকে মুছে যাবে।',
-      onConfirm: () => save(removeItem(['posts'], postId)),
+      onConfirm: () => {
+        setData((prev) => ({
+          ...prev,
+          posts: (prev.posts || []).filter((p) => String(p.id) !== String(postId)),
+        }));
+        save(removeItem(['posts'], postId));
+        setActiveToast({
+          id: newId(),
+          type: 'success',
+          title: 'ছবি মুছে ফেলা হয়েছে',
+          body: 'পোস্টটি সফলভাবে মুছে ফেলা হয়েছে।',
+          tab: 'feed',
+          time: 'এইমাত্র',
+        });
+      },
     });
   };
 
