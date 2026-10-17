@@ -1,9 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Search, Terminal, PhoneCall, Wallet, Bus, Hotel,
-  Waves, Split, Printer, AlertOctagon, Calendar, CheckSquare,
-  ArrowRight, Users, ShieldAlert, Sparkles, MapPin, X,
-  Camera, MessageSquare, User, HardDrive
+  Search,
+  PhoneCall,
+  Wallet,
+  Bus,
+  Hotel,
+  Waves,
+  Split,
+  Printer,
+  AlertOctagon,
+  Calendar,
+  CheckSquare,
+  ArrowRight,
+  Sparkles,
+  MapPin,
+  X,
+  Camera,
+  MessageSquare,
+  User,
+  HardDrive,
 } from 'lucide-react';
 
 export default function CommandPalette({
@@ -20,11 +35,9 @@ export default function CommandPalette({
   const inputRef = useRef(null);
 
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
-      setQuery('');
-    }
+    if (!isOpen) return undefined;
+    const timer = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
   }, [isOpen]);
 
   // Global Keyboard shortcut listener
@@ -218,11 +231,12 @@ export default function CommandPalette({
   return (
     <div
       className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-start justify-center p-4 pt-16 sm:pt-24 z-50 animate-in fade-in duration-150 cursor-pointer"
-      onClick={() => onClose(false)}
+     role="presentation"
+ onClick={() => onClose(false)}
+onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
     >
       <div
         className="bg-white rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-150 cursor-auto flex flex-col max-h-[80vh]"
-        onClick={e => e.stopPropagation()}
       >
         {/* Search Input Bar */}
         <div className="p-4 border-b border-slate-100 flex items-center gap-3 bg-slate-50/50">

@@ -7,60 +7,70 @@ import {
   signInWithPopup,
   signInWithCredential,
   signOut,
-  onAuthStateChanged
 } from 'firebase/auth';
 import {
   getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  onSnapshot
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
 } from 'firebase/firestore';
-
-// Web App Configuration for project: tour-26
-const firebaseConfig = {
-  projectId: "tour-26",
-  appId: "1:26498265392:web:4eaafbc9b78555460e98f5",
-  storageBucket: "tour-26.firebasestorage.app",
-  apiKey: "AIzaSyCIsWboX0vH24ZWhRwbqfuSYIohAfPuySU",
-  authDomain: "tour-26.firebaseapp.com",
-  messagingSenderId: "26498265392",
-  measurementId: "G-FRCXW60X3W"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
 import { setDriveAccessToken } from './services/googleDriveService';
 
-// Initialize Auth
+// Web App Configuration for project: tour-26 (public identifiers, not secrets;
+// access is controlled by the Firestore rules and the family allowlist).
+const firebaseConfig = {
+  projectId: 'tour-26',
+  appId: '1:26498265392:web:4eaafbc9b78555460e98f5',
+  storageBucket: 'tour-26.firebasestorage.app',
+  apiKey: 'AIzaSyCIsWboX0vH24ZWhRwbqfuSYIohAfPuySU',
+  authDomain: 'tour-26.firebaseapp.com',
+  messagingSenderId: '26498265392',
+  measurementId: 'G-FRCXW60X3W',
+};
+
+const app = initializeApp(firebaseConfig);
+
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
-  prompt: 'select_account'
+  prompt: 'select_account',
 });
-// Request permission to create and upload backup files to Google Drive
+// Lets the photo fallback upload to Drive with the user's own token when the
+// shared upload endpoint is unavailable.
 googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
 
-// Initialize Firestore
-export const db = getFirestore(app);
+function createFirestore(firebaseApp) {
+  // Persist the cache in IndexedDB so offline edits survive a reload. Fall back to
+  // the in-memory cache where IndexedDB does not exist.
+  if (typeof indexedDB === 'undefined') {
+    return getFirestore(firebaseApp);
+  }
+  try {
+    return initializeFirestore(firebaseApp, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch {
+    return getFirestore(firebaseApp);
+  }
+}
 
-// Authentication Helpers
+export const db = createFirestore(app);
+
 export const signInWithGoogle = async () => {
   try {
     if (Capacitor.isNativePlatform()) {
-      // Native Android / iOS sign-in using Google Play Services / Credential Manager
+      // Native Android sign-in through Google Play Services / Credential Manager.
       let result;
       try {
         result = await FirebaseAuthentication.signInWithGoogle({
           skipNativeAuth: true,
-          useCredentialManager: true
+          useCredentialManager: true,
         });
       } catch (err1) {
         console.warn('Native Google Sign-In with CredentialManager failed, trying legacy GoogleSignInClient:', err1);
         result = await FirebaseAuthentication.signInWithGoogle({
           skipNativeAuth: true,
-          useCredentialManager: false
+          useCredentialManager: false,
         });
       }
 
@@ -73,23 +83,22 @@ export const signInWithGoogle = async () => {
       if (result.user) {
         return result.user;
       }
-      throw new Error('গুগল অ্যাকাউন্ট থেকে কোনো ক্রেডেনশিয়াল পাওয়া যায়নি');
-    } else {
-      // Web browser sign-in using popup
-      const result = await signInWithPopup(auth, googleProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        setDriveAccessToken(credential.accessToken);
-      }
-      return result.user;
+      throw new Error('গুগল অ্যাকাউন্ট থেকে কোনো ক্রেডেনশিয়াল পাওয়া যায়নি');
     }
+
+    const result = await signInWithPopup(auth, googleProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential?.accessToken) {
+      setDriveAccessToken(credential.accessToken);
+    }
+    return result.user;
   } catch (error) {
     console.error('Google Sign-In Error:', error);
     throw error;
   }
 };
 
-// Re-authorize or connect Google Drive explicitly
+// Re-authorize or connect Google Drive explicitly.
 export const connectGoogleDrive = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
@@ -106,77 +115,15 @@ export const connectGoogleDrive = async () => {
 };
 
 export const logoutUser = async () => {
-  try {
-    setDriveAccessToken(null);
-    if (Capacitor.isNativePlatform()) {
-      try {
-        await FirebaseAuthentication.signOut();
-      } catch {}
+  setDriveAccessToken(null);
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await FirebaseAuthentication.signOut();
+    } catch {
+      // Native session may already be gone; the Firebase sign-out below is what matters.
     }
-    await signOut(auth);
-  } catch (error) {
-    console.error('Logout Error:', error);
-    throw error;
   }
-};
-
-// Firestore Realtime Subscription for Family Tour
-export const subscribeToTourData = (onDataReceived, onError) => {
-  const tourDocRef = doc(db, 'tours', 'coxsbazar2026');
-  return onSnapshot(
-    tourDocRef,
-    (docSnap) => {
-      if (docSnap.exists()) {
-        onDataReceived(docSnap.data());
-      } else {
-        // Document doesn't exist yet in Firestore
-        onDataReceived(null);
-      }
-    },
-    (err) => {
-      console.warn('Firestore subscription error (might need sign-in or offline):', err);
-      if (onError) onError(err);
-    }
-  );
-};
-
-import { sanitizeAndCompressTourData } from './utils/imageCompressor';
-
-// Push tour updates to Firestore (with automatic image compression and 1MB size guard)
-export const pushTourDataToFirestore = async (data, currentUser) => {
-  try {
-    const tourDocRef = doc(db, 'tours', 'coxsbazar2026');
-
-    // 1. Automatically downscale and compress any large base64 images in posts/profiles
-    const sanitizedData = await sanitizeAndCompressTourData(data);
-
-    const payload = {
-      ...sanitizedData,
-      updatedAt: new Date().toISOString(),
-      updatedBy: currentUser ? {
-        uid: currentUser.uid,
-        name: currentUser.displayName || 'পরিবারের সদস্য',
-        email: currentUser.email,
-        photoURL: currentUser.photoURL || null
-      } : null
-    };
-
-    // 2. Safety check: ensure JSON payload size is well below 1MB (1,048,576 bytes)
-    const jsonStr = JSON.stringify(payload);
-    if (jsonStr.length > 950000) {
-      console.warn(`Payload size (${jsonStr.length} bytes) is approaching 1MB limit. Trimming older posts.`);
-      // Retain the latest 15 posts to stay safely within limits
-      if (Array.isArray(payload.posts) && payload.posts.length > 15) {
-        payload.posts = payload.posts.slice(0, 15);
-      }
-    }
-
-    await setDoc(tourDocRef, payload, { merge: true });
-    return true;
-  } catch (error) {
-    console.error('Error writing to Firestore:', error);
-    throw error;
-  }
+  await signOut(auth);
 };
 
 export default app;

@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import {
-  Bus, Users, PhoneCall, Sparkles, Check, Armchair,
-  Info, Clock, MapPin, ChevronRight, X
-} from 'lucide-react';
+import { Bus, PhoneCall, Armchair, Info, X } from 'lucide-react';
+
+import { phoneForMember } from '../utils/members';
 
 export default function BusSeatMap({ members = [] }) {
   const [selectedSeat, setSelectedSeat] = useState(null);
@@ -10,33 +9,33 @@ export default function BusSeatMap({ members = [] }) {
 
   // Evergreen AC Bus seat configuration
   const UPPER_DECK_SLEEPERS = [
-    { id: 'S1', type: 'sleeper', position: 'left-window', member: 'রাজু ভাই (ট্যুর অর্গানাইজার)', phone: '01711000000', label: 'স্লিপার S1', desc: 'আপার ডেক • বাম উইন্ডো' },
-    { id: 'S2', type: 'sleeper', position: 'left-aisle', member: 'রাজু ভাই (ট্যুর অর্গানাইজার)', phone: '01711000000', label: 'স্লিপার S2', desc: 'আপার ডেক • বাম আইল' },
-    { id: 'S3', type: 'sleeper', position: 'right-window', member: 'আশেক মো: আসিফ ভাই', phone: '01713000000', label: 'স্লিপার S3', desc: 'আপার ডেক • ডান উইন্ডো' },
-    { id: 'S4', type: 'sleeper', position: 'right-aisle', member: 'আশেক মো: আসিফ ভাই', phone: '01713000000', label: 'স্লিপার S4', desc: 'আপার ডেক • ডান আইল' },
-    { id: 'S5', type: 'sleeper', position: 'left-window', member: 'আশেক মো: আসিফ ভাই', phone: '01713000000', label: 'স্লিপার S5', desc: 'আপার ডেক • বাম উইন্ডো' },
-    { id: 'S6', type: 'sleeper', position: 'left-aisle', member: 'আশেক মো: আসিফ ভাই', phone: '01713000000', label: 'স্লিপার S6', desc: 'আপার ডেক • বাম আইল' },
-    { id: 'S7', type: 'sleeper', position: 'right-window', member: 'আলিম ভাই', phone: '01717000000', label: 'স্লিপার S7', desc: 'আপার ডেক • ডান উইন্ডো' },
-    { id: 'S8', type: 'sleeper', position: 'right-aisle', member: 'আলিম ভাই', phone: '01717000000', label: 'স্লিপার S8', desc: 'আপার ডেক • ডান আইল' },
-    { id: 'S9', type: 'sleeper', position: 'left-window', member: 'সাইফুল ভাই / জামাই', phone: '01718000000', label: 'স্লিপার S9', desc: 'আপার ডেক • বাম উইন্ডো' },
-    { id: 'S10', type: 'sleeper', position: 'left-aisle', member: 'সাইফুল ভাই / জামাই', phone: '01718000000', label: 'স্লিপার S10', desc: 'আপার ডেক • বাম আইল' },
+    { id: 'S1', type: 'sleeper', position: 'left-window', member: 'রাজু ভাই (ট্যুর অর্গানাইজার)', label: 'স্লিপার S1', desc: 'আপার ডেক • বাম উইন্ডো' },
+    { id: 'S2', type: 'sleeper', position: 'left-aisle', member: 'রাজু ভাই (ট্যুর অর্গানাইজার)', label: 'স্লিপার S2', desc: 'আপার ডেক • বাম আইল' },
+    { id: 'S3', type: 'sleeper', position: 'right-window', member: 'আশেক মো: আসিফ ভাই', label: 'স্লিপার S3', desc: 'আপার ডেক • ডান উইন্ডো' },
+    { id: 'S4', type: 'sleeper', position: 'right-aisle', member: 'আশেক মো: আসিফ ভাই', label: 'স্লিপার S4', desc: 'আপার ডেক • ডান আইল' },
+    { id: 'S5', type: 'sleeper', position: 'left-window', member: 'আশেক মো: আসিফ ভাই', label: 'স্লিপার S5', desc: 'আপার ডেক • বাম উইন্ডো' },
+    { id: 'S6', type: 'sleeper', position: 'left-aisle', member: 'আশেক মো: আসিফ ভাই', label: 'স্লিপার S6', desc: 'আপার ডেক • বাম আইল' },
+    { id: 'S7', type: 'sleeper', position: 'right-window', member: 'আলিম ভাই', label: 'স্লিপার S7', desc: 'আপার ডেক • ডান উইন্ডো' },
+    { id: 'S8', type: 'sleeper', position: 'right-aisle', member: 'আলিম ভাই', label: 'স্লিপার S8', desc: 'আপার ডেক • ডান আইল' },
+    { id: 'S9', type: 'sleeper', position: 'left-window', member: 'সাইফুল ভাই / জামাই', label: 'স্লিপার S9', desc: 'আপার ডেক • বাম উইন্ডো' },
+    { id: 'S10', type: 'sleeper', position: 'left-aisle', member: 'সাইফুল ভাই / জামাই', label: 'স্লিপার S10', desc: 'আপার ডেক • বাম আইল' },
   ];
 
   const LOWER_DECK_BUSINESS = [
-    { id: 'B1', type: 'business', position: 'left-single', member: 'মাসুদ ভাই (এসবিএল)', phone: '01712000000', label: 'বিজনেস B1', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
-    { id: 'B2', type: 'business', position: 'right-aisle', member: 'মাসুদ ভাই (এসবিএল)', phone: '01712000000', label: 'বিজনেস B2', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
-    { id: 'B3', type: 'business', position: 'right-window', member: 'মাসুদ ভাই (এসবিএল)', phone: '01712000000', label: 'বিজনেস B3', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
-    { id: 'B4', type: 'business', position: 'left-single', member: 'শশি ভাই (সচিবুল ভাই)', phone: '01714000000', label: 'বিজনেস B4', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
-    { id: 'B5', type: 'business', position: 'right-aisle', member: 'শশি ভাই (সচিবুল ভাই)', phone: '01714000000', label: 'বিজনেস B5', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
-    { id: 'B6', type: 'business', position: 'right-window', member: 'শশি ভাই (সচিবুল ভাই)', phone: '01714000000', label: 'বিজনেস B6', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
-    { id: 'B7', type: 'business', position: 'left-single', member: 'নুরুজ্জামান ভাই', phone: '01715000000', label: 'বিজনেস B7', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
-    { id: 'B8', type: 'business', position: 'right-aisle', member: 'নুরুজ্জামান ভাই', phone: '01715000000', label: 'বিজনেস B8', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
-    { id: 'B9', type: 'business', position: 'right-window', member: 'নুরুজ্জামান ভাই', phone: '01715000000', label: 'বিজনেস B9', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
-    { id: 'B10', type: 'business', position: 'left-single', member: 'লতিফ ভাই / খালু (কুড়িগ্রাম)', phone: '01716000000', label: 'বিজনেস B10', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
-    { id: 'B11', type: 'business', position: 'right-aisle', member: 'লতিফ ভাই / খালু (কুড়িগ্রাম)', phone: '01716000000', label: 'বিজনেস B11', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
-    { id: 'B12', type: 'business', position: 'right-window', member: 'এম এস রানা ভাই (বিকেবি)', phone: '01737910040', label: 'বিজনেস B12', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
-    { id: 'B13', type: 'business', position: 'back-row', member: 'আলমগীর ভাই (ফটোগ্রাফার)', phone: '01720000000', label: 'বিজনেস B13', desc: 'লোয়ার ডেক • ব্যাক রো' },
-    { id: 'B14', type: 'business', position: 'back-row', member: 'অতিরিক্ত / ব্যাকআপ সিট', phone: null, label: 'বিজনেস B14', desc: 'লোয়ার ডেক • রিজার্ভ সিট' },
+    { id: 'B1', type: 'business', position: 'left-single', member: 'মাসুদ ভাই (এসবিএল)', label: 'বিজনেস B1', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
+    { id: 'B2', type: 'business', position: 'right-aisle', member: 'মাসুদ ভাই (এসবিএল)', label: 'বিজনেস B2', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
+    { id: 'B3', type: 'business', position: 'right-window', member: 'মাসুদ ভাই (এসবিএল)', label: 'বিজনেস B3', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
+    { id: 'B4', type: 'business', position: 'left-single', member: 'শশি ভাই (সচিবুল ভাই)', label: 'বিজনেস B4', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
+    { id: 'B5', type: 'business', position: 'right-aisle', member: 'শশি ভাই (সচিবুল ভাই)', label: 'বিজনেস B5', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
+    { id: 'B6', type: 'business', position: 'right-window', member: 'শশি ভাই (সচিবুল ভাই)', label: 'বিজনেস B6', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
+    { id: 'B7', type: 'business', position: 'left-single', member: 'নুরুজ্জামান ভাই', label: 'বিজনেস B7', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
+    { id: 'B8', type: 'business', position: 'right-aisle', member: 'নুরুজ্জামান ভাই', label: 'বিজনেস B8', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
+    { id: 'B9', type: 'business', position: 'right-window', member: 'নুরুজ্জামান ভাই', label: 'বিজনেস B9', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
+    { id: 'B10', type: 'business', position: 'left-single', member: 'লতিফ ভাই / খালু (কুড়িগ্রাম)', label: 'বিজনেস B10', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
+    { id: 'B11', type: 'business', position: 'right-aisle', member: 'লতিফ ভাই / খালু (কুড়িগ্রাম)', label: 'বিজনেস B11', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
+    { id: 'B12', type: 'business', position: 'right-window', memberName: 'মো: সোহাগ রানা / এম এস রানা (ট্যুর কো-অর্ডিনেটর)', member: 'এম এস রানা ভাই (বিকেবি)', label: 'বিজনেস B12', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
+    { id: 'B13', type: 'business', position: 'back-row', member: 'আলমগীর ভাই (ফটোগ্রাফার)', label: 'বিজনেস B13', desc: 'লোয়ার ডেক • ব্যাক রো' },
+    { id: 'B14', type: 'business', position: 'back-row', member: 'অতিরিক্ত / ব্যাকআপ সিট', label: 'বিজনেস B14', desc: 'লোয়ার ডেক • রিজার্ভ সিট' },
   ];
 
   // Helper colors for different families
@@ -153,7 +152,7 @@ export default function BusSeatMap({ members = [] }) {
                 return (
                   <div
                     key={s.id}
-                    onClick={() => setSelectedSeat(s)}
+                   role="button" tabIndex={0} aria-label={`${s.label}, ${s.member}`} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}  onClick={() => setSelectedSeat(s)}
                     className={`p-3.5 rounded-2xl border-2 transition transform hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between min-h-[90px] shadow-2xs ${colorClass} ${
                       isSelected ? 'ring-2 ring-teal-600 scale-[1.02]' : ''
                     }`}
@@ -203,7 +202,7 @@ export default function BusSeatMap({ members = [] }) {
                 return (
                   <div
                     key={s.id}
-                    onClick={() => setSelectedSeat(s)}
+                   role="button" tabIndex={0} aria-label={`${s.label}, ${s.member}`} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}  onClick={() => setSelectedSeat(s)}
                     className={`p-3 rounded-2xl border-2 transition transform hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between min-h-[85px] shadow-2xs ${colorClass} ${
                       isSelected ? 'ring-2 ring-teal-600 scale-[1.02]' : ''
                     }`}
@@ -230,11 +229,12 @@ export default function BusSeatMap({ members = [] }) {
       {selectedSeat && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150 cursor-pointer"
-          onClick={() => setSelectedSeat(null)}
+         role="presentation"
+ onClick={() => setSelectedSeat(null)}
+onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         >
           <div
             className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150 cursor-auto space-y-4"
-            onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -268,9 +268,9 @@ export default function BusSeatMap({ members = [] }) {
                 <p>• বাসে এসির কারণে হালকা চাদর ও ঘাড়ের বালিশ সাথে রাখবেন।</p>
               </div>
 
-              {selectedSeat.phone && (
+              {phoneForMember(members, selectedSeat.memberName ?? selectedSeat.member) && (
                 <a
-                  href={`tel:${selectedSeat.phone}`}
+                  href={`tel:${phoneForMember(members, selectedSeat.memberName ?? selectedSeat.member)}`}
                   className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs transition"
                 >
                   <PhoneCall size={14} /> সদস্যকে সরাসরি কল করুন

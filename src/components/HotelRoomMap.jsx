@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import {
-  Hotel, Users, PhoneCall, Bed, Check, Sparkles,
-  MapPin, Clock, Key, ShieldCheck, Wifi, Compass
-} from 'lucide-react';
+import { Hotel, PhoneCall, MapPin, Key, ShieldCheck, Wifi, Compass } from 'lucide-react';
+
+import { phoneForMember } from '../utils/members';
 
 export default function HotelRoomMap({ members = [] }) {
   const [selectedFloor, setSelectedFloor] = useState('all');
@@ -13,7 +12,7 @@ export default function HotelRoomMap({ members = [] }) {
       floor: 3,
       type: 'ডাবল বেড এসি (সি-সাইড)',
       occupants: 'রাজু ভাই ও পরিবার (ট্যুর লিডার)',
-      phone: '01711000000',
+      memberName: 'রাজু ভাই (ট্যুর অর্গানাইজার)',
       beds: '১টি কিং সাইজ ডাবল বেড',
       view: 'সি-সাইড ভিউ',
       color: 'border-teal-300 bg-teal-50/50'
@@ -23,7 +22,7 @@ export default function HotelRoomMap({ members = [] }) {
       floor: 3,
       type: 'ডাবল বেড এসি',
       occupants: 'লতিফ ভাই / খালু ও পরিবার (কুড়িগ্রাম)',
-      phone: '01716000000',
+      memberName: 'লতিফ ভাই / খালু (কুড়িগ্রাম)',
       beds: '১টি কিং সাইজ ডাবল বেড',
       view: 'হোটেল ফ্রন্ট ভিউ',
       color: 'border-indigo-300 bg-indigo-50/50'
@@ -33,7 +32,7 @@ export default function HotelRoomMap({ members = [] }) {
       floor: 4,
       type: 'ডিলাক্স ফ্যামিলি ৩-বেড এসি',
       occupants: 'মাসুদ ভাই ও পরিবার (এসবিএল)',
-      phone: '01712000000',
+      memberName: 'মাসুদ ভাই (এসবিএল)',
       beds: '১টি ডাবল + ১টি সিঙ্গেল বেড',
       view: 'ব্যালকনি ভিউ',
       color: 'border-blue-300 bg-blue-50/50'
@@ -43,7 +42,7 @@ export default function HotelRoomMap({ members = [] }) {
       floor: 4,
       type: 'ডিলাক্স ফ্যামিলি ৩-বেড এসি',
       occupants: 'শশি ভাই ও পরিবার (সচিবুল ভাই)',
-      phone: '01714000000',
+      memberName: 'শশি ভাই (সচিবুল ভাই)',
       beds: '১টি ডাবল + ১টি সিঙ্গেল বেড',
       view: 'ব্যালকনি ভিউ',
       color: 'border-amber-300 bg-amber-50/50'
@@ -53,7 +52,7 @@ export default function HotelRoomMap({ members = [] }) {
       floor: 5,
       type: 'সুইট ফ্যামিলি ৪-বেড এসি',
       occupants: 'আশেক মো: আসিফ ভাই ও পরিবার',
-      phone: '01713000000',
+      memberName: 'আশেক মো: আসিফ ভাই',
       beds: '২টি কিং সাইজ ডাবল বেড',
       view: 'প্রিমিয়াম সি-ভিউ',
       color: 'border-purple-300 bg-purple-50/50'
@@ -63,7 +62,7 @@ export default function HotelRoomMap({ members = [] }) {
       floor: 5,
       type: 'ডিলাক্স ফ্যামিলি ৩-বেড এসি',
       occupants: 'নুরুজ্জামান ভাই ও পরিবার',
-      phone: '01715000000',
+      memberName: 'নুরুজ্জামান ভাই',
       beds: '১টি ডাবল + ১টি সিঙ্গেল বেড',
       view: 'ব্যালকনি ভিউ',
       color: 'border-emerald-300 bg-emerald-50/50'
@@ -73,7 +72,7 @@ export default function HotelRoomMap({ members = [] }) {
       floor: 6,
       type: 'ডাবল বেড এসি',
       occupants: 'আলিম ভাই ও পরিবার',
-      phone: '01717000000',
+      memberName: 'আলিম ভাই',
       beds: '১টি কিং সাইজ ডাবল বেড',
       view: 'উইন্ডো ভিউ',
       color: 'border-cyan-300 bg-cyan-50/50'
@@ -83,7 +82,7 @@ export default function HotelRoomMap({ members = [] }) {
       floor: 6,
       type: 'ডাবল বেড এসি',
       occupants: 'সাইফুল ভাই / জামাই ও পরিবার',
-      phone: '01718000000',
+      memberName: 'সাইফুল ভাই / জামাই',
       beds: '১টি কিং সাইজ ডাবল বেড',
       view: 'উইন্ডো ভিউ',
       color: 'border-rose-300 bg-rose-50/50'
@@ -93,7 +92,7 @@ export default function HotelRoomMap({ members = [] }) {
       floor: 7,
       type: 'ডাবল বেড সি-ভিউ এসি',
       occupants: 'এম এস রানা ভাই ও পরিবার (বিকেবি)',
-      phone: '01737910040',
+      memberName: 'মো: সোহাগ রানা / এম এস রানা (ট্যুর কো-অর্ডিনেটর)',
       beds: '১টি কিং সাইজ ডাবল বেড',
       view: 'টপ ফ্লোর সি-ভিউ',
       color: 'border-sky-300 bg-sky-50/50'
@@ -103,7 +102,7 @@ export default function HotelRoomMap({ members = [] }) {
       floor: 7,
       type: 'টুইন বেড সি-ভিউ এসি',
       occupants: 'আলমগীর ভাই ও মিডিয়া টিম',
-      phone: '01720000000',
+      memberName: 'আলমগীর ভাই (ফটোগ্রাফার)',
       beds: '২টি আরামদায়ক সিঙ্গেল বেড',
       view: 'টপ ফ্লোর সি-ভিউ',
       color: 'border-orange-300 bg-orange-50/50'
@@ -213,9 +212,9 @@ export default function HotelRoomMap({ members = [] }) {
               <h5 className="font-bold text-sm text-slate-800">{room.occupants}</h5>
             </div>
 
-            {room.phone && (
+            {phoneForMember(members, room.memberName) && (
               <a
-                href={`tel:${room.phone}`}
+                href={`tel:${phoneForMember(members, room.memberName)}`}
                 className="w-full py-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-2xs transition"
               >
                 <PhoneCall size={13} className="text-teal-700" /> রুমের প্রতিনিধির সাথে যোগাযোগ

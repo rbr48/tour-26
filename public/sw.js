@@ -1,8 +1,9 @@
-// Service Worker for Rangpur to Cox's Bazar Family Tour 2026 App
-// Offline-first PWA caching strategy
-
-const CACHE_NAME = 'tour2026-v2-superpower';
-const STATIC_ASSETS = [
+// Offline shell for the family tour app. The cache name carries the build id that
+// vite.config.js writes at build time, so each deploy replaces the previous cache.
+// Trip data is never cached here: Firestore keeps its own offline copy, and the
+// backup API and the Android download are always fetched from the network.
+const CACHE_NAME = 'tour2026-__BUILD_ID__';
+const SHELL = [
   '/',
   '/index.html',
   '/manifest.json',
@@ -10,94 +11,89 @@ const STATIC_ASSETS = [
   '/apple-touch-icon.png',
   '/icon-192.png',
   '/icon-512.png',
-  '/tour_data.json'
 ];
 
-// Install: Cache essential assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.warn('Some assets failed to cache:', err);
-      });
-    })
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll(SHELL))
+      .catch(() => {}),
   );
   self.skipWaiting();
 });
 
-// Activate: Clean old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys
+          .filter((key) => key.startsWith('tour2026-') && key !== CACHE_NAME)
+          .map((key) => caches.delete(key)),
       );
-    })
+      await self.clients.claim();
+    })(),
   );
-  self.clients.claim();
 });
 
-// Fetch: Stale-while-revalidate for data, Cache-first for static assets
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+const cacheable = (response) => response.ok && response.type === 'basic';
 
-  // Skip non-GET requests, chrome-extension, Google Drive upload, and APK files
-  if (
-    event.request.method !== 'GET' ||
-    url.origin.includes('chrome-extension') ||
-    url.pathname.includes('/drive/v3') ||
-    url.pathname.includes('/macros/s/') ||
-    url.pathname.endsWith('.apk')
-  ) {
-    return;
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const response = await fetch(request);
+    if (cacheable(response)) {
+      cache.put('/index.html', response.clone());
+    }
+    return response;
+  } catch {
+    return (await cache.match('/index.html')) || Response.error();
   }
+}
 
-  // Network first with cache fallback for real-time Firestore / API data
-  if (url.pathname === '/api' || url.pathname === '/tour_data.json' || url.pathname.includes('/firestore/')) {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (cacheable(response)) {
+    cache.put(request, response.clone());
   }
+  return response;
+}
 
-  // Cache first with network fallback for assets, fonts, and images
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Fetch in background to update cache (stale-while-revalidate)
-        fetch(event.request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.ok) {
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
-            }
-          })
-          .catch(() => {});
-        return cachedResponse;
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  const refresh = fetch(request)
+    .then((response) => {
+      if (cacheable(response)) {
+        cache.put(request, response.clone());
       }
-
-      return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || !networkResponse.ok || networkResponse.type !== 'basic') {
-          return networkResponse;
-        }
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-        return networkResponse;
-      }).catch(() => {
-        // Fallback to offline index.html if navigation request
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
-      });
+      return response;
     })
-  );
+    .catch(() => undefined);
+  return cached || (await refresh) || Response.error();
+}
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  // Firebase, Google Drive, fonts and weather come straight from the network.
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname === '/api' || url.pathname === '/health' || url.pathname.endsWith('.apk')) return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+  // Build output under /assets is named by content hash, so it never changes.
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(cacheFirst(request));
+    return;
+  }
+  event.respondWith(staleWhileRevalidate(request));
 });

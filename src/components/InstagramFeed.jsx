@@ -1,17 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Heart, MessageCircle, Send, Share2, Download, Image as ImageIcon,
-  Camera, MapPin, Sparkles, Plus, HardDrive, ExternalLink, X,
-  Check, Smile, MoreVertical, Trash2, Loader2, Edit3
+  Heart,
+  MessageCircle,
+  Send,
+  Share2,
+  Download,
+  Camera,
+  MapPin,
+  Plus,
+  HardDrive,
+  ExternalLink,
+  X,
+  Check,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
 import { compressImageFile } from '../utils/imageCompressor';
 import {
-  uploadToGoogleDrive,
   getDriveAccessToken,
   getAppsScriptWebhook,
   GOOGLE_DRIVE_FOLDER_URL,
-  GOOGLE_DRIVE_FOLDER_ID
 } from '../services/googleDriveService';
+import {
+  isDataImage,
+  preparePhotoFromDataUrl,
+  preparePhotoFromUrl,
+  syncLegacyPhotoToDrive,
+} from '../services/photos';
+import { newId } from '../services/tourStore';
 import { connectGoogleDrive } from '../firebase';
 
 // Preset Default Locations for Tour
@@ -39,8 +55,7 @@ export default function InstagramFeed({
   onLikePost,
   onAddComment,
   onDeletePost,
-  onUpdatePost,
-  onOpenDrive
+  onUpdatePost
 }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeStoryFilter, setActiveStoryFilter] = useState('all');
@@ -73,7 +88,7 @@ export default function InstagramFeed({
 
   const [imageInput, setImageInput] = useState('');
   const [imageFilePreview, setImageFilePreview] = useState(null);
-  const [driveBackup, setDriveBackup] = useState(true);
+  const [postError, setPostError] = useState('');
 
   // Google Drive state & handlers
   const [isDriveUploading, setIsDriveUploading] = useState(false);
@@ -82,10 +97,6 @@ export default function InstagramFeed({
   const [manualDriveUploadId, setManualDriveUploadId] = useState(null);
   const [isBatchSyncing, setIsBatchSyncing] = useState(false);
   const [batchSyncProgress, setBatchSyncProgress] = useState('');
-
-  useEffect(() => {
-    setHasDriveToken(Boolean(getDriveAccessToken()));
-  }, [showCreateModal]);
 
   const handleConnectDrive = async () => {
     try {
@@ -105,28 +116,17 @@ export default function InstagramFeed({
     return null;
   };
 
+  const isDriveConfigured = Boolean(getAppsScriptWebhook() || hasDriveToken);
+
   const handleManualDriveBackup = async (post) => {
+    setManualDriveUploadId(post.id);
     try {
-      setManualDriveUploadId(post.id);
-      const res = await uploadToGoogleDrive({
-        imageDataUrl: post.image,
-        fileName: `Tour2026_${(post.author || 'member').replace(/\s+/g, '_')}_${post.id}.jpg`,
-        caption: post.caption
-      });
-      if (res?.success) {
-        if (onUpdatePost) {
-          onUpdatePost({
-            ...post,
-            driveBackedUp: true,
-            driveFileId: res.fileId,
-            driveViewUrl: res.webViewLink
-          });
-        }
-        alert(`গুগল ড্রাইভে ফাইল সফলভাবে সংরক্ষিত হয়েছে!\n\nফাইল: ${res.fileName}\nফোল্ডার: কক্সবাজার ফ্যামিলি ট্যুর ২০২৬`);
-      }
+      const result = await syncLegacyPhotoToDrive({ image: post.image, caption: post.caption });
+      onUpdatePost?.(post.id, result, { remove: ['image'] });
+      alert('গুগল ড্রাইভে ছবিটি সফলভাবে সংরক্ষিত হয়েছে!\n\nফোল্ডার: কক্সবাজার ফ্যামিলি ট্যুর ২০২৬');
     } catch (err) {
-      if ((err.message === 'NO_TOKEN' || err.message === 'TOKEN_EXPIRED') && !getAppsScriptWebhook()) {
-        const proceed = confirm('গুগল ড্রাইভ ফোল্ডারে ফাইল আপলোড করার জন্য অনুমোদন প্রয়োজন। আপনি কি এখন ড্রাইভ এক্সেস অনুমোদন করতে চান?');
+      if (err.message === 'NO_TOKEN' || err.message === 'TOKEN_EXPIRED') {
+        const proceed = confirm('গুগল ড্রাইভ ফোল্ডারে ফাইল আপলোড করার জন্য অনুমোদন প্রয়োজন। আপনি কি এখন ড্রাইভ এক্সেস অনুমোদন করতে চান?');
         if (proceed) {
           const authRes = await handleConnectDrive();
           if (authRes?.success) {
@@ -141,10 +141,9 @@ export default function InstagramFeed({
     }
   };
 
-  const isDriveConfigured = Boolean(getAppsScriptWebhook() || hasDriveToken);
-
   const handleSyncAllToDrive = async () => {
-    const unsyncedPosts = posts.filter(p => !p.driveBackedUp && p.image);
+    // Only photos that still exist only inside the trip data need uploading.
+    const unsyncedPosts = posts.filter(p => !p.driveBackedUp && isDataImage(p.image));
     if (unsyncedPosts.length === 0) {
       alert('সব ছবি ইতিমধ্যে গুগল ড্রাইভে সংরক্ষিত আছে! ✅');
       return;
@@ -155,7 +154,7 @@ export default function InstagramFeed({
       if (!proceed) return;
       const res = await connectGoogleDrive();
       if (!res?.success) {
-        alert('গুগল ড্রাইভ কানেকশন সম্পন্ন হয়নি।');
+        alert('গুগল ড্রাইভ কানেকশন সম্পন্ন হয়নি।');
         return;
       }
       setHasDriveToken(true);
@@ -169,22 +168,9 @@ export default function InstagramFeed({
       const p = unsyncedPosts[i];
       setBatchSyncProgress(`ড্রাইভে সিঙ্ক হচ্ছে (${i + 1}/${unsyncedPosts.length})...`);
       try {
-        const res = await uploadToGoogleDrive({
-          imageDataUrl: p.image,
-          fileName: `Tour2026_${(p.author || 'member').replace(/\s+/g, '_')}_${p.id}.jpg`,
-          caption: p.caption
-        });
-        if (res?.success) {
-          successCount++;
-          if (onUpdatePost) {
-            onUpdatePost({
-              ...p,
-              driveBackedUp: true,
-              driveFileId: res.fileId,
-              driveViewUrl: res.webViewLink
-            });
-          }
-        }
+        const result = await syncLegacyPhotoToDrive({ image: p.image, caption: p.caption });
+        successCount++;
+        onUpdatePost?.(p.id, result, { remove: ['image'] });
       } catch (err) {
         console.error('Batch upload error on post', p.id, err);
         failCount++;
@@ -193,7 +179,7 @@ export default function InstagramFeed({
 
     setIsBatchSyncing(false);
     setBatchSyncProgress('');
-    alert(`ড্রাইভ ব্যাকআপ সম্পন্ন হয়েছে!\n\nসফল: ${successCount}টি\nব্যর্থ: ${failCount}টি\n\nকক্সবাজার ফ্যামিলি ট্যুর ২০২৬ ফোল্ডারে ছবি সংরক্ষিত হয়েছে।`);
+    alert(`ড্রাইভ ব্যাকআপ সম্পন্ন হয়েছে!\n\nসফল: ${successCount}টি\nব্যর্থ: ${failCount}টি\n\nকক্সবাজার ফ্যামিলি ট্যুর ২০২৬ ফোল্ডারে ছবি সংরক্ষিত হয়েছে।`);
   };
 
   // Save custom location to state and localStorage
@@ -259,30 +245,28 @@ export default function InstagramFeed({
     }
   };
 
-  // Convert post image to a File object for native file sharing
-  const getFileFromPostImage = async (post) => {
-    const fileName = `Tour2026_${post.id || Date.now()}.jpg`;
+  // Drive-backed posts keep only a preview on this device, so sharing uses the best
+  // copy available: the full-size image when it is stored, otherwise the preview.
+  const photoSource = (post) => post.image || post.thumb || null;
 
-    // 1. Data URL (Base64)
-    if (post.image.startsWith('data:')) {
-      const res = await fetch(post.image);
+  const getFileFromPhoto = async (src, post) => {
+    if (src.startsWith('data:')) {
+      const res = await fetch(src);
       const blob = await res.blob();
       const mime = blob.type || 'image/jpeg';
       const ext = mime.includes('png') ? 'png' : 'jpg';
-      return new File([blob], `Tour2026_${post.id || Date.now()}.${ext}`, { type: mime });
+      return new File([blob], `Tour2026_${post.id}.${ext}`, { type: mime });
     }
 
-    // 2. Remote URL - fetch blob
+    const fileName = `Tour2026_${post.id}.jpg`;
     try {
-      const response = await fetch(post.image, { mode: 'cors' });
+      const response = await fetch(src, { mode: 'cors' });
       const blob = await response.blob();
-      const mime = blob.type || 'image/jpeg';
-      return new File([blob], fileName, { type: mime });
+      return new File([blob], fileName, { type: blob.type || 'image/jpeg' });
     } catch (e) {
       console.warn('Direct fetch failed, falling back to canvas:', e);
     }
 
-    // 3. Fallback: Draw onto offscreen canvas
     return new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -291,68 +275,57 @@ export default function InstagramFeed({
           const canvas = document.createElement('canvas');
           canvas.width = img.naturalWidth || img.width;
           canvas.height = img.naturalHeight || img.height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0);
+          canvas.getContext('2d').drawImage(img, 0, 0);
           canvas.toBlob((blob) => {
-            if (blob) {
-              resolve(new File([blob], fileName, { type: 'image/jpeg' }));
-            } else {
-              resolve(null);
-            }
+            resolve(blob ? new File([blob], fileName, { type: 'image/jpeg' }) : null);
           }, 'image/jpeg', 0.95);
         } catch {
           resolve(null);
         }
       };
       img.onerror = () => resolve(null);
-      img.src = post.image;
+      img.src = src;
     });
   };
 
-  // SHARE ORIGINAL MEDIA (Sharing the actual photo instead of link)
+  const downloadPhoto = (src, post) => {
+    const a = document.createElement('a');
+    a.href = src;
+    a.download = `CoxsBazar_Tour2026_${post.id}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   const handleShareMedia = async (post) => {
-    if (!post.image) return;
+    const src = photoSource(post);
+    if (!src) return;
     setSharingPostId(post.id);
 
     try {
-      const file = await getFileFromPostImage(post);
+      const file = await getFileFromPhoto(src, post);
       const shareText = post.caption ? `${post.author}: ${post.caption}` : 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬';
 
-      // Check if browser/device supports sharing actual files
       if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
           title: 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
-          text: shareText
+          text: shareText,
         });
         return;
       }
 
-      // Fallback 1: If canShare does not support files or file conversion failed,
-      // trigger direct download of the original photo so user has it immediately
-      const a = document.createElement('a');
-      a.href = post.image;
-      a.download = `CoxsBazar_Tour2026_${post.id}.jpg`;
-      a.target = '_blank';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      // Also try sharing text if supported
+      downloadPhoto(src, post);
       if (navigator.share) {
         await navigator.share({
           title: 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
-          text: `${shareText}\n(মূল ছবিটি ডিভাইসে ডাউনলোড করা হয়েছে)`
+          text: `${shareText}\n(ছবিটি ডিভাইসে ডাউনলোড করা হয়েছে)`,
         });
       }
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error('Error sharing media:', err);
-        // Fallback: direct download
-        const a = document.createElement('a');
-        a.href = post.image;
-        a.download = `CoxsBazar_Tour2026_${post.id}.jpg`;
-        a.click();
+        downloadPhoto(src, post);
       }
     } finally {
       setSharingPostId(null);
@@ -361,62 +334,56 @@ export default function InstagramFeed({
 
   const handleCreatePost = async (e) => {
     e.preventDefault();
-    const finalImage = imageFilePreview || imageInput;
-    if (!finalImage) {
-      alert('অনুগ্রহ করে একটি ছবি নির্বাচন করুন বা ছবির লিংক দিন');
+    const link = imageInput.trim();
+    const hasFile = Boolean(imageFilePreview);
+    if (!hasFile && !link) {
+      setPostError('অনুগ্রহ করে একটি ছবি নির্বাচন করুন বা ছবির লিংক দিন');
       return;
     }
+    setPostError('');
 
     const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
     const finalLocation = isCustomLocMode && customLocInput.trim() ? customLocInput.trim() : (location || 'লাবণী ও সুগন্ধা বিচ');
     if (isCustomLocMode && customLocInput.trim()) {
       handleSaveCustomLocation(customLocInput.trim());
     }
+    const postCaption = caption || 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬ এর আনন্দঘন মুহূর্ত! 🏖️✨';
 
-    let driveData = {
-      driveBackedUp: false,
-      driveFileId: null,
-      driveViewUrl: null
-    };
-
-    // Actual Google Drive upload to shared folder
-    if (driveBackup) {
-      setIsDriveUploading(true);
-      try {
-        const driveRes = await uploadToGoogleDrive({
-          imageDataUrl: finalImage,
-          fileName: `Tour2026_${authorName.replace(/\s+/g, '_')}_${Date.now()}.jpg`,
-          caption: caption
-        });
-        if (driveRes?.success) {
-          driveData = {
-            driveBackedUp: true,
-            driveFileId: driveRes.fileId,
-            driveViewUrl: driveRes.webViewLink
-          };
-        }
-      } catch (err) {
-        console.warn('Google Drive auto-upload status:', err.message);
-        if (err.message === 'NO_TOKEN' || err.message === 'TOKEN_EXPIRED') {
-          setHasDriveToken(false);
-        }
-      } finally {
-        setIsDriveUploading(false);
+    // A photo is saved only after its full-size copy reached Drive, so a failed upload
+    // never leaves a half-finished post behind.
+    setIsDriveUploading(true);
+    let photo;
+    try {
+      photo = hasFile
+        ? await preparePhotoFromDataUrl({ dataUrl: imageFilePreview, authorName, caption: postCaption })
+        : preparePhotoFromUrl(link);
+    } catch (err) {
+      console.warn('Photo upload failed:', err.message);
+      if (err.message === 'NO_TOKEN' || err.message === 'TOKEN_EXPIRED') {
+        setHasDriveToken(false);
+        setPostError('গুগল ড্রাইভ সংযোগ নেই। "ড্রাইভ কানেক্ট করুন" চাপুন, তারপর আবার চেষ্টা করুন।');
+      } else {
+        setPostError(err.message);
       }
+      return;
+    } finally {
+      setIsDriveUploading(false);
     }
 
+    const profilePhoto = currentProfile?.customPhotoURL;
     const newPost = {
-      id: Date.now(),
+      id: newId(),
       author: authorName,
-      authorEmail: currentUser?.email,
-      authorPhoto: currentProfile?.customPhotoURL || currentUser?.photoURL || null,
-      caption: caption || 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬ এর আনন্দঘন মুহূর্ত! 🏖️✨',
-      image: finalImage,
+      authorEmail: currentUser?.email ?? null,
+      authorPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:')
+        ? profilePhoto
+        : (currentUser?.photoURL || null),
+      caption: postCaption,
       location: finalLocation,
       likes: [],
       comments: [],
-      ...driveData,
-      createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' })
+      ...photo,
+      createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' }),
     };
 
     onAddPost(newPost);
@@ -427,7 +394,9 @@ export default function InstagramFeed({
     setCustomLocInput('');
     try {
       localStorage.removeItem('tour_post_draft_caption');
-    } catch {}
+    } catch {
+      // Draft cleanup is optional.
+    }
     setShowCreateModal(false);
   };
 
@@ -647,10 +616,10 @@ export default function InstagramFeed({
                 {/* Media Image */}
                 <div
                   className="relative bg-slate-900 cursor-pointer overflow-hidden max-h-[500px] flex items-center justify-center"
-                  onClick={() => setPreviewMedia(post.image)}
+                 role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}  onClick={() => setPreviewMedia(photoSource(post))}
                 >
                   <img
-                    src={post.image}
+                    src={photoSource(post)}
                     alt={post.caption}
                     className="w-full object-contain max-h-[500px] hover:scale-102 transition duration-300"
                   />
@@ -720,7 +689,7 @@ export default function InstagramFeed({
                     </div>
 
                     <a
-                      href={post.image}
+                      href={photoSource(post)}
                       download={`CoxsBazar_Tour2026_${post.id}.jpg`}
                       target="_blank"
                       rel="noreferrer"
@@ -793,11 +762,12 @@ export default function InstagramFeed({
       {showCreateModal && (
         <div
           className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in duration-200"
-          onClick={() => setShowCreateModal(false)}
+         role="presentation"
+ onClick={() => setShowCreateModal(false)}
+onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         >
           <div
             className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full shadow-2xl max-h-[88vh] flex flex-col overflow-hidden my-auto border border-slate-100"
-            onClick={e => e.stopPropagation()}
           >
             {/* PINNED HEADER */}
             <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-200 bg-slate-50/95 backdrop-blur-md shrink-0 z-20">
@@ -818,7 +788,7 @@ export default function InstagramFeed({
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
                 {/* Media Selection / Upload */}
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-700 block">ছবি আপলোড বা ছবি নির্বাচন</label>
+                  <p id="feed-media-label" className="text-xs font-bold text-slate-700 block">ছবি আপলোড বা ছবি নির্বাচন</p>
 
                   {/* File picker */}
                   <div className="flex items-center gap-2">
@@ -864,10 +834,10 @@ export default function InstagramFeed({
                 {/* Caption with auto-saved draft indicator */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold text-slate-700">ক্যাপশন (Caption)</label>
+                    <label className="text-xs font-bold text-slate-700" htmlFor="instagramfeed-field-1">ক্যাপশন (Caption)</label>
                     {caption && <span className="text-[10px] text-emerald-600">✓ ড্রাফট সংরক্ষিত</span>}
                   </div>
-                  <textarea
+                  <textarea id="instagramfeed-field-1"
                     placeholder="যেমন: ইনানী বিচে পাথর ও ঢেউয়ের খেলা! কী চমৎকার আবহাওয়া... 🌊🌴"
                     value={caption}
                     onChange={e => setCaption(e.target.value)}
@@ -879,9 +849,9 @@ export default function InstagramFeed({
                 {/* Location Selection & Custom Location Input */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
                       <MapPin size={13} className="text-teal-600" /> লোকেশন / স্থান
-                    </label>
+                    </span>
                     <button
                       type="button"
                       onClick={() => {
@@ -941,7 +911,6 @@ export default function InstagramFeed({
                           value={customLocInput}
                           onChange={e => setCustomLocInput(e.target.value)}
                           className="flex-1 px-3 py-2 text-xs border border-teal-300 rounded-xl focus:outline-none focus:border-teal-700 bg-white text-slate-800"
-                          autoFocus
                         />
                         <button
                           type="button"
@@ -1004,15 +973,10 @@ export default function InstagramFeed({
                         </p>
                       </div>
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={driveBackup}
-                      onChange={e => setDriveBackup(e.target.checked)}
-                      className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
-                    />
                   </div>
 
-                  {driveBackup && (
+                  {/* The full-size copy is always saved to the shared Drive folder. */}
+                  {(
                     <div className="pt-2 border-t border-emerald-200/80 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                       {isDriveConfigured ? (
                         <span className="text-emerald-800 flex items-center gap-1 font-semibold">
@@ -1053,6 +1017,11 @@ export default function InstagramFeed({
                 >
                   বাতিল
                 </button>
+                {postError && (
+                  <p role="alert" className="text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+                    {postError}
+                  </p>
+                )}
                 <button
                   type="submit"
                   disabled={isDriveUploading}
@@ -1078,9 +1047,11 @@ export default function InstagramFeed({
       {previewMedia && (
         <div
           className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50 cursor-pointer"
-          onClick={() => setPreviewMedia(null)}
+         role="presentation"
+ onClick={() => setPreviewMedia(null)}
+onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         >
-          <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+          <div className="relative max-w-2xl w-full">
             <button
               onClick={() => setPreviewMedia(null)}
               className="absolute -top-10 right-0 text-white hover:text-rose-400 font-bold text-sm bg-white/20 p-1.5 rounded-full cursor-pointer"

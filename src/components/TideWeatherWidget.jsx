@@ -1,11 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  Waves, Sun, Moon, Clock, Compass, ShieldAlert,
-  Info, Sparkles, MapPin, AlertTriangle, RefreshCw, Wind, Droplets, Calendar
-} from 'lucide-react';
+import { Waves, Sun, Clock, MapPin, AlertTriangle, RefreshCw, Calendar } from 'lucide-react';
+
+import { TIDE_SCHEDULE, TIDE_SCHEDULE_SOURCE, tidesForDate } from '../data/tideSchedule';
+import { localISODate } from '../utils/date';
+
+const DATE_LABELS = {
+  '2026-10-17': 'আজ (১৭ অক্টো)',
+  '2026-10-18': '১৮ অক্টো',
+  '2026-10-19': '১ম দিন (১৯ অক্টো)',
+  '2026-10-20': '২য় দিন (২০ অক্টো)',
+  '2026-10-21': '৩য় দিন (২১ অক্টো)',
+  '2026-10-22': '৪র্থ দিন (২২ অক্টো)',
+  '2026-10-23': '৫ম দিন (২৩ অক্টো)',
+};
+const SCHEDULE_DATES = Object.keys(TIDE_SCHEDULE);
 
 export default function TideWeatherWidget() {
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [isLiveApi, setIsLiveApi] = useState(false);
@@ -42,7 +53,6 @@ export default function TideWeatherWidget() {
 
   // 2. Fetch Real Dynamic Weather & Sunset for Cox's Bazar
   const fetchLiveWeather = useCallback(async () => {
-    setIsLoading(true);
     let success = false;
 
     // Strategy A: Open-Meteo High Resolution Weather API
@@ -131,10 +141,13 @@ export default function TideWeatherWidget() {
   }, []);
 
   useEffect(() => {
-    fetchLiveWeather();
-    // Re-fetch every 15 minutes
+    // First load shortly after mount, then every 15 minutes.
+    const first = setTimeout(fetchLiveWeather, 0);
     const interval = setInterval(fetchLiveWeather, 15 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(first);
+      clearInterval(interval);
+    };
   }, [fetchLiveWeather]);
 
   // Dynamic Sunset Countdown Calculation
@@ -154,8 +167,11 @@ export default function TideWeatherWidget() {
   };
 
   // Selected date for viewing tides (default to today: 2026-10-17)
-  const todayISO = currentTime.toISOString().slice(0, 10);
-  const [selectedDate, setSelectedDate] = useState('2026-10-17');
+  const todayISO = localISODate(currentTime);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const today = localISODate();
+    return SCHEDULE_DATES.includes(today) ? today : SCHEDULE_DATES[0];
+  });
 
   const pad = (n) => String(n).padStart(2, '0');
   const toBn = (n) => String(n).replace(/\d/g, d => '০১২৩৪৫৬৭৮৯'[d]);
@@ -171,174 +187,9 @@ export default function TideWeatherWidget() {
     return `${toBn(pad(h12))}:${toBn(pad(m))} ${ampm}`;
   };
 
-  // Official Verified Hydrographic Tide Cycles for Cox's Bazar Beach (Bay of Bengal)
-  const OFFICIAL_COX_TIDES = {
-    '2026-10-17': [
-      {
-        name: 'সকালের ভাটা (Low Tide 1)',
-        startM: 6 * 60 + 0, // 06:00 AM
-        endM: 9 * 60 + 30,  // 09:30 AM
-        type: 'low',
-        desc: 'সকালের ভাটা। সমুদ্রের তলদেশ ও বালিয়াড়ি উন্মুক্ত থাকে, গভীর পানিতে না নামাই ভালো।'
-      },
-      {
-        name: 'দুপুরের জোয়ার (High Tide 2)',
-        startM: 11 * 60 + 30, // 11:30 AM
-        endM: 15 * 60 + 0,   // 03:00 PM
-        type: 'high',
-        desc: 'সমুদ্রে গোসল ও নিরাপদ স্নানের সেরা সময়! পানির স্রোত কূলের দিকে থাকে।'
-      },
-      {
-        name: 'বিকেলের ভাটা (Low Tide 2)',
-        startM: 16 * 60 + 45, // 04:45 PM
-        endM: 20 * 60 + 30,  // 08:30 PM
-        type: 'low',
-        desc: 'বিকেল ও সন্ধ্যার ভাটা। সমুদ্রের চোরাবালি জেগে ওঠে, সাঁতার কাটা ঝুঁকিপূর্ণ।'
-      }
-    ],
-    '2026-10-18': [
-      {
-        name: 'সকালের ভাটা (Low Tide 1)',
-        startM: 7 * 60 + 30,
-        endM: 11 * 60 + 0,
-        type: 'low',
-        desc: 'সকালের ভাটা। বিচে হাঁটার উপযুক্ত কিন্তু সাঁতারের জন্য অনুচিত।'
-      },
-      {
-        name: 'দুপুরের জোয়ার (High Tide 2)',
-        startM: 12 * 60 + 45,
-        endM: 16 * 60 + 15,
-        type: 'high',
-        desc: 'দুপুরে সাগরে গোসল ও স্নানের নিরাপদ সময়। লাইফগার্ড জোন বজায় রাখুন।'
-      },
-      {
-        name: 'সন্ধ্যার ভাটা (Low Tide 2)',
-        startM: 18 * 60 + 0,
-        endM: 21 * 60 + 30,
-        type: 'low',
-        desc: 'সন্ধ্যার ভাটা। পানিতে নামা যাবে না, বিচে আড্ডা ও সূর্যাস্ত দেখার সময়।'
-      }
-    ],
-    '2026-10-19': [
-      {
-        name: 'সকালের ভাটা (Low Tide 1)',
-        startM: 9 * 60 + 0,
-        endM: 12 * 60 + 30,
-        type: 'low',
-        desc: 'সকালের ভাটা। সমুদ্রের চোরাবালি জেগে থাকে, পানিতে নামা বিপজ্জনক।'
-      },
-      {
-        name: 'বিকেলের জোয়ার (High Tide 2)',
-        startM: 14 * 60 + 30,
-        endM: 18 * 60 + 15,
-        type: 'high',
-        desc: 'বিকেলে জোয়ার ও সূর্যাস্তের অসাধারণ পরিবেশ। বিচে গোসল ও ফটোসেশনের সুবর্ণ সময়।'
-      },
-      {
-        name: 'রাতের ভাটা (Low Tide 2)',
-        startM: 20 * 60 + 45,
-        endM: 23 * 60 + 59,
-        type: 'low',
-        desc: 'রাতের অন্ধকার ও ভাটা। কোনো অবস্থাতেই সাগরে নামবেন না।'
-      }
-    ],
-    '2026-10-20': [
-      {
-        name: 'সকালের জোয়ার (ভ্রমণ আগমন)',
-        startM: 5 * 60 + 0,
-        endM: 8 * 60 + 30,
-        type: 'high',
-        desc: 'ভোরের মনোরম জোয়ার। সৈকতে প্রথম পা রাখা ও সমুদ্র দর্শনের জন্য সেরা।'
-      },
-      {
-        name: 'দুপুরের ভাটা (Low Tide)',
-        startM: 10 * 60 + 45,
-        endM: 14 * 60 + 30,
-        type: 'low',
-        desc: 'দুপুরের তীব্র ভাটা! এই সময়ে গোসল নিষিদ্ধ। সৈকতের হোটেল বা রেস্টুরেন্টে বিশ্রাম ও লাঞ্চ করুন।'
-      },
-      {
-        name: 'বিকেলের জোয়ার (সূর্যাস্তকালীন জোয়ার)',
-        startM: 16 * 60 + 15,
-        endM: 20 * 60 + 0,
-        type: 'high',
-        desc: 'বিকেলের ভরপুর জোয়ার ও গোল্ডেন আওয়ার সূর্যাস্ত। ছবি তোলা ও পা ভিজিয়ে হাঁটার সেরা সময়।'
-      }
-    ],
-    '2026-10-21': [
-      {
-        name: 'সকালের জোয়ার (High Tide)',
-        startM: 6 * 60 + 15,
-        endM: 10 * 60 + 0,
-        type: 'high',
-        desc: 'ইনানী ও হিমছড়ি ভ্রমণের শুরুতে সকালে সাগরে স্নানের নিরাপদ সময়।'
-      },
-      {
-        name: 'দুপুরের ভাটা (Low Tide)',
-        startM: 12 * 60 + 0,
-        endM: 15 * 60 + 45,
-        type: 'low',
-        desc: 'দুপুরের ভাটা। প্রবাল সৈকত ও পাথুরে অঞ্চলে পা পিছলে পড়ার ঝুঁকি থাকে, পানিতে নামবেন না।'
-      },
-      {
-        name: 'সন্ধ্যার জোয়ার (High Tide)',
-        startM: 17 * 60 + 30,
-        endM: 21 * 60 + 15,
-        type: 'high',
-        desc: 'বিকেলের জোয়ার। মেরিন ড্রাইভে মুক্ত বাতাসে বেড়ানোর চমৎকার সময়।'
-      }
-    ],
-    '2026-10-22': [
-      {
-        name: 'সকালের জোয়ার (High Tide)',
-        startM: 7 * 60 + 0,
-        endM: 10 * 60 + 45,
-        type: 'high',
-        desc: 'সকালে পরিবারের সাথে সমুদ্রে স্নান ও আনন্দঘন মুহূর্ত কাটানোর আদর্শ জোয়ার।'
-      },
-      {
-        name: 'দুপুরের ভাটা (Low Tide)',
-        startM: 13 * 60 + 0,
-        endM: 16 * 60 + 45,
-        type: 'low',
-        desc: 'দুপুরের বিপজ্জনক ভাটা। এই সময় বার্মিজ মার্কেট শপিং বা রেস্টুরেন্টে সময় কাটান।'
-      },
-      {
-        name: 'সন্ধ্যার জোয়ার (High Tide)',
-        startM: 18 * 60 + 30,
-        endM: 22 * 60 + 0,
-        type: 'high',
-        desc: 'বিচে সন্ধ্যার মৃদু জোয়ার ও সাগরপাড়ে পরিবারের সাথে দারুণ আড্ডা।'
-      }
-    ],
-    '2026-10-23': [
-      {
-        name: 'সকালের জোয়ার (বিদায়ী জোয়ার)',
-        startM: 7 * 60 + 45,
-        endM: 11 * 60 + 15,
-        type: 'high',
-        desc: 'ট্যুরের শেষ দিনে সকালে শেষবারের মতো সাগরে আনন্দঘন স্নানের নিরাপদ সময়।'
-      },
-      {
-        name: 'দুপুরের ভাটা (Low Tide)',
-        startM: 13 * 60 + 30,
-        endM: 17 * 60 + 0,
-        type: 'low',
-        desc: 'দুপুরের ভাটা। দুপুর ২:৪৫ এ বাসের উদ্দেশ্যে রওনা হওয়ার প্রস্তুতি ও চেকআউট।'
-      },
-      {
-        name: 'রাতের জোয়ার (High Tide)',
-        startM: 19 * 60 + 0,
-        endM: 22 * 60 + 30,
-        type: 'high',
-        desc: 'যাত্রাপথে কক্সবাজারকে বিদায় জানানোর সময় সাগরের গর্জন।'
-      }
-    ]
-  };
-
   // Get current tidal phases for selected date
   const getDynamicTides = () => {
-    const rawPhases = OFFICIAL_COX_TIDES[selectedDate] || OFFICIAL_COX_TIDES['2026-10-20'];
+    const rawPhases = tidesForDate(selectedDate) ?? [];
     const now = currentTime;
     const isToday = selectedDate === todayISO;
     const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
@@ -453,19 +304,12 @@ export default function TideWeatherWidget() {
             <Calendar size={14} className="text-amber-300" /> দিন অনুযায়ী জোয়ার-ভাটা সময়সূচি (কক্সবাজার):
           </span>
           <span className="text-[10px] text-amber-300 font-semibold bg-white/10 px-2 py-0.5 rounded-full">
-            {selectedDate === todayISO ? '📍 আজকের লাইভ চার্ট' : '📅 অফিশিয়াল হাইড্রোগ্রাফিক ডেটা'}
+            {selectedDate === todayISO ? '📍 আজকের লাইভ চার্ট' : '📅 হাতে লেখা সময়সূচি'}
           </span>
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-          {[
-            { date: '2026-10-17', label: 'আজ (১৭ অক্টো)' },
-            { date: '2026-10-19', label: '১ম দিন (১৯ অক্টো)' },
-            { date: '2026-10-20', label: '২য় দিন (২০ অক্টো)' },
-            { date: '2026-10-21', label: '৩য় দিন (২১ অক্টো)' },
-            { date: '2026-10-22', label: '৪র্থ দিন (২২ অক্টো)' },
-            { date: '2026-10-23', label: '৫ম দিন (২৩ অক্টো)' }
-          ].map((item) => (
+          {SCHEDULE_DATES.map((date) => ({ date, label: DATE_LABELS[date] || date })).map((item) => (
             <button
               key={item.date}
               type="button"
@@ -483,6 +327,12 @@ export default function TideWeatherWidget() {
       </div>
 
       {/* Dynamic Tide Cycles Cards */}
+      {dynamicTidePhases.length === 0 && (
+        <div className="p-4 rounded-2xl border border-amber-300/40 bg-amber-400/10 text-xs text-amber-100 leading-relaxed">
+          এই তারিখের জন্য সময়সূচি অ্যাপে লেখা নেই। স্থানীয় জোয়ার-ভাটার তালিকা দেখুন।
+        </div>
+      )}
+      <p className="text-[10px] text-teal-200/80">{TIDE_SCHEDULE_SOURCE}</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {dynamicTidePhases.map((t, idx) => (
           <div

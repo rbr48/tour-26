@@ -1,9 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  Hash, MessageSquare, Send, Smile, Users, PhoneCall,
-  Sparkles, AlertCircle, ShieldAlert, Heart, ThumbsUp,
-  Flame, Utensils, Compass, Bus, MapPin, Check
-} from 'lucide-react';
+import { newId } from '../services/tourStore';
+import { Hash, MessageSquare, Send, Users, ShieldAlert, Utensils, Compass } from 'lucide-react';
 
 const CHANNELS = [
   {
@@ -98,9 +95,9 @@ export default function DiscordDiscussion({
     const authorAvatar = currentProfile?.avatarEmoji || '👑';
 
     const newMessage = {
-      id: Date.now(),
+      id: newId(),
       author: authorName,
-      authorEmail: currentUser?.email,
+      authorEmail: currentUser?.email?.toLowerCase() ?? null,
       authorPhoto: currentUser?.photoURL || null,
       authorRole: authorRole,
       authorEmoji: authorAvatar,
@@ -205,7 +202,8 @@ export default function DiscordDiscussion({
         <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
           {channelMessages.length > 0 ? (
             channelMessages.map(msg => {
-              const isMe = msg.authorEmail === currentUser?.email || msg.author === currentUser?.displayName;
+              const myEmail = currentUser?.email?.toLowerCase();
+              const isMe = (msg.senderEmail ?? msg.authorEmail) === myEmail || (!msg.senderEmail && !msg.authorEmail && msg.author === currentUser?.displayName);
 
               return (
                 <div
@@ -242,15 +240,22 @@ export default function DiscordDiscussion({
                     {/* Emoji Reactions Bar */}
                     <div className="flex items-center gap-1 pt-0.5">
                       {EMOJI_REACTIONS.map(emoji => {
-                        const count = msg.reactions?.[emoji] || 0;
+                        // One vote per person: the list holds the emails that reacted.
+                        const voters = Array.isArray(msg.reactions?.[emoji]) ? msg.reactions[emoji] : [];
+                        const count = voters.length;
+                        const reactedByMe = Boolean(myEmail) && voters.includes(myEmail);
                         return (
                           <button
                             key={emoji}
+                            type="button"
+                            aria-pressed={reactedByMe}
                             onClick={() => onAddReaction(activeChannelId, msg.id, emoji)}
                             className={`px-1.5 py-0.5 rounded-lg text-[10px] flex items-center gap-0.5 transition cursor-pointer ${
-                              count > 0
-                                ? 'bg-indigo-950/80 text-amber-300 border border-indigo-700'
-                                : 'bg-slate-800/60 text-slate-400 hover:bg-slate-800 border border-transparent'
+                              reactedByMe
+                                ? 'bg-indigo-900 text-amber-300 border border-amber-400'
+                                : count > 0
+                                  ? 'bg-indigo-950/80 text-amber-300 border border-indigo-700'
+                                  : 'bg-slate-800/60 text-slate-400 hover:bg-slate-800 border border-transparent'
                             }`}
                           >
                             <span>{emoji}</span>

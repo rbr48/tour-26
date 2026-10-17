@@ -39,3 +39,7 @@ extracted_chat/
 .env
 .env.*
 !.env.example
+
+# Server backup data (repository root only, so src/data stays tracked)
+/data/
+*.bak

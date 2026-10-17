@@ -8,7 +8,9 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "postinstall": "node scripts/patch-auth.js"
+    "postinstall": "node scripts/patch-auth.js",
+    "test": "vitest run",
+    "test:rules": "firebase emulators:exec --only firestore --project tour-26 \"vitest run --config vitest.rules.config.js\""
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.5.2",
@@ -20,19 +22,30 @@
     "@capacitor/network": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.4",
-    "firebase": "^13.0.0",
+    "firebase": "^12.19.0",
     "lucide-react": "^1.58.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.3",
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "firebase-tools": "^15.34.0",
     "oxlint": "^1.81.0",
     "tailwindcss": "^4.3.3",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "@firebase/app": "0.16.2",
+    "@firebase/app-compat": "0.5.18",
+    "@grpc/grpc-js": "^1.14.6"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }
