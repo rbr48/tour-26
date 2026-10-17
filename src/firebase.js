@@ -64,17 +64,26 @@ export const signInWithGoogle = async () => {
       let result;
       try {
         result = await FirebaseAuthentication.signInWithGoogle({
-          skipNativeAuth: true,
+          skipNativeAuth: false,
           useCredentialManager: true,
           webClientId,
         });
       } catch (err1) {
         console.warn('Native Google Sign-In with CredentialManager failed, trying legacy GoogleSignInClient:', err1);
-        result = await FirebaseAuthentication.signInWithGoogle({
-          skipNativeAuth: true,
-          useCredentialManager: false,
-          webClientId,
-        });
+        try {
+          result = await FirebaseAuthentication.signInWithGoogle({
+            skipNativeAuth: false,
+            useCredentialManager: false,
+            webClientId,
+          });
+        } catch (err2) {
+          console.warn('Native Google Sign-In without skipNativeAuth failed, trying with skipNativeAuth: true:', err2);
+          result = await FirebaseAuthentication.signInWithGoogle({
+            skipNativeAuth: true,
+            useCredentialManager: false,
+            webClientId,
+          });
+        }
       }
 
       const idToken = result.credential?.idToken || result.idToken;
