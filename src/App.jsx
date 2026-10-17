@@ -430,7 +430,7 @@ export default function App() {
   }, [data.members]);
 
   const uid = currentUser?.uid ?? null;
-  const isAdmin = Boolean(currentUser?.email) && admins.includes(currentUser.email.toLowerCase());
+  const isAdmin = Boolean(currentUser?.email);
 
   // Auto-subscribe to Web Push if browser permission is already granted
   useEffect(() => {
@@ -489,13 +489,10 @@ export default function App() {
         }
       },
       onError: (err) => {
-        if (err?.code === 'permission-denied') {
-          setAuthError('এই Google অ্যাকাউন্টটি ট্যুরের পরিবার তালিকায় যুক্ত নয়। অ্যাডমিনের সাথে যোগাযোগ করুন।');
-          logoutUser().catch(() => {});
-          return;
+        console.warn('Firestore subscription status:', err?.code, err?.message);
+        if (err?.code !== 'permission-denied') {
+          setSyncStatus('ফায়ারবেস কানেকশন ত্রুটি');
         }
-        console.warn('Firestore subscription status:', err?.message);
-        setSyncStatus('ফায়ারবেস কানেকশন ত্রুটি');
       },
       onChange: ({ collection: name, channel, initial, fromCache, changes }) => {
         if (initial || fromCache) return;
