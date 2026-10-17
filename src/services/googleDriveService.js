@@ -36,13 +36,20 @@ export const dataUrlToBlob = async (dataUrl) => {
 // 4. Upload File to Google Drive via Drive REST API v3 Multipart Upload
 export const uploadToGoogleDrive = async ({
   imageDataUrl,
+  blob: inputBlob,
+  file,
   fileName,
   caption = '',
   folderId = GOOGLE_DRIVE_FOLDER_ID
 }) => {
-  // First check if Apps Script webhook URL is provided in settings
+  const actualBlob = inputBlob || file || (imageDataUrl ? await dataUrlToBlob(imageDataUrl) : null);
+  if (!actualBlob && !imageDataUrl) {
+    throw new Error('NO_FILE_PROVIDED');
+  }
+
+  // First check if Apps Script webhook URL is provided in settings (works for images or small payloads)
   const webhookUrl = getAppsScriptWebhook();
-  if (webhookUrl) {
+  if (webhookUrl && imageDataUrl && (!actualBlob || actualBlob.size <= 20 * 1024 * 1024)) {
     try {
       const scriptRes = await uploadViaAppsScript(webhookUrl, {
         imageDataUrl,
@@ -70,8 +77,8 @@ export const uploadToGoogleDrive = async ({
     throw new Error('NO_TOKEN');
   }
 
-  const blob = await dataUrlToBlob(imageDataUrl);
-  const name = fileName || `Tour2026_${Date.now()}.jpg`;
+  const blob = actualBlob || await dataUrlToBlob(imageDataUrl);
+  const name = fileName || `Tour2026_${Date.now()}.${blob.type?.includes('video') ? 'mp4' : 'jpg'}`;
 
   const makeUploadRequest = async (targetFolderId) => {
     const metadata = {

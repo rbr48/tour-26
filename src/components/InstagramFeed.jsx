@@ -17,7 +17,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Images,
+  Film,
+  Play,
+  Scissors,
+  Video,
+  Sparkles,
+  Clock,
 } from 'lucide-react';
+import VideoTrimmerModal from './VideoTrimmerModal';
+import ReelsPlayerModal from './ReelsPlayerModal';
+import { formatDuration } from '../utils/videoHelper';
 import { compressImageFile } from '../utils/imageCompressor';
 import {
   getDriveAccessToken,
@@ -126,6 +135,44 @@ export default function InstagramFeed({
   const [postError, setPostError] = useState('');
   const [postActiveIndices, setPostActiveIndices] = useState({});
   const [touchCoordinates, setTouchCoordinates] = useState({});
+
+  // Reels State & Handlers
+  const [feedSubTab, setFeedSubTab] = useState(() => {
+    try {
+      return localStorage.getItem('tour_feed_subtab') || 'photos';
+    } catch {
+      return 'photos';
+    }
+  });
+
+  const [reelsPlayer, setReelsPlayer] = useState({ isOpen: false, initialIndex: 0 });
+  const [createPostMode, setCreatePostMode] = useState('photos'); // 'photos' | 'reel'
+  const [videoSourceForTrimmer, setVideoSourceForTrimmer] = useState(null);
+  const [showTrimmerModal, setShowTrimmerModal] = useState(false);
+  const [trimmedReelData, setTrimmedReelData] = useState(null);
+  const [videoUrlInput, setVideoUrlInput] = useState('');
+
+  const handleVideoFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 500 * 1024 * 1024) {
+      alert('ভিডিও ফাইলটি ৫০০ MB এর চেয়ে বড়। অনুগ্রহ করে কিছুটা ছোট ফাইল নির্বাচন করুন।');
+      e.target.value = '';
+      return;
+    }
+
+    setVideoSourceForTrimmer(file);
+    setShowTrimmerModal(true);
+    e.target.value = '';
+  };
+
+  const handleVideoUrlConfirm = () => {
+    const url = videoUrlInput.trim();
+    if (!url) return;
+    setVideoSourceForTrimmer(url);
+    setShowTrimmerModal(true);
+  };
 
   // Google Drive state & handlers
   const [isDriveUploading, setIsDriveUploading] = useState(false);
@@ -455,6 +502,94 @@ export default function InstagramFeed({
 
   const handleCreatePost = async (e) => {
     e.preventDefault();
+
+    const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
+    const finalLocation = isCustomLocMode && customLocInput.trim() ? customLocInput.trim() : (location || 'লাবণী ও সুগন্ধা বিচ');
+    if (isCustomLocMode && customLocInput.trim()) {
+      handleSaveCustomLocation(customLocInput.trim());
+    }
+
+    // 1. REELS CREATION FLOW
+    if (createPostMode === 'reel') {
+      if (!trimmedReelData || !trimmedReelData.thumb) {
+        setPostError('অনুগ্রহ করে একটি ভিডিও নির্বাচন ও ট্রিম করে কনফার্ম করুন (সর্বোচ্চ ৩ মিনিট)');
+        return;
+      }
+      setPostError('');
+
+      const postCaption = caption || 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬ এর আনন্দঘন রিলস! 🏖️🎬';
+      const postId = newId();
+      const profilePhoto = currentProfile?.customPhotoURL;
+
+      const newReelPost = {
+        id: postId,
+        type: 'reel',
+        author: authorName,
+        authorEmail: currentUser?.email || 'member@tour.family',
+        authorPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:')
+          ? profilePhoto
+          : (currentUser?.photoURL || null),
+        caption: postCaption,
+        location: finalLocation,
+        likes: [],
+        comments: [],
+        videoUrl: trimmedReelData.videoUrl || null,
+        startTime: trimmedReelData.startTime || 0,
+        endTime: trimmedReelData.endTime || trimmedReelData.duration || 0,
+        duration: trimmedReelData.duration || 0,
+        totalDuration: trimmedReelData.totalDuration || 0,
+        thumb: trimmedReelData.thumb,
+        image: trimmedReelData.thumb,
+        images: [trimmedReelData.thumb],
+        driveBackedUp: false,
+        driveFileId: null,
+        driveViewUrl: null,
+        createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' }),
+      };
+
+      // Optimistic instant add
+      onAddPost(newReelPost);
+      setCaption('');
+      setTrimmedReelData(null);
+      setVideoSourceForTrimmer(null);
+      setVideoUrlInput('');
+      setIsCustomLocMode(false);
+      setCustomLocInput('');
+      try {
+        localStorage.removeItem('tour_post_draft_caption');
+      } catch {}
+      setShowCreateModal(false);
+
+      // Background Drive backup for video file if provided
+      const fileToUpload = (trimmedReelData.videoSource instanceof Blob || trimmedReelData.videoSource instanceof File)
+        ? trimmedReelData.videoSource
+        : null;
+
+      if (fileToUpload) {
+        (async () => {
+          try {
+            const upload = await uploadToGoogleDrive({
+              file: fileToUpload,
+              fileName: `Tour2026_Reel_${authorName.replace(/\s+/g, '_')}_${Date.now()}.mp4`,
+              caption: `${postCaption} (রিলস)`,
+            });
+            if (upload?.success && upload.fileId) {
+              onUpdatePost?.(postId, {
+                driveBackedUp: true,
+                driveFileId: upload.fileId,
+                driveViewUrl: upload.webViewLink,
+                videoUrl: upload.webViewLink,
+              });
+            }
+          } catch (err) {
+            console.warn('Background Drive video upload skipped or failed:', err);
+          }
+        })();
+      }
+      return;
+    }
+
+    // 2. STANDARD PHOTO CAROUSEL FLOW
     let finalImages = [...selectedImages];
     const link = imageInput.trim();
     if (link && finalImages.length < 10) {
@@ -466,12 +601,6 @@ export default function InstagramFeed({
       return;
     }
     setPostError('');
-
-    const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
-    const finalLocation = isCustomLocMode && customLocInput.trim() ? customLocInput.trim() : (location || 'লাবণী ও সুগন্ধা বিচ');
-    if (isCustomLocMode && customLocInput.trim()) {
-      handleSaveCustomLocation(customLocInput.trim());
-    }
     const postCaption = caption || 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬ এর আনন্দঘন মুহূর্ত! 🏖️✨';
 
     // Generate thumbnails for all images
@@ -567,10 +696,17 @@ export default function InstagramFeed({
     setCommentInputs({ ...commentInputs, [postId]: '' });
   };
 
+  // Separation of Reels vs Photo Posts
+  const isPostReel = (p) => Boolean(p && (p.type === 'reel' || p.videoUrl || p.video));
+  const allReelPosts = posts.filter(isPostReel);
+
   // Filter posts if story filter is clicked
   const filteredPosts = activeStoryFilter === 'all'
     ? posts
     : posts.filter(p => p.author?.includes(activeStoryFilter));
+
+  const filteredReelPosts = filteredPosts.filter(isPostReel);
+  const filteredPhotoPosts = filteredPosts.filter((p) => !isPostReel(p));
 
   return (
     <div className="max-w-xl mx-auto space-y-5 pb-8">
@@ -670,141 +806,308 @@ export default function InstagramFeed({
         </div>
       </div>
 
-      {/* Stories / Member Filters Bar */}
-      <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center gap-3 overflow-x-auto">
+      {/* Sub-tab Switcher: Photos Feed vs Reels Shorts */}
+      <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
         <button
-          onClick={() => setActiveStoryFilter('all')}
-          className={`flex flex-col items-center gap-1 cursor-pointer shrink-0 ${
-            activeStoryFilter === 'all' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+          type="button"
+          onClick={() => {
+            setFeedSubTab('photos');
+            try { localStorage.setItem('tour_feed_subtab', 'photos'); } catch {}
+          }}
+          className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer ${
+            feedSubTab === 'photos'
+              ? 'bg-white text-teal-950 shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <div className={`w-13 h-13 rounded-full p-0.5 flex items-center justify-center ${
-            activeStoryFilter === 'all'
-              ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-amber-400 to-pink-600'
-              : 'border border-slate-200 bg-slate-50'
-          }`}>
-            <div className="w-full h-full rounded-full bg-white flex items-center justify-center font-bold text-xs text-slate-800">
-              সবাই
-            </div>
-          </div>
-          <span className="text-[10px] font-medium text-slate-700">সকল ফটো</span>
+          <Camera size={15} className={feedSubTab === 'photos' ? 'text-pink-600' : 'text-slate-400'} />
+          <span>ফটো ফিড ({toBnNum(filteredPhotoPosts.length)})</span>
         </button>
 
-        {members.map(m => {
-          const isSelected = activeStoryFilter === m.name;
-          return (
-            <button
-              key={m.id}
-              onClick={() => setActiveStoryFilter(isSelected ? 'all' : m.name)}
-              className="flex flex-col items-center gap-1 cursor-pointer shrink-0"
-            >
-              <div className={`w-13 h-13 rounded-full p-0.5 flex items-center justify-center ${
-                isSelected
-                  ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-amber-400 to-pink-600'
-                  : 'bg-gradient-to-tr from-slate-200 to-teal-200 hover:from-amber-300 hover:to-pink-500'
-              }`}>
-                <div className="w-full h-full rounded-full bg-teal-800 text-white flex items-center justify-center font-bold text-xs">
-                  {m.name.slice(0, 2)}
-                </div>
-              </div>
-              <span className="text-[10px] font-medium text-slate-700 max-w-[60px] truncate">
-                {m.name.split(' ')[0]}
-              </span>
-            </button>
-          );
-        })}
+        <button
+          type="button"
+          onClick={() => {
+            setFeedSubTab('reels');
+            try { localStorage.setItem('tour_feed_subtab', 'reels'); } catch {}
+          }}
+          className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer ${
+            feedSubTab === 'reels'
+              ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Film size={15} />
+          <span>ইনস্টা রিলস ({toBnNum(filteredReelPosts.length)})</span>
+          {filteredReelPosts.length > 0 && (
+            <span className="w-2 h-2 rounded-full bg-amber-300 animate-pulse" />
+          )}
+        </button>
       </div>
 
-      {/* Instagram-style Posts Feed */}
-      <div className="space-y-6">
-        {filteredPosts.length > 0 ? (
-          filteredPosts.map(post => {
-            const isLiked = post.likes?.includes(currentUser?.displayName || 'user') || post.likes?.includes('রাজু ভাই');
-            const likeCount = (post.likes || []).length;
-            const isSharing = sharingPostId === post.id;
-            const postImages = getPostImages(post);
-            const totalImages = postImages.length;
-            const currentIdx = Math.min(postActiveIndices[post.id] || 0, Math.max(0, totalImages - 1));
-            const currentMediaSrc = postImages[currentIdx] || photoSource(post);
+      {feedSubTab === 'reels' ? (
+        /* REELS VERTICAL 9:16 GRID VIEW */
+        <div className="space-y-4">
+          {filteredReelPosts.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {filteredReelPosts.map((reel) => {
+                const reelIndexInAll = allReelPosts.findIndex((r) => r.id === reel.id);
+                return (
+                  <div
+                    key={reel.id}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, reelIndexInAll) });
+                      }
+                    }}
+                    onClick={() => setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, reelIndexInAll) })}
+                    className="relative aspect-[9/16] bg-slate-900 rounded-2xl overflow-hidden cursor-pointer group shadow-md border border-slate-200 select-none"
+                  >
+                    <img
+                      src={reel.thumb || photoSource(reel)}
+                      alt={reel.caption}
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                      loading="lazy"
+                    />
 
-            return (
-              <div
-                key={post.id}
-                className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
-              >
-                {/* Post Header */}
-                <div className="p-3.5 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    {post.authorPhoto ? (
-                      <img
-                        src={post.authorPhoto}
-                        alt={post.author}
-                        className="w-9 h-9 rounded-full object-cover ring-2 ring-pink-400"
-                      />
-                    ) : (
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-teal-700 to-teal-900 text-white flex items-center justify-center font-bold text-xs ring-2 ring-pink-400">
-                        {post.author?.[0] || 'F'}
+                    {/* Gradient shadows */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/40 pointer-events-none" />
+
+                    {/* Top Duration & Reel badge */}
+                    <div className="absolute top-2 left-2 right-2 flex items-center justify-between text-[10px] pointer-events-none">
+                      <span className="bg-pink-600/90 text-white px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-xs">
+                        <Film size={10} /> রিলস
+                      </span>
+                      <span className="bg-black/60 text-white/95 px-2 py-0.5 rounded-full font-mono backdrop-blur-xs">
+                        ⏱️ {formatDuration(reel.duration || 0, { bengali: true })}
+                      </span>
+                    </div>
+
+                    {/* Center Play Button Icon on Hover */}
+                    <div className="absolute inset-0 flex items-center justify-center opacity-85 group-hover:opacity-100 group-hover:scale-110 transition duration-300 pointer-events-none">
+                      <div className="w-12 h-12 rounded-full bg-pink-600/80 text-white flex items-center justify-center backdrop-blur-xs shadow-xl border border-white/20">
+                        <Play size={22} className="ml-0.5 fill-white" />
                       </div>
-                    )}
-                    <div>
-                      <h4 className="font-bold text-xs text-slate-900">{post.author}</h4>
-                      <p className="text-[10px] text-teal-700 flex items-center gap-1 font-medium">
-                        <MapPin size={10} /> {post.location}
-                      </p>
+                    </div>
+
+                    {/* Bottom Metadata */}
+                    <div className="absolute bottom-2 inset-x-2 text-white pointer-events-none">
+                      <p className="text-xs font-bold truncate drop-shadow">{reel.author}</p>
+                      {reel.caption && (
+                        <p className="text-[10px] text-white/80 truncate drop-shadow">{reel.caption}</p>
+                      )}
+                      <div className="flex items-center gap-3 mt-1 text-[10px] text-white/90 font-mono">
+                        <span className="flex items-center gap-0.5">
+                          <Heart size={11} className="fill-rose-500 text-rose-500" />
+                          {toBnNum((reel.likes || []).length)}
+                        </span>
+                        <span className="flex items-center gap-0.5">
+                          <MessageCircle size={11} />
+                          {toBnNum((reel.comments || []).length)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2 text-slate-400">
-                    <span className="text-[10px] text-slate-400">{post.createdAt}</span>
-                    {onDeletePost && Boolean(
-                      (currentUser?.email && post.authorEmail && post.authorEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
-                      (!post.authorEmail && (currentProfile?.displayName || currentUser?.displayName) && post.author === (currentProfile?.displayName || currentUser?.displayName))
-                    ) && (
-                      <button
-                        onClick={() => onDeletePost(post.id)}
-                        className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
-                        title="নিজের পোস্ট মুছুন"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-8 bg-white rounded-3xl border border-slate-200 text-center space-y-3">
+              <div className="w-14 h-14 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mx-auto text-2xl">
+                🎬
+              </div>
+              <h4 className="font-bold text-slate-800 text-sm">এখনো কোনো রিলস পোস্ট করা হয়নি!</h4>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                যেকোনো বড় ভিডিও থেকে সর্বোচ্চ ৩ মিনিটের অংশ কেটে রিলস তৈরি করুন এবং পরিবারের সবার সাথে শেয়ার করুন।
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatePostMode('reel');
+                  setShowCreateModal(true);
+                }}
+                className="px-4 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+              >
+                🎬 প্রথম রিলস পোস্ট করুন
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* REGULAR PHOTO FEED MODE */
+        <>
+          {/* Stories / Member Filters Bar */}
+          <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center gap-3 overflow-x-auto">
+            <button
+              onClick={() => setActiveStoryFilter('all')}
+              className={`flex flex-col items-center gap-1 cursor-pointer shrink-0 ${
+                activeStoryFilter === 'all' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+              }`}
+            >
+              <div className={`w-13 h-13 rounded-full p-0.5 flex items-center justify-center ${
+                activeStoryFilter === 'all'
+                  ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-amber-400 to-pink-600'
+                  : 'border border-slate-200 bg-slate-50'
+              }`}>
+                <div className="w-full h-full rounded-full bg-white flex items-center justify-center font-bold text-xs text-slate-800">
+                  সবাই
                 </div>
+              </div>
+              <span className="text-[10px] font-medium text-slate-700">সকল ফটো</span>
+            </button>
 
-                {/* Media Image / Carousel */}
-                <div
-                  className="relative bg-slate-900 cursor-pointer overflow-hidden max-h-[500px] min-h-[220px] flex items-center justify-center select-none group"
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setPreviewMedia({ images: postImages, index: currentIdx });
-                    } else if (e.key === 'ArrowLeft' && currentIdx > 0) {
-                      setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx - 1 }));
-                    } else if (e.key === 'ArrowRight' && currentIdx < totalImages - 1) {
-                      setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx + 1 }));
-                    }
-                  }}
-                  onClick={() => setPreviewMedia({ images: postImages, index: currentIdx })}
-                  onTouchStart={(e) => handleTouchStart(post.id, e)}
-                  onTouchMove={(e) => handleTouchMove(post.id, e)}
-                  onTouchEnd={() => handleTouchEnd(post.id, totalImages)}
+            {members.map(m => {
+              const isSelected = activeStoryFilter === m.name;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setActiveStoryFilter(isSelected ? 'all' : m.name)}
+                  className="flex flex-col items-center gap-1 cursor-pointer shrink-0"
                 >
-                  <img
-                    src={currentMediaSrc}
-                    alt={post.caption}
-                    className="w-full object-contain max-h-[500px] hover:scale-101 transition duration-300"
-                    loading="lazy"
-                  />
-
-                  {/* Multi-photo Counter Badge */}
-                  {totalImages > 1 && (
-                    <div className="absolute top-2.5 right-2.5 bg-black/60 backdrop-blur-md text-white text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md border border-white/20 pointer-events-none z-10">
-                      <Images size={13} className="text-pink-300" />
-                      <span>{toBnNum(currentIdx + 1)}/{toBnNum(totalImages)}</span>
+                  <div className={`w-13 h-13 rounded-full p-0.5 flex items-center justify-center ${
+                    isSelected
+                      ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-amber-400 to-pink-600'
+                      : 'bg-gradient-to-tr from-slate-200 to-teal-200 hover:from-amber-300 hover:to-pink-500'
+                  }`}>
+                    <div className="w-full h-full rounded-full bg-teal-800 text-white flex items-center justify-center font-bold text-xs">
+                      {m.name.slice(0, 2)}
                     </div>
-                  )}
+                  </div>
+                  <span className="text-[10px] font-medium text-slate-700 max-w-[60px] truncate">
+                    {m.name.split(' ')[0]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Instagram-style Posts Feed */}
+          <div className="space-y-6">
+            {filteredPosts.length > 0 ? (
+              filteredPosts.map(post => {
+                const isLiked = post.likes?.includes(currentUser?.displayName || 'user') || post.likes?.includes('রাজু ভাই');
+                const likeCount = (post.likes || []).length;
+                const isSharing = sharingPostId === post.id;
+                const postImages = getPostImages(post);
+                const totalImages = postImages.length;
+                const currentIdx = Math.min(postActiveIndices[post.id] || 0, Math.max(0, totalImages - 1));
+                const currentMediaSrc = postImages[currentIdx] || photoSource(post);
+                const postIsReel = isPostReel(post);
+
+                return (
+                  <div
+                    key={post.id}
+                    className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
+                  >
+                    {/* Post Header */}
+                    <div className="p-3.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        {post.authorPhoto ? (
+                          <img
+                            src={post.authorPhoto}
+                            alt={post.author}
+                            className="w-9 h-9 rounded-full object-cover ring-2 ring-pink-400"
+                          />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-teal-700 to-teal-900 text-white flex items-center justify-center font-bold text-xs ring-2 ring-pink-400">
+                            {post.author?.[0] || 'F'}
+                          </div>
+                        )}
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <h4 className="font-bold text-xs text-slate-900">{post.author}</h4>
+                            {postIsReel && (
+                              <span className="text-[9px] bg-pink-100 text-pink-700 font-bold px-1.5 py-0.2 rounded-full border border-pink-200">
+                                🎬 রিলস
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-teal-700 flex items-center gap-1 font-medium">
+                            <MapPin size={10} /> {post.location}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-slate-400">
+                        <span className="text-[10px] text-slate-400">{post.createdAt}</span>
+                        {onDeletePost && Boolean(
+                          (currentUser?.email && post.authorEmail && post.authorEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
+                          (!post.authorEmail && (currentProfile?.displayName || currentUser?.displayName) && post.author === (currentProfile?.displayName || currentUser?.displayName))
+                        ) && (
+                          <button
+                            onClick={() => onDeletePost(post.id)}
+                            className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
+                            title="নিজের পোস্ট মুছুন"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Media Image / Carousel or Reel */}
+                    <div
+                      className="relative bg-slate-900 cursor-pointer overflow-hidden max-h-[500px] min-h-[220px] flex items-center justify-center select-none group"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          if (postIsReel) {
+                            const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
+                            setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                          } else {
+                            setPreviewMedia({ images: postImages, index: currentIdx });
+                          }
+                        } else if (e.key === 'ArrowLeft' && currentIdx > 0) {
+                          setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx - 1 }));
+                        } else if (e.key === 'ArrowRight' && currentIdx < totalImages - 1) {
+                          setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx + 1 }));
+                        }
+                      }}
+                      onClick={() => {
+                        if (postIsReel) {
+                          const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
+                          setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                        } else {
+                          setPreviewMedia({ images: postImages, index: currentIdx });
+                        }
+                      }}
+                      onTouchStart={(e) => handleTouchStart(post.id, e)}
+                      onTouchMove={(e) => handleTouchMove(post.id, e)}
+                      onTouchEnd={() => handleTouchEnd(post.id, totalImages)}
+                    >
+                      <img
+                        src={currentMediaSrc}
+                        alt={post.caption}
+                        className="w-full object-contain max-h-[500px] hover:scale-101 transition duration-300"
+                        loading="lazy"
+                      />
+
+                      {/* If Reel, show Play Overlay & Duration Badge */}
+                      {postIsReel && (
+                        <>
+                          <div className="absolute top-2.5 right-2.5 bg-gradient-to-r from-pink-600 to-purple-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md pointer-events-none z-10">
+                            <Film size={13} />
+                            <span>রিলস {formatDuration(post.duration || 0, { bengali: true })}</span>
+                          </div>
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/35 transition pointer-events-none z-10">
+                            <div className="w-14 h-14 rounded-full bg-pink-600/90 text-white flex items-center justify-center shadow-2xl backdrop-blur-xs group-hover:scale-110 transition duration-300 border border-white/20">
+                              <Play size={24} className="ml-1 fill-white" />
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Multi-photo Counter Badge */}
+                      {!postIsReel && totalImages > 1 && (
+                        <div className="absolute top-2.5 right-2.5 bg-black/60 backdrop-blur-md text-white text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md border border-white/20 pointer-events-none z-10">
+                          <Images size={13} className="text-pink-300" />
+                          <span>{toBnNum(currentIdx + 1)}/{toBnNum(totalImages)}</span>
+                        </div>
+                      )}
 
                   {/* Left Carousel Arrow */}
                   {totalImages > 1 && currentIdx > 0 && (
@@ -1000,6 +1303,8 @@ export default function InstagramFeed({
           </div>
         )}
       </div>
+        </>
+      )}
 
       {/* CREATE NEW INSTA POST MODAL (Pinned header/footer, mobile-friendly) */}
       {showCreateModal && (
@@ -1016,7 +1321,15 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
             {/* PINNED HEADER */}
             <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-200 bg-slate-50/95 backdrop-blur-md shrink-0 z-20">
               <h3 className="font-bold text-sm sm:text-base text-slate-800 flex items-center gap-2 truncate">
-                <Camera size={18} className="text-pink-600 shrink-0" /> নতুন ট্যুর ফটো পোস্ট করুন
+                {createPostMode === 'reel' ? (
+                  <>
+                    <Film size={18} className="text-pink-600 shrink-0" /> নতুন ট্যুর রিলস পাবলিশ করুন
+                  </>
+                ) : (
+                  <>
+                    <Camera size={18} className="text-pink-600 shrink-0" /> নতুন ট্যুর ফটো পোস্ট করুন
+                  </>
+                )}
               </h3>
               <button
                 type="button"
@@ -1030,19 +1343,163 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
             {/* SCROLLABLE FORM BODY */}
             <form id="create-post-form" onSubmit={handleCreatePost} className="flex-1 flex flex-col min-h-0 overflow-hidden">
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-                {/* Media Selection / Upload */}
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <p id="feed-media-label" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                      <Camera size={14} className="text-pink-600" />
-                      ছবি আপলোড বা ছবি নির্বাচন (সর্বোচ্চ ১০টি)
-                    </p>
-                    {selectedImages.length > 0 && (
-                      <span className="text-[11px] font-bold text-teal-800 bg-teal-100/70 px-2 py-0.5 rounded-full">
-                        {toBnNum(selectedImages.length)}/১০টি নির্বাচিত
+                {/* Media Type Switcher: Photo Carousel vs Reels Video */}
+                <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreatePostMode('photos');
+                      setPostError('');
+                    }}
+                    className={`py-2 px-3 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition cursor-pointer ${
+                      createPostMode === 'photos'
+                        ? 'bg-white text-teal-950 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Camera size={15} className="text-pink-600" />
+                    <span>ফটো অ্যালবাম</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreatePostMode('reel');
+                      setPostError('');
+                    }}
+                    className={`py-2 px-3 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition cursor-pointer ${
+                      createPostMode === 'reel'
+                        ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Film size={15} />
+                    <span>ইনস্টা রিলস (≤ ৩ মি.)</span>
+                  </button>
+                </div>
+
+                {/* 1. REELS VIDEO UPLOADER & TRIMMER SECTION */}
+                {createPostMode === 'reel' ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <Film size={14} className="text-pink-600" />
+                        রিলস ভিডিও বাছাই (যেকোনো দৈর্ঘ্যের ভিডিও)
+                      </p>
+                      <span className="text-[10px] font-bold text-pink-700 bg-pink-50 px-2 py-0.5 rounded-full border border-pink-200">
+                        অনুমোদিত সর্বোচ্চ ৩ মিনিট
                       </span>
+                    </div>
+
+                    {!trimmedReelData ? (
+                      <div className="space-y-3">
+                        <label className="py-7 px-4 bg-gradient-to-br from-pink-50/70 via-purple-50/70 to-indigo-50/70 hover:from-pink-100/70 hover:to-purple-100/70 text-slate-800 border-2 border-dashed border-pink-300 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition text-xs font-semibold shadow-xs">
+                          <Film size={32} className="mb-2 text-pink-600" />
+                          <span className="text-sm font-bold text-slate-900">ডিভাইস থেকে ভিডিও ফাইল বাছাই করুন</span>
+                          <span className="text-[11px] text-slate-600 mt-1 text-center max-w-xs">
+                            যেকোনো বড় ভিডিও (৫, ১০ বা ২০ মিনিট) থেকে পছন্দের ৩ মিনিটের অংশ কেটে নেওয়ার ট্রিমার ওপেন হবে
+                          </span>
+                          <input
+                            type="file"
+                            accept="video/*"
+                            onChange={handleVideoFileChange}
+                            className="sr-only"
+                          />
+                        </label>
+
+                        <div>
+                          <span className="text-[10px] text-slate-500 block mb-1">অথবা সরাসরি ভিডিও লিংক দিয়ে ট্রিম করুন:</span>
+                          <div className="flex gap-2">
+                            <input
+                              type="url"
+                              placeholder="https://... (mp4/webm ভিডিও লিংক)"
+                              value={videoUrlInput}
+                              onChange={(e) => setVideoUrlInput(e.target.value)}
+                              className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-pink-600 bg-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleVideoUrlConfirm}
+                              disabled={!videoUrlInput.trim()}
+                              className="px-3.5 py-2 bg-gradient-to-r from-pink-600 to-purple-600 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-xs whitespace-nowrap"
+                            >
+                              ✂️ ট্রিম করুন
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Selected Clip Preview Card */
+                      <div className="p-3.5 bg-slate-900 text-white rounded-2xl border border-slate-700 space-y-3 shadow-md">
+                        <div className="flex items-center gap-3">
+                          <div className="relative w-16 h-22 bg-black rounded-xl overflow-hidden border border-slate-700 shrink-0">
+                            <img
+                              src={trimmedReelData.thumb}
+                              alt="Reel Cover"
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                              <Play size={16} className="text-white fill-white" />
+                            </div>
+                          </div>
+
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-pink-400">রিলস ক্লিপ প্রস্তুত ✓</span>
+                            </div>
+                            <p className="text-xs text-slate-200 font-mono">
+                              ⏱️ ক্লিপ দৈর্ঘ্য: <strong>{formatDuration(trimmedReelData.duration, { bengali: true })}</strong>
+                            </p>
+                            <p className="text-[10px] text-slate-400">
+                              সময়সীমা: {formatDuration(trimmedReelData.startTime, { bengali: true })} ➔ {formatDuration(trimmedReelData.endTime, { bengali: true })}
+                            </p>
+                            {trimmedReelData.totalDuration > 0 && (
+                              <p className="text-[10px] text-slate-500">
+                                মূল ভিডিওর দৈর্ঘ্য: {formatDuration(trimmedReelData.totalDuration, { bengali: true })}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-1 border-t border-slate-800 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVideoSourceForTrimmer(trimmedReelData.videoSource);
+                              setShowTrimmerModal(true);
+                            }}
+                            className="flex-1 py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-pink-300 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer border border-slate-700"
+                          >
+                            <Scissors size={13} /> পুনরায় ট্রিম করুন
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTrimmedReelData(null);
+                              setVideoSourceForTrimmer(null);
+                            }}
+                            className="py-1.5 px-3 bg-rose-950/80 hover:bg-rose-900 text-rose-300 rounded-xl font-semibold transition cursor-pointer border border-rose-800/80"
+                          >
+                            বদলান
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
+                ) : (
+                  /* 2. PHOTO ALBUM SELECTION */
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <p id="feed-media-label" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <Camera size={14} className="text-pink-600" />
+                        ছবি আপলোড বা ছবি নির্বাচন (সর্বোচ্চ ১০টি)
+                      </p>
+                      {selectedImages.length > 0 && (
+                        <span className="text-[11px] font-bold text-teal-800 bg-teal-100/70 px-2 py-0.5 rounded-full">
+                          {toBnNum(selectedImages.length)}/১০টি নির্বাচিত
+                        </span>
+                      )}
+                    </div>
 
                   {/* Empty state: big file picker box */}
                   {selectedImages.length === 0 ? (
@@ -1166,6 +1623,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                     </div>
                   </div>
                 </div>
+                )}
 
                 {/* Caption with auto-saved draft indicator */}
                 <div>
@@ -1369,7 +1827,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                     </>
                   ) : (
                     <>
-                      <Send size={14} /> পোস্ট পাবলিশ করুন
+                      <Send size={14} /> {createPostMode === 'reel' ? '🎬 রিলস পাবলিশ করুন' : 'পোস্ট পাবলিশ করুন'}
                     </>
                   )}
                 </button>
@@ -1470,6 +1928,29 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
           })()}
         </div>
       )}
+
+      {/* FULLSCREEN REELS PLAYER MODAL */}
+      <ReelsPlayerModal
+        reels={allReelPosts}
+        initialIndex={reelsPlayer.initialIndex}
+        isOpen={reelsPlayer.isOpen}
+        currentUser={currentUser}
+        currentProfile={currentProfile}
+        onClose={() => setReelsPlayer({ isOpen: false, initialIndex: 0 })}
+        onLikePost={onLikePost}
+        onAddComment={onAddComment}
+      />
+
+      {/* VIDEO TRIMMER MODAL (up to 3 minutes / 180s) */}
+      <VideoTrimmerModal
+        videoSource={videoSourceForTrimmer}
+        isOpen={showTrimmerModal}
+        onClose={() => setShowTrimmerModal(false)}
+        onConfirm={(data) => {
+          setTrimmedReelData(data);
+          setShowTrimmerModal(false);
+        }}
+      />
     </div>
   );
 }
