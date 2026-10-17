@@ -20,4 +20,11 @@
 
 # Capacitor Firebase Authentication optional providers (Facebook, Play Games, etc.)
 -dontwarn com.facebook.**
+-keep class io.capawesome.capacitorjs.plugins.firebase.authentication.** { *; }
 -dontwarn io.capawesome.capacitorjs.plugins.firebase.authentication.**
+
+# AndroidX Credential Manager & Google Identity
+-keep class androidx.credentials.** { *; }
+-keep class com.google.android.libraries.identity.googleid.** { *; }
+-dontwarn androidx.credentials.**
+-dontwarn com.google.android.libraries.identity.googleid.**

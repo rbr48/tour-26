@@ -11,7 +11,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { Network } from '@capacitor/network';
-import { auth, signInWithGoogle, logoutUser } from './firebase';
+import { auth, signInWithGoogle, logoutUser, checkRedirectResult } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import TideWeatherWidget from './components/TideWeatherWidget';
 import NotificationCenter from './components/NotificationCenter';
@@ -424,6 +424,30 @@ export default function App() {
       setTourExists(false);
     }
   }), []);
+
+  // Handle mobile redirect sign-in result (PWA / Mobile Chrome / Web)
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
+    checkRedirectResult()
+      .then((user) => {
+        if (user) {
+          setActiveTab('dashboard');
+          setSyncStatus('ফায়ারবেস সিঙ্ক হচ্ছে...');
+        }
+      })
+      .catch((err) => {
+        console.error('Redirect sign-in error:', err);
+        if (err.code && err.code !== 'auth/null-user') {
+          let msg = 'গুগল সাইন-ইন সম্পন্ন হয়নি।';
+          if (err.code === 'auth/unauthorized-domain') {
+            msg = 'এই ডোমেইন থেকে সাইন-ইন অনুমোদিত নয়। অ্যাডমিনের সাথে যোগাযোগ করুন।';
+          } else if (err.message) {
+            msg += ` (${err.message})`;
+          }
+          setAuthError(msg);
+        }
+      });
+  }, []);
 
   useEffect(() => {
     emailRef.current = currentUser?.email ? currentUser.email.toLowerCase() : null;

@@ -5,6 +5,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithCredential,
   signOut,
 } from 'firebase/auth';
@@ -39,6 +41,11 @@ googleProvider.setCustomParameters({
 // shared upload endpoint is unavailable.
 googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
 
+export const isMobileBrowser = () => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
 function createFirestore(firebaseApp) {
   // Persist the cache in IndexedDB so offline edits survive a reload. Fall back to
   // the in-memory cache where IndexedDB does not exist.
@@ -56,54 +63,84 @@ function createFirestore(firebaseApp) {
 
 export const db = createFirestore(app);
 
+export const checkRedirectResult = async () => {
+  if (Capacitor.isNativePlatform()) return null;
+  try {
+    const result = await getRedirectResult(auth);
+    if (result?.user) {
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setDriveAccessToken(credential.accessToken);
+      }
+      return result.user;
+    }
+    return null;
+  } catch (error) {
+    console.error('Redirect Sign-In Result Error:', error);
+    throw error;
+  }
+};
+
 export const signInWithGoogle = async () => {
   try {
     if (Capacitor.isNativePlatform()) {
       // Native Android sign-in through Google Play Services / Credential Manager.
-      const webClientId = '26498265392-seil3pfcqcj6ie5049askpblsnvuq7nn.apps.googleusercontent.com';
       let result;
       try {
         result = await FirebaseAuthentication.signInWithGoogle({
-          skipNativeAuth: false,
           useCredentialManager: true,
-          webClientId,
         });
       } catch (err1) {
-        console.warn('Native Google Sign-In with CredentialManager failed, trying legacy GoogleSignInClient:', err1);
+        console.warn('Native Google Sign-In with CredentialManager failed, falling back to GoogleSignInClient:', err1);
+        result = await FirebaseAuthentication.signInWithGoogle({
+          useCredentialManager: false,
+        });
+      }
+
+      let idToken = result?.credential?.idToken || result?.idToken;
+      if (!idToken) {
         try {
-          result = await FirebaseAuthentication.signInWithGoogle({
-            skipNativeAuth: false,
-            useCredentialManager: false,
-            webClientId,
-          });
-        } catch (err2) {
-          console.warn('Native Google Sign-In without skipNativeAuth failed, trying with skipNativeAuth: true:', err2);
-          result = await FirebaseAuthentication.signInWithGoogle({
-            skipNativeAuth: true,
-            useCredentialManager: false,
-            webClientId,
-          });
+          const tokenRes = await FirebaseAuthentication.getIdToken();
+          idToken = tokenRes?.token;
+        } catch (tokenErr) {
+          console.warn('Failed to retrieve token from FirebaseAuthentication plugin:', tokenErr);
         }
       }
 
-      const idToken = result.credential?.idToken || result.idToken;
       if (idToken) {
         const credential = GoogleAuthProvider.credential(idToken);
         const userCredential = await signInWithCredential(auth, credential);
         return userCredential.user;
       }
-      if (result.user) {
+      if (result?.user) {
         return result.user;
       }
       throw new Error('গুগল অ্যাকাউন্ট থেকে কোনো ক্রেডেনশিয়াল পাওয়া যায়নি');
     }
 
-    const result = await signInWithPopup(auth, googleProvider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential?.accessToken) {
-      setDriveAccessToken(credential.accessToken);
+    // On mobile web browsers (Chrome/Safari), popups open in separate tabs without
+    // opener context, causing hangs on __/auth/handler. signInWithRedirect performs a clean full-page flow.
+    if (isMobileBrowser()) {
+      await signInWithRedirect(auth, googleProvider);
+      return null;
     }
-    return result.user;
+
+    // Desktop browsers support standard popups
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setDriveAccessToken(credential.accessToken);
+      }
+      return result.user;
+    } catch (popupErr) {
+      if (popupErr.code === 'auth/popup-blocked' || popupErr.code === 'auth/cancelled-popup-request') {
+        console.warn('Popup blocked, falling back to signInWithRedirect:', popupErr);
+        await signInWithRedirect(auth, googleProvider);
+        return null;
+      }
+      throw popupErr;
+    }
   } catch (error) {
     console.error('Google Sign-In Error:', error);
     throw error;
@@ -113,6 +150,10 @@ export const signInWithGoogle = async () => {
 // Re-authorize or connect Google Drive explicitly.
 export const connectGoogleDrive = async () => {
   try {
+    if (isMobileBrowser() && !Capacitor.isNativePlatform()) {
+      await signInWithRedirect(auth, googleProvider);
+      return { success: true, redirecting: true };
+    }
     const result = await signInWithPopup(auth, googleProvider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (credential?.accessToken) {
