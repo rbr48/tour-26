@@ -34,7 +34,6 @@ import {
   saveProfile,
   seedTour,
   setReaction,
-  subscribeToAccess,
   subscribeToTour,
   updateItem,
   updateTourDetails,
@@ -177,7 +176,6 @@ export default function App() {
   const [backupStatus, setBackupStatus] = useState(null);
   const [remoteReady, setRemoteReady] = useState(false);
   const [tourExists, setTourExists] = useState(false);
-  const [admins, setAdmins] = useState([]);
   const [upgradeNotice, setUpgradeNotice] = useState(null);
 
   const [previewImage, setPreviewImage] = useState(null);
@@ -528,14 +526,8 @@ export default function App() {
       },
     });
 
-    const stopAccess = subscribeToAccess(
-      (access) => setAdmins(access.admins),
-      () => setAdmins([]),
-    );
-
     return () => {
       stopTour();
-      stopAccess();
     };
   }, [uid, addActivity]);
 

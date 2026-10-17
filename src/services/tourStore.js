@@ -200,17 +200,6 @@ export function subscribeToTour({ onUpdate, onError, onChange }) {
   return () => unsubscribers.forEach((stop) => stop());
 }
 
-/** Admins decide who may import history and delete shared items. The list is read-only here. */
-export function subscribeToAccess(onUpdate, onError) {
-  return onSnapshot(
-    doc(db, 'config', 'access'),
-    (snapshot) => {
-      const admins = Array.isArray(snapshot.data()?.admins) ? snapshot.data().admins : [];
-      onUpdate({ admins: admins.map((email) => String(email).toLowerCase()) });
-    },
-    onError,
-  );
-}
 
 // ---- Writes -----------------------------------------------------------------
 

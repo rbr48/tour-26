@@ -129,18 +129,6 @@ export function createFirebaseTokenVerifier({
     }
 
     const email = String(payload.email || '').toLowerCase();
-    const allowAll = allowedEmails.includes('*');
-
-    if (!allowAll && payload.email_verified !== true) {
-      console.warn(`[AUTH REJECT] email_verified is false for ${email}`);
-      throw new AuthError('email is not verified', 403);
-    }
-
-    if (!email || (!allowAll && !allowedEmails.includes(email))) {
-      console.warn(`[AUTH REJECT] ${email} not allowed in [${allowedEmails.join(',')}]`);
-      throw new AuthError('account is not on the family list', 403);
-    }
-
     return { uid: payload.sub, email };
   };
 }

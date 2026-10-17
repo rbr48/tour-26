@@ -9,9 +9,6 @@ const server = createApp({ config });
 
 server.listen(config.port, config.host, () => {
   console.log(`Tour 2026 server listening on ${config.host}:${config.port}`);
-  if (config.allowedEmails.length === 0) {
-    console.warn('ALLOWED_EMAILS is empty: the backup API will refuse every request.');
-  }
 });
 
 const shutdown = () => {

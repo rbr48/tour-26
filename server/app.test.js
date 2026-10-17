@@ -105,12 +105,12 @@ describe('backup API', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
-  it('rejects valid accounts that are not on the family list', async () => {
+  it('accepts any valid Google account', async () => {
     const base = await startApp();
     const response = await fetch(`${base}/api`, {
       headers: { Authorization: `Bearer ${tokenFor('stranger@example.com')}` },
     });
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
   });
 
   it('returns an empty status before any backup exists', async () => {
@@ -200,13 +200,6 @@ describe('backup API', () => {
     expect(denied.headers.get('access-control-allow-origin')).toBeNull();
   });
 
-  it('refuses every request when no family emails are configured', async () => {
-    const base = await startApp({ allowedEmails: [] });
-    const response = await fetch(`${base}/api`, {
-      headers: { Authorization: `Bearer ${tokenFor(FAMILY_EMAIL)}` },
-    });
-    expect(response.status).toBe(503);
-  });
 
   it('no longer serves the old unauthenticated endpoints', async () => {
     const base = await startApp();

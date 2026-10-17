@@ -52,10 +52,6 @@ export function createApp({ config, verifyToken, store, pushService }) {
       return;
     }
 
-    if (config.allowedEmails.length === 0) {
-      sendJson(res, 503, { error: 'backup is not configured' }, headers);
-      return;
-    }
 
     let user;
     try {
