@@ -16,6 +16,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import TideWeatherWidget from './components/TideWeatherWidget';
 import NotificationCenter from './components/NotificationCenter';
 import ConfirmDialog from './components/ConfirmDialog';
+import UserAvatar from './components/UserAvatar';
 import { useBackHandler, dispatchBackAction } from './utils/backNavigation';
 import {
   sendPushNotification,
@@ -1385,17 +1386,13 @@ export default function App() {
               className="bg-teal-950/80 hover:bg-teal-950 p-3 rounded-2xl border border-teal-700/60 space-y-2 cursor-pointer transition group"
             >
               <div className="flex items-center gap-2.5">
-                {currentProfile.customPhotoURL || currentUser.photoURL ? (
-                  <img
-                    src={currentProfile.customPhotoURL || currentUser.photoURL}
-                    alt={currentProfile.displayName || currentUser.displayName || 'User'}
-                    className="w-8 h-8 rounded-full ring-2 ring-amber-400 object-cover"
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-teal-800 flex items-center justify-center font-bold text-base text-amber-300 ring-2 ring-amber-400">
-                    {currentProfile.avatarEmoji || '👑'}
-                  </div>
-                )}
+                <UserAvatar
+                  photoUrl={currentProfile.customPhotoURL || currentUser.photoURL}
+                  name={currentProfile.displayName || currentUser.displayName}
+                  size="w-8 h-8"
+                  ring="ring-2 ring-amber-400"
+                  fallbackEmoji={currentProfile.avatarEmoji}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <p className="text-xs font-bold text-white truncate">
@@ -1490,17 +1487,13 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   className="p-3 bg-gradient-to-r from-teal-900 to-teal-800 rounded-2xl border border-teal-700/80 flex items-center justify-between cursor-pointer hover:border-amber-400 transition"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    {currentProfile.customPhotoURL || currentUser.photoURL ? (
-                      <img
-                        src={currentProfile.customPhotoURL || currentUser.photoURL}
-                        alt="Profile"
-                        className="w-9 h-9 rounded-full object-cover ring-2 ring-amber-400"
-                      />
-                    ) : (
-                      <div className="w-9 h-9 rounded-full bg-teal-950 flex items-center justify-center text-lg font-bold ring-2 ring-amber-400">
-                        {currentProfile.avatarEmoji || '👑'}
-                      </div>
-                    )}
+                    <UserAvatar
+                      photoUrl={currentProfile.customPhotoURL || currentUser.photoURL}
+                      name={currentProfile.displayName || currentUser.displayName}
+                      size="w-9 h-9"
+                      ring="ring-2 ring-amber-400"
+                      fallbackEmoji={currentProfile.avatarEmoji}
+                    />
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-white truncate">
                         {currentProfile.displayName || currentUser.displayName || 'সদস্য'}
@@ -1735,15 +1728,14 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   className="px-2 py-1.5 bg-black/25 hover:bg-black/35 rounded-xl border border-white/20 flex items-center gap-1.5 transition cursor-pointer text-xs"
                   title="আমার প্রোফাইল খুলুন"
                 >
-                  {currentProfile.customPhotoURL || currentUser.photoURL ? (
-                    <img
-                      src={currentProfile.customPhotoURL || currentUser.photoURL}
-                      alt="Avatar"
-                      className="w-5 h-5 rounded-full object-cover ring-1 ring-amber-400"
-                    />
-                  ) : (
-                    <span className="text-base leading-none">{currentProfile.avatarEmoji || '👑'}</span>
-                  )}
+                  <UserAvatar
+                    photoUrl={currentProfile.customPhotoURL || currentUser.photoURL}
+                    name={currentProfile.displayName || currentUser.displayName}
+                    size="w-5 h-5"
+                    ring="ring-1 ring-amber-400"
+                    textClass="text-[9px]"
+                    fallbackEmoji={currentProfile.avatarEmoji}
+                  />
                   <span className="font-semibold text-white hidden sm:inline max-w-[90px] truncate">
                     {currentProfile.displayName || currentUser.displayName?.split(' ')[0] || 'প্রোফাইল'}
                   </span>

@@ -32,6 +32,7 @@ import { Capacitor } from '@capacitor/core';
 import { useBackHandler } from '../utils/backNavigation';
 import VideoTrimmerModal from './VideoTrimmerModal';
 import ReelsPlayerModal from './ReelsPlayerModal';
+import UserAvatar from './UserAvatar';
 import { formatDuration } from '../utils/videoHelper';
 import { saveLocalVideo } from '../utils/localVideoCache';
 import { compressImageFile } from '../utils/imageCompressor';
@@ -1137,17 +1138,12 @@ export default function InstagramFeed({
                     {/* Post Header */}
                     <div className="p-3.5 flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
-                        {post.authorPhoto ? (
-                          <img
-                            src={post.authorPhoto}
-                            alt={post.author}
-                            className="w-9 h-9 rounded-full object-cover ring-2 ring-pink-400"
-                          />
-                        ) : (
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-teal-700 to-teal-900 text-white flex items-center justify-center font-bold text-xs ring-2 ring-pink-400">
-                            {post.author?.[0] || 'F'}
-                          </div>
-                        )}
+                        <UserAvatar
+                          photoUrl={post.authorPhoto}
+                          name={post.author}
+                          size="w-9 h-9"
+                          ring="ring-2 ring-pink-400"
+                        />
                         <div>
                           <div className="flex items-center gap-1.5">
                             <h4 className="font-bold text-xs text-slate-900">{post.author}</h4>

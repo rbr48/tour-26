@@ -20,6 +20,7 @@ import {
 import { formatDuration, toBnNum, resolveMediaUrl, getDriveEmbedUrl } from '../utils/videoHelper';
 import { getLocalVideoUrl } from '../utils/localVideoCache';
 import { useBackHandler } from '../utils/backNavigation';
+import UserAvatar from './UserAvatar';
 
 const COMMENT_REACTIONS = ['❤️', '👍', '😂', '🔥', '👏'];
 
@@ -453,19 +454,13 @@ export default function ReelsPlayerModal({
         <div className="absolute bottom-3 inset-x-0 z-20 p-4 pr-16 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-auto">
           {/* Author Badge */}
           <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-pink-500 to-amber-500 p-0.5 shrink-0 shadow-md">
-              {currentReel.authorPhoto ? (
-                <img
-                  src={currentReel.authorPhoto}
-                  alt={currentReel.author}
-                  className="w-full h-full rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full rounded-full bg-teal-800 text-amber-300 font-bold text-xs flex items-center justify-center">
-                  {(currentReel.author || 'মে')[0]}
-                </div>
-              )}
-            </div>
+            <UserAvatar
+              photoUrl={currentReel.authorPhoto}
+              name={currentReel.author}
+              size="w-9 h-9"
+              ring="ring-2 ring-amber-400/80 shadow-md"
+              className="shrink-0"
+            />
 
             <div className="min-w-0">
               <h4 className="text-sm font-bold text-white drop-shadow truncate">

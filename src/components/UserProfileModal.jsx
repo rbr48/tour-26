@@ -18,6 +18,7 @@ import {
 import { compressImageFile } from '../utils/imageCompressor';
 import { findLinkedMember } from '../utils/members';
 import { useBackHandler } from '../utils/backNavigation';
+import { resolveMediaUrl } from '../utils/videoHelper';
 
 const AVATAR_OPTIONS = [
   { id: 'leader', label: 'ট্যুর লিডার', emoji: '👑', bg: 'bg-amber-100 text-amber-800 border-amber-300' },
@@ -68,6 +69,11 @@ export default function UserProfileModal({
   const [urlInput, setUrlInput] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [photoNotification, setPhotoNotification] = useState('');
+  const [photoLoadError, setPhotoLoadError] = useState(false);
+
+  useEffect(() => {
+    setPhotoLoadError(false);
+  }, [profile.customPhotoURL]);
 
   // Sync state whenever modal is opened with the latest currentProfile & member info
   useEffect(() => {
@@ -230,10 +236,13 @@ export default function UserProfileModal({
               <div className="flex flex-col sm:flex-row items-center gap-3.5">
                 {/* Visual Avatar */}
                 <div className="relative group shrink-0">
-                  {profile.customPhotoURL ? (
+                  {profile.customPhotoURL && !photoLoadError ? (
                     <img
-                      src={profile.customPhotoURL}
+                      src={resolveMediaUrl(profile.customPhotoURL)}
                       alt={profile.displayName || 'Profile'}
+                      referrerPolicy="no-referrer"
+                      crossOrigin="anonymous"
+                      onError={() => setPhotoLoadError(true)}
                       className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl object-cover ring-4 ring-amber-400 shadow-xl"
                     />
                   ) : (
