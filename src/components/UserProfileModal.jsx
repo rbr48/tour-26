@@ -1,11 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  User, Mail, Phone, Heart, AlertCircle, ShieldCheck,
-  Save, X, Camera, Bus, Hotel, Users, Sparkles, Droplet,
-  Utensils, CheckCircle2, HardDrive, Trash2, Upload, ExternalLink,
-  RefreshCw, Image as ImageIcon
+  User,
+  Phone,
+  Save,
+  X,
+  Camera,
+  Bus,
+  Hotel,
+  Sparkles,
+  CheckCircle2,
+  HardDrive,
+  Trash2,
+  ExternalLink,
+  RefreshCw,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { compressImageFile } from '../utils/imageCompressor';
+import { findLinkedMember } from '../utils/members';
 
 const AVATAR_OPTIONS = [
   { id: 'leader', label: 'ট্যুর লিডার', emoji: '👑', bg: 'bg-amber-100 text-amber-800 border-amber-300' },
@@ -31,13 +42,11 @@ export default function UserProfileModal({
   const fileInputRef = useRef(null);
 
   const [profile, setProfile] = useState(() => {
-    // Attempt to match with existing member by name or email
-    const matchedMember = members.find(m =>
-      m.name?.toLowerCase().includes((currentUser?.displayName || '').toLowerCase()) ||
-      (currentProfile?.phone && m.phone === currentProfile.phone)
-    );
+    // Linked by the chosen member ID, or by an exact name match. Never a partial match.
+    const matchedMember = findLinkedMember(members, currentProfile, currentUser?.displayName);
 
     return {
+      memberId: matchedMember?.id ?? null,
       displayName: currentProfile?.displayName || currentUser?.displayName || '',
       nickname: currentProfile?.nickname || '',
       role: currentProfile?.role || 'সদস্য',
@@ -117,9 +126,11 @@ export default function UserProfileModal({
     }
   };
 
+  const linkedMember = members.find((member) => member.id === profile.memberId) ?? null;
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSaveProfile(profile);
+    onSaveProfile({ ...profile, memberId: profile.memberId ?? null, phone: profile.phone.trim() });
     setSavedSuccess(true);
     setTimeout(() => {
       setSavedSuccess(false);
@@ -130,11 +141,12 @@ export default function UserProfileModal({
   return (
     <div
       className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in duration-200"
-      onClick={onClose}
+     role="presentation"
+ onClick={onClose}
+onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
     >
       <div
         className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl max-h-[88vh] flex flex-col overflow-hidden my-auto border border-slate-100 animate-in fade-in zoom-in-95 duration-200"
-        onClick={e => e.stopPropagation()}
       >
         {/* PINNED TOP HEADER BAR (Never scrolls off the screen) */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-200 bg-slate-50/95 backdrop-blur-md shrink-0 z-20">
@@ -284,8 +296,8 @@ export default function UserProfileModal({
             </div>
 
             {/* Avatar Preset Selection */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 block">ট্যুর রোল / প্রোফাইল ব্যাজ নির্বাচন করুন:</label>
+            <fieldset className="space-y-1.5 min-w-0">
+              <legend id="profile-role-group" className="text-xs font-bold text-slate-700 block">ট্যুর রোল / প্রোফাইল ব্যাজ নির্বাচন করুন:</legend>
               <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
                 {AVATAR_OPTIONS.map(opt => (
                   <button
@@ -303,13 +315,13 @@ export default function UserProfileModal({
                   </button>
                 ))}
               </div>
-            </div>
+            </fieldset>
 
             {/* Form Fields */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">পূর্ণ নাম</label>
-                <input
+                <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="userprofilemodal-field-1">পূর্ণ নাম</label>
+                <input id="userprofilemodal-field-1"
                   type="text"
                   value={profile.displayName}
                   onChange={e => setProfile({ ...profile, displayName: e.target.value })}
@@ -318,9 +330,26 @@ export default function UserProfileModal({
                 />
               </div>
 
+              <div className="sm:col-span-2">
+                <label htmlFor="profile-member" className="text-xs font-bold text-slate-600 block mb-1">
+                  আমি কোন সদস্য? (বাস সিট ও রুম দেখাতে)
+                </label>
+                <select
+                  id="profile-member"
+                  value={profile.memberId ?? ''}
+                  onChange={e => setProfile({ ...profile, memberId: e.target.value === '' ? null : Number(e.target.value) })}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                >
+                  <option value="">তালিকায় নেই / পরে ঠিক করব</option>
+                  {members.map(member => (
+                    <option key={member.id} value={member.id}>{member.name}</option>
+                  ))}
+                </select>
+              </div>
+
               <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">ডাকনাম / ফ্যামিলি সম্পর্ক</label>
-                <input
+                <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="userprofilemodal-field-2">ডাকনাম / ফ্যামিলি সম্পর্ক</label>
+                <input id="userprofilemodal-field-2"
                   type="text"
                   placeholder="যেমন: বড় ভাই, মেঝ ভাবী, রাজু ভাই"
                   value={profile.nickname}
@@ -330,10 +359,10 @@ export default function UserProfileModal({
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">মোবাইল নম্বর (সরাসরি কল/WhatsApp)</label>
+                <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="userprofilemodal-field-3">মোবাইল নম্বর (সরাসরি কল/WhatsApp)</label>
                 <div className="relative">
                   <Phone size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                  <input
+                  <input id="userprofilemodal-field-3"
                     type="text"
                     placeholder="017XXXXXXXX"
                     value={profile.phone}
@@ -344,8 +373,8 @@ export default function UserProfileModal({
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">রক্তের গ্রুপ (Blood Group)</label>
-                <select
+                <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="userprofilemodal-field-4">রক্তের গ্রুপ (Blood Group)</label>
+                <select id="userprofilemodal-field-4"
                   value={profile.bloodGroup}
                   onChange={e => setProfile({ ...profile, bloodGroup: e.target.value })}
                   className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
@@ -358,10 +387,10 @@ export default function UserProfileModal({
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-600 block mb-1">
+              <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="userprofilemodal-field-5">
                 খাবার পছন্দ ও অ্যালার্জি সতর্কতা (Dietary / Allergies)
               </label>
-              <input
+              <input id="userprofilemodal-field-5"
                 type="text"
                 placeholder="যেমন: চিংড়িতে অ্যালার্জি, মিষ্টি কম খান, বাচ্চার জন্য নরম খিচুড়ি"
                 value={profile.foodPreference}
@@ -372,8 +401,8 @@ export default function UserProfileModal({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-rose-50/60 rounded-2xl border border-rose-100">
               <div>
-                <label className="text-[11px] font-bold text-rose-900 block mb-1">জরুরি যোগাযোগকারী ব্যক্তি</label>
-                <input
+                <label className="text-[11px] font-bold text-rose-900 block mb-1" htmlFor="userprofilemodal-field-6">জরুরি যোগাযোগকারী ব্যক্তি</label>
+                <input id="userprofilemodal-field-6"
                   type="text"
                   placeholder="যেমন: স্ত্রী / ভাই / পিতা"
                   value={profile.emergencyContact}
@@ -382,8 +411,8 @@ export default function UserProfileModal({
                 />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-rose-900 block mb-1">জরুরি ফোন নম্বর</label>
-                <input
+                <label className="text-[11px] font-bold text-rose-900 block mb-1" htmlFor="userprofilemodal-field-7">জরুরি ফোন নম্বর</label>
+                <input id="userprofilemodal-field-7"
                   type="text"
                   placeholder="017XXXXXXXX"
                   value={profile.emergencyPhone}
@@ -399,14 +428,14 @@ export default function UserProfileModal({
                 <Bus size={15} className="text-teal-600 shrink-0" />
                 <div className="min-w-0">
                   <span className="text-[10px] text-slate-400 block">বাস সিট</span>
-                  <span className="font-semibold text-slate-700 truncate block">{profile.seat}</span>
+                  <span className="font-semibold text-slate-700 truncate block">{linkedMember?.seat || profile.seat}</span>
                 </div>
               </div>
               <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-2">
                 <Hotel size={15} className="text-amber-600 shrink-0" />
                 <div className="min-w-0">
                   <span className="text-[10px] text-slate-400 block">হোটেল রুম</span>
-                  <span className="font-semibold text-slate-700 truncate block">{profile.room}</span>
+                  <span className="font-semibold text-slate-700 truncate block">{linkedMember?.room || profile.room}</span>
                 </div>
               </div>
             </div>

@@ -1,75 +1,79 @@
 # Rangpur ➔ Cox's Bazar Tour 2026 — Agent Operational Memory & Guidelines
 
-## 1. Server, Infrastructure & Deployment Architecture
+## 1. Architecture
 
-### VPS Details
-- **Host Alias**: `banglaqr-vps` (configured in local `~/.ssh/config`)
-- **Web App Directory**: `/opt/tour2026/`
-- **Docker Container**: `tour2026-app` (Mapped port `8190:3000`)
-- **Live Public Domain**: `https://tour2026.izhaanintellect.fun` (Proxied via Cloudflare)
+- **Web app**: Vite 8 + React 19 + Tailwind 4 (`src/`). Production output is `dist/`.
+- **Server**: `server.js` with modules in `server/`. It serves `dist/` and the backup API at `/api`. It runs in Docker (`Dockerfile`, `docker-compose.yml`, port `127.0.0.1:8190 → 3000`).
+- **Data**: Firestore project `tour-26` (`asia-south1`). The trip lives in `tours/coxsbazar2026`. Each list is a subcollection: `itinerary`, `members`, `expenses`, `checklist`, `notices`, `posts`, `channels/{general|food|sightseeing|emergency}/messages`, `locations/{email}`, `profiles/{email}`. Schema marker: `schemaVersion: 2`.
+- **Access**: Google sign-in only. Family allowlist: Firestore `config/access` with `emails` and `admins` (set in the Firebase console; family members can read it, nobody can change it from the app). The server has its own allowlist in the `ALLOWED_EMAILS` environment variable. Keep both lists in sync.
+- **Photos**: full-size copies go to the shared Drive folder through the Apps Script webhook. Firestore keeps only a 640px thumbnail per photo (`src/services/photos.js`). A photo post is saved only after its Drive upload succeeds.
+- **Money**: `src/utils/ledger.js` is the single source of truth (integer paisa; the fund is a party in the settlement). Do not re-implement it in components.
+- **Offline**: Firestore uses IndexedDB persistence. The service worker (`public/sw.js`) caches only the app shell, under a per-build cache name. It never caches `/api` or trip data.
+- **Native**: Capacitor 8 Android project in `android/`. Its release build is minified and not debuggable. APK downloads are served at `/Tour2026.apk`.
 
-### Standard Deployment Procedure
-Whenever updating and deploying the application to production, use this exact workflow:
+## 2. Standard Deployment
+
+Run from the repository root in PowerShell:
 
 ```powershell
-# 1. Build web application for production
+# 1. Tests and build
+npm test
 npm run build
 
-# 2. Sync assets to Capacitor Android
+# 2. Sync and build the Android app (release)
 npx cap sync
+cmd /c "cd /d e:\Projects\Tour\android && gradlew assembleRelease"
 
-# 3. Compile Android APK with Gradle
-cmd /c "cd /d e:\Projects\Tour\android && gradlew assembleDebug"
-
-# 4. Copy fresh APK to public and rebuild web dist
-Copy-Item -Path "android/app/build/outputs/apk/debug/app-debug.apk" -Destination "public/Tour2026.apk" -Force
+# 3. Publish the APK under the name the app links to, then rebuild the web dist
+Copy-Item -Path "android/app/build/outputs/apk/release/app-release.apk" -Destination "public/Tour2026.apk" -Force
 npm run build
 
-# 5. Archive dist folder
+# 4. Archive the web dist and the server
 tar -cf dist.tar dist
+tar -cf server.tar server.js server package.json
 
-# 6. Stream upload dist.tar to VPS and reload container
-python3 -c "import subprocess; data = open('dist.tar', 'rb').read(); p = subprocess.Popen(['ssh', 'banglaqr-vps', 'cat > /opt/tour2026/dist.tar'], stdin=subprocess.PIPE); p.communicate(input=data); print('Uploaded, code:', p.returncode)"
-ssh banglaqr-vps "cd /opt/tour2026 && tar -xf dist.tar && docker cp dist/. tour2026-app:/app/dist/ && docker restart tour2026-app"; Remove-Item -Force dist.tar
+# 5. Upload both archives to the VPS
+python3 -c "import subprocess; [subprocess.run(['ssh','banglaqr-vps','cat > /opt/tour2026/'+n], input=open(n,'rb').read(), check=True) for n in ['dist.tar','server.tar']]; print('Uploaded')"
+
+# 6. Unpack, copy into the container, and restart it
+ssh banglaqr-vps "cd /opt/tour2026 && tar -xf dist.tar && tar -xf server.tar && docker cp dist/. tour2026-app:/app/dist/ && docker cp server.js tour2026-app:/app/ && docker cp server tour2026-app:/app/ && docker restart tour2026-app"
+Remove-Item -Force dist.tar, server.tar
 ```
 
----
+Requirements on the VPS:
+- `/opt/tour2026/.env` contains `ALLOWED_EMAILS=` with the family Google accounts (comma-separated). Without it, `docker compose` refuses to start and the backup API refuses every request.
+- A release keystore is optional. Without `TOUR_RELEASE_KEYSTORE` (and its passwords), the release build is signed with the debug key so that the registered Google Sign-In SHA-1 keeps working. Before publishing to people outside the family, create a release keystore and register its SHA-1 in Firebase.
 
-## 2. Cloud Backends & Zero-Auth Google Drive Uploads
+## 3. Firestore Rules and First-Time Upgrade
 
-### Firebase Cloud Backend
-- **Project**: `tour-26`
-- **Region**: `asia-south1`
-- **Document Path**: `tours/coxsbazar2026`
-- **Strict Constraint**: Firestore documents have a hard 1 MB (1,048,576 bytes) limit. Large base64 image strings MUST NOT be stored in Firestore! Always use image compression and sanitize data before pushing (`sanitizeAndCompressTourData` in `src/utils/imageCompressor.js`).
+The rules in `firestore.rules` deny everyone outside the allowlist. Run them against the emulator with `npm run test:rules` (needs Java).
 
-### Google Drive Integration (Zero-Auth Webhook)
-- **Drive Folder ID**: `1G_g7cTkA489hbL9dsF6LU5tdfX3E54vM`
-- **Apps Script Webhook**: `https://script.google.com/macros/s/AKfycbzdoJLe5hD8Gmx3Q-vISeFAy5GDXs0thbt2DO-3aotJ2gWZlqxEB1fE3FJ2kq2tjdgWlA/exec`
-- **Flow**: Any user uploading photos to InstagramFeed sends multipart base64 directly to the Google Apps Script Webhook. It uploads directly into the shared tour folder without requiring OAuth authentication from members.
+Upgrade order for the live project (the old app wrote everything into one document):
+1. In the Firebase console, create `config/access` with `emails` (lowercase family addresses) and `admins` (the organiser's address). Do this before anything else, or the family will be locked out.
+2. Deploy the rules: `npx firebase deploy --only firestore:rules`.
+3. Deploy the app and server (section 2).
+4. An admin opens the app once. The app moves the old arrays into subcollections (a banner shows progress). Only admins can run this; records keep their original authors. Check the expense totals afterwards.
+5. In the Members list, set the coordinator's phone and mark that member with `role: "coordinator"` (the safety screen dials that number). Phone numbers are never stored in the code.
 
----
+## 4. Rules for Changes
 
-## 3. Superpower Modules & Native Android Architecture
+- Never write personal phone numbers, emails, or other private details into source files or the web bundle. Family data lives in Firestore only.
+- Never store full-size base64 photos in Firestore. Thumbnails only (`src/services/photos.js`).
+- Write single documents (`src/services/tourStore.js`). Do not overwrite whole lists.
+- Money, dates, CSV, tides, and member linking have unit tests (`npm test`). Keep them passing.
+- The tide table (`src/data/tideSchedule.js`) is hand-entered and not verified. Check it against a local tide table before anyone relies on it for swimming decisions.
+- Known open risk, deliberately left unchanged: the Apps Script Drive webhook accepts uploads from anyone who has its URL.
 
-- **Family Safety & Beach Compass (`src/components/FamilySafetyHub.jsx`)**:
-  - Real-time GPS location sharing across the family dashboard using native `@capacitor/geolocation`.
-  - Rotating compass needle calculating dynamic bearing & distance towards Hotel Sea Moon & Evergreen Bus.
-  - Web Audio synthesized emergency siren and quick dialer for Tour Coordinator (Sohag Rana: `01737-910040` / `01737910040`) and Tourist Police (`01320-163599` / `999`).
-- **Family Travel Trivia Quiz (`src/components/TourQuizModal.jsx`)**:
-  - 8-round interactive tour quiz with explanations, celebratory audio, and digital champion certificates.
-- **Native Android APK Architecture (`public/Tour2026-v2.apk`)**:
-  - 7 Native Capacitor Plugins (`@capacitor-firebase/authentication`, `@capacitor/app`, `@capacitor/geolocation`, `@capacitor/haptics`, `@capacitor/network`, `@capacitor/splash-screen`, `@capacitor/status-bar`).
-  - Native Google Sign-In with registered debug SHA-1 (`C4:C4:EA:A1:B2:62:7A:A9:19:AC:78:15:8B:9B:8B:E9:41:C7:F4:F4`), SHA-256, and OAuth 2.0 Web Client ID (`26498265392-seil3pfcqcj6ie5049askpblsnvuq7nn.apps.googleusercontent.com`).
-  - Branded Android adaptive icon with amber gold ring on deep teal background across all mipmap densities (mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi).
-  - Native hardware back-button handler (modals -> drawer -> dashboard -> app exit).
-  - Native status bar matching deep teal `#134e4a` and light icons.
-- **PWA Offline Service Worker (`public/sw.js`)**:
-  - Cache-first strategy for beach usage with low or zero network connectivity, strictly bypassing APK downloads.
+## 5. Feature Modules
 
----
+- **Family Safety & Beach Compass** (`src/components/FamilySafetyHub.jsx`): live location (one document per person, cleared on request), compass to Hotel Sea Moon and the bus meeting point, siren, dialer for the coordinator (from members) and public emergency numbers.
+- **Family Travel Trivia Quiz** (`src/components/TourQuizModal.jsx`).
+- **Seat and room maps** (`src/components/BusSeatMap.jsx`, `HotelRoomMap.jsx`): contact numbers are looked up from members by exact name.
+- **Native Android** (`android/`): Capacitor plugins for authentication, app lifecycle, geolocation, haptics, network, splash screen, status bar. Back button: modals, drawer, dashboard, exit.
+- **Service worker** (`public/sw.js`): build-stamped cache name (`vite.config.js`), network-first navigations, cache-first hashed assets.
 
-## 4. Coding & Design Standards
-- **UI & Layout**: Mobile-first responsive design, Tailwind CSS, high-contrast badges for bright daylight outdoor readability on the beach.
-- **Language**: Bengali language typography and friendly tone tailored for a family tour.
-- **State Integrity**: Always preserve local-first fallback (`localStorage`) synchronized with real-time Firebase listeners.
+## 6. Coding Standards
+
+- Mobile-first layout, Tailwind, high-contrast badges for outdoor daylight use.
+- Bengali text and a friendly tone for the family.
+- Keep the local-first behaviour: the last known data is shown instantly from `localStorage`, and Firestore's offline cache keeps edits while offline.

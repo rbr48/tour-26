@@ -1,5 +1,8 @@
-import React, { useEffect } from 'react';
-import { Printer, Download, X, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Printer, Download, X } from 'lucide-react';
+import { FUND_LABEL, categoryTotals, computeLedger } from '../utils/ledger';
+import { csvRow } from '../utils/csv';
+import { localISODate } from '../utils/date';
 
 export default function PrintableReport({
   tourInfo = {},
@@ -7,11 +10,14 @@ export default function PrintableReport({
   expenses = [],
   onClose
 }) {
-  const totalDeposit = members.reduce((sum, m) => sum + Number(m.deposit || 0), 0);
-  const totalExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-  const remaining = totalDeposit - totalExpense;
-  const totalHeadcount = members.reduce((sum, m) => sum + (Number(m.familyCount) || 1), 0);
-  const perHead = totalHeadcount > 0 ? Math.round(totalExpense / totalHeadcount) : 0;
+  // The same ledger as the dashboard and the settlement view, so every figure agrees.
+  const ledger = useMemo(() => computeLedger({ members, expenses }), [members, expenses]);
+  const [generatedAt] = useState(() => new Date());
+  const totalDeposit = ledger.totalDeposits;
+  const totalExpense = ledger.totalExpense;
+  const remaining = ledger.fundBalance;
+  const totalHeadcount = ledger.headcount;
+  const perHead = ledger.perHeadCost;
 
   // Close on Escape key
   useEffect(() => {
@@ -26,71 +32,63 @@ export default function PrintableReport({
 
   // COMPLETE & FLAWLESS UTF-8 CSV EXPORT (With BOM so Excel renders Bangla perfectly)
   const handleExportCSV = () => {
-    let csv = "";
+    const rows = [];
+    const line = (...values) => rows.push(csvRow(values));
+    const section = (title) => {
+      rows.push('');
+      rows.push(csvRow([`================== ${title} =================`]));
+    };
 
-    // 1. TOUR TITLE & METADATA
-    csv += `"রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬ - অফিশিয়াল হিসাব ও অডিট বিবরণী"\n`;
-    csv += `"ভ্রমণকাল","${tourInfo.duration || '২৩ অক্টোবর ২০২৬ – ২৬ অক্টোবর ২০২৬'}"\n`;
-    csv += `"প্রধান পরিবহন","${tourInfo.busName || 'এভারগ্রীন এসি বাস'}"\n`;
-    csv += `"আবাসন / হোটেল","${tourInfo.hotelName || 'হোটেল সি মুন'}"\n`;
-    csv += `"রিপোর্ট তৈরির তারিখ","${new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' })}"\n`;
-    csv += `\n`;
+    line('রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬ - অফিশিয়াল হিসাব ও অডিট বিবরণী');
+    line('ভ্রমণকাল', tourInfo.duration || '১৯ অক্টোবর ২০২৬ – ২৩ অক্টোবর ২০২৬');
+    line('প্রধান পরিবহন', tourInfo.busName || 'এভারগ্রীন এসি বাস');
+    line('আবাসন / হোটেল', tourInfo.hotelName || 'হোটেল সি মুন');
+    line('রিপোর্ট তৈরির তারিখ', new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' }));
 
-    // 2. FINANCIAL AUDIT SUMMARY
-    csv += `"================== আর্থিক সারসংক্ষেপ (FINANCIAL AUDIT SUMMARY) ================="\n`;
-    csv += `"বিবরণ","পরিমাণ (টাকা)"\n`;
-    csv += `"মোট সংগৃহীত জমা ফান্ড","${totalDeposit}"\n`;
-    csv += `"সর্বমোট মোট খরচ","${totalExpense}"\n`;
-    csv += `"অবশিষ্ট উদ্বৃত্ত ফান্ড","${remaining}"\n`;
-    csv += `"মোট সদস্য সংখ্যা (হেডকাউন্ট)","${totalHeadcount} জন"\n`;
-    csv += `"মাথাপিছু গড় ব্যয়","${perHead}"\n`;
-    csv += `\n`;
+    section('আর্থিক সারসংক্ষেপ (FINANCIAL AUDIT SUMMARY)');
+    line('বিবরণ', 'পরিমাণ (টাকা)');
+    line('মোট সংগৃহীত জমা ফান্ড', ledger.totalDeposits);
+    line('সর্বমোট খরচ', ledger.totalExpense);
+    line('ফান্ড থেকে পরিশোধিত খরচ বাদে অবশিষ্ট ফান্ড', ledger.fundBalance);
+    line('মোট সদস্য সংখ্যা (হেডকাউন্ট)', `${ledger.headcount} জন`);
+    line('মাথাপিছু গড় ব্যয়', ledger.perHeadCost);
 
-    // 3. EXPENSE BREAKDOWN BY CATEGORY
-    csv += `"================== খাতভিত্তিক খরচের সারসংক্ষেপ (CATEGORY BREAKDOWN) ================="\n`;
-    csv += `"খাত","মোট ব্যয় (টাকা)","শতকরা অনুপাত (%)"\n`;
-    const catMap = {};
-    expenses.forEach(e => {
-      const c = e.category || 'অন্যান্য';
-      catMap[c] = (catMap[c] || 0) + Number(e.amount || 0);
+    section('খাতভিত্তিক খরচের সারসংক্ষেপ (CATEGORY BREAKDOWN)');
+    line('খাত', 'মোট ব্যয় (টাকা)', 'শতকরা অনুপাত (%)');
+    for (const row of categoryTotals(expenses)) {
+      const pct = ledger.totalExpense > 0 ? Math.round((row.amount / ledger.totalExpense) * 1000) / 10 : 0;
+      line(row.category, row.amount, `${pct}%`);
+    }
+
+    section('খরচের সম্পূর্ণ বিবরণী (EXPENSES LEDGER)');
+    line('ক্রমিক নং', 'তারিখ', 'সময়', 'খাত', 'খরচের বিবরণ', 'বিল পরিশোধক', 'পরিমাণ (টাকা)');
+    expenses.forEach((expense, index) => {
+      line(index + 1, expense.date || '', expense.time || '', expense.category || '', expense.title || '', expense.paidBy || FUND_LABEL, Number(expense.amount) || 0);
     });
-    Object.entries(catMap).forEach(([cat, amt]) => {
-      const pct = totalExpense > 0 ? ((amt / totalExpense) * 100).toFixed(1) : 0;
-      csv += `"${cat}","${amt}","${pct}%"\n`;
-    });
-    csv += `\n`;
+    line('', '', '', '', 'সর্বমোট ব্যয়:', '', ledger.totalExpense);
 
-    // 4. DETAILED EXPENSE LEDGER
-    csv += `"================== ১. খরচের সম্পূর্ণ বিবরণী (EXPENSES LEDGER) ================="\n`;
-    csv += `"ক্রমিক নং","তারিখ","সময়","খাত","খরচের বিবরণ","বিল পরিশোধক","পরিমাণ (টাকা)"\n`;
-    expenses.forEach((e, idx) => {
-      csv += `"${idx + 1}","${e.date || ''}","${e.time || ''}","${e.category || ''}","${(e.title || '').replace(/"/g, '""')}","${e.paidBy || 'ট্যুর ফান্ড'}","${e.amount || 0}"\n`;
+    section('সদস্যদের জমা ও সিট/রুম বরাদ্দ (MEMBERS & DEPOSITS)');
+    line('ক্রমিক নং', 'সদস্যের নাম', 'মোবাইল নম্বর', 'পরিবার সদস্য সংখ্যা', 'বাস সিট', 'হোটেল রুম', 'জমা (টাকা)', 'শেয়ার (টাকা)', 'হিসাব (+ পাবেন / - দেবেন)');
+    ledger.rows.forEach((row, index) => {
+      const member = members.find((item) => item.id === row.id) ?? {};
+      line(index + 1, row.name, member.phone || '', row.familyCount, member.seat || '', member.room || '', row.deposit, row.share, row.net);
     });
-    csv += `"","","","","সর্বমোট ব্যয়:","","${totalExpense}"\n`;
-    csv += `\n`;
+    line('', '', '', 'মোট সংগৃহীত ফান্ড:', '', '', ledger.totalDeposits, ledger.totalExpense, ledger.fundBalance);
 
-    // 5. MEMBERS ROSTER & DEPOSIT SETTLEMENT LEDGER
-    csv += `"================== ২. সদস্যদের জমা ও সিট/রুম বরাদ্দ (MEMBERS & DEPOSITS) ================="\n`;
-    csv += `"ক্রমিক নং","সদস্যের নাম","মোবাইল নম্বর","পরিবার সদস্য সংখ্যা","বাস সিট","হোটেল রুম","মোট জমা (টাকা)","ন্যায্য অংশ খরচ (টাকা)","নেট ব্যালেন্স / পাওনা (টাকা)"\n`;
-    members.forEach((m, idx) => {
-      const fCount = Number(m.familyCount || 1);
-      const dep = Number(m.deposit || 0);
-      const fairShare = perHead * fCount;
-      const net = dep - fairShare;
-      csv += `"${idx + 1}","${(m.name || '').replace(/"/g, '""')}","${m.phone || ''}","${fCount}","${m.seat || ''}","${m.room || ''}","${dep}","${fairShare}","${net >= 0 ? '+' : ''}${net}"\n`;
-    });
-    csv += `"","","","মোট সংগৃহীত ফান্ড:","","","${totalDeposit}","${totalExpense}","${remaining}"\n`;
-    csv += `\n`;
+    section('চূড়ান্ত সেটেলমেন্ট (SETTLEMENT)');
+    line('কে দেবেন', 'কাকে দেবেন', 'টাকা');
+    ledger.settlements.forEach((payment) => line(payment.from, payment.to, payment.amount));
 
-    // 6. AUDIT SIGN-OFF
-    csv += `"================== অডিট অনুমোদন ও স্বাক্ষর ================="\n`;
-    csv += `"ট্যুর লিডার: রাজু ভাই","কোষাধ্যক্ষ: সোহাগ রানা","অডিটর: পরিবারের অভিভাবকবৃন্দ"\n`;
+    section('অডিট অনুমোদন ও স্বাক্ষর');
+    line("ট্যুর লিডার: রাজু ভাই","কোষাধ্যক্ষ: সোহাগ রানা","অডিটর: পরিবারের অভিভাবকবৃন্দ");
+
+    const csv = rows.join('\n') + '\n';
 
     // Prepend UTF-8 BOM ('\uFEFF') so Microsoft Excel and Windows apps display Bangla 100% cleanly!
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `CoxsBazar_Tour2026_Complete_Audit_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `CoxsBazar_Tour2026_Complete_Audit_${localISODate()}.csv`;
     link.click();
   };
 
@@ -98,12 +96,13 @@ export default function PrintableReport({
     <div
       id="printable-report-backdrop"
       className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 print:p-0 print:static print:bg-white print:overflow-visible"
-      onClick={onClose}
+     role="presentation"
+ onClick={onClose}
+onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
     >
       <div
         id="printable-report-modal"
         className="bg-white rounded-2xl sm:rounded-3xl max-w-4xl w-full shadow-2xl max-h-[94vh] flex flex-col overflow-hidden my-auto print:max-h-none print:shadow-none print:rounded-none print:overflow-visible animate-in fade-in zoom-in-95 duration-200"
-        onClick={e => e.stopPropagation()}
       >
         {/* TOP PINNED CONTROL BAR (Fixed at top, hidden during print) */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-200 bg-slate-50/95 backdrop-blur-md shrink-0 print:hidden z-20">
@@ -160,7 +159,7 @@ export default function PrintableReport({
             <p className="text-xs text-slate-600 font-medium">
               ভ্রমণকাল: {tourInfo.duration} • যানবাহন: {tourInfo.busName} • হোটেল: {tourInfo.hotelName}
             </p>
-            <p className="text-[11px] text-slate-400">রিপোর্ট তৈরির তারিখ: {new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <p className="text-[11px] text-slate-400">রিপোর্ট তৈরির তারিখ: {generatedAt.toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
           </div>
 
           {/* Key Totals Grid */}

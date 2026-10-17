@@ -66,36 +66,3 @@ export const compressImageFile = (file, maxWidth = 900, maxHeight = 900, quality
     reader.readAsDataURL(file);
   });
 };
-
-// Batch compress an entire tour data payload before writing to Firestore
-export const sanitizeAndCompressTourData = async (tourData) => {
-  if (!tourData) return tourData;
-  const cloned = { ...tourData };
-
-  // 1. Compress posts images
-  if (Array.isArray(cloned.posts)) {
-    cloned.posts = await Promise.all(
-      cloned.posts.map(async (post) => {
-        if (post.image && typeof post.image === 'string' && post.image.startsWith('data:image') && post.image.length > 80000) {
-          const comp = await compressImage(post.image, 800, 800, 0.65);
-          return { ...post, image: comp };
-        }
-        return post;
-      })
-    );
-  }
-
-  // 2. Compress user profile custom photos
-  if (cloned.userProfiles && typeof cloned.userProfiles === 'object') {
-    const updatedProfiles = { ...cloned.userProfiles };
-    for (const key of Object.keys(updatedProfiles)) {
-      const prof = updatedProfiles[key];
-      if (prof?.customPhotoURL && prof.customPhotoURL.startsWith('data:image') && prof.customPhotoURL.length > 50000) {
-        prof.customPhotoURL = await compressImage(prof.customPhotoURL, 250, 250, 0.7);
-      }
-    }
-    cloned.userProfiles = updatedProfiles;
-  }
-
-  return cloned;
-};

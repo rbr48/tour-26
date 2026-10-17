@@ -1,57 +1,164 @@
 rules_version = '2';
 
+// Data model (see src/services/tourStore.js):
+//   tours/coxsbazar2026                  trip details, meeting point, schema marker
+//   tours/coxsbazar2026/itinerary/*      day plan items
+//   tours/coxsbazar2026/members/*        family members and deposits
+//   tours/coxsbazar2026/expenses/*       spending entries
+//   tours/coxsbazar2026/checklist/*      packing checklist
+//   tours/coxsbazar2026/notices/*        notice board
+//   tours/coxsbazar2026/posts/*         photo posts (thumbnail + Drive link)
+//   tours/coxsbazar2026/channels/{id}/messages/*   chat
+//   tours/coxsbazar2026/locations/{email}          live location, one per person
+//   tours/coxsbazar2026/profiles/{email}           personal profile, one per person
+//   tours/coxsbazar2026/meta/migration             upgrade lock and status (admins only)
+//   config/access                                 family list (read by family, written by console)
+//
+// Records imported from the old single-document layout carry `migrated: true` and can
+// only be written by an admin, so they keep their original authorship.
+//
+// Access is limited to the family allowlist kept in config/access, which only the
+// Firebase console or an admin SDK can change:
+//   { emails: ["a@example.com", ...], admins: ["a@example.com"] }
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: tours
-    // Document ID: coxsbazar2026 (or specific tour IDs)
-    // Fields:
-    //   - tourInfo: map (required) - Meta information (title, dates, hotel, bus, etc.)
-    //   - itinerary: list (required) - Array of day-by-day plan items
-    //   - members: list (required) - Array of family member records (seats, rooms, deposits)
-    //   - expenses: list (required) - Array of expense tracking entries
-    //   - checklist: list (required) - Array of travel packing checklist items
-    //   - updatedAt: string (optional) - ISO 8601 update timestamp
-    //   - updatedBy: map (optional) - Details of the user making the edit
-    //
-    // ===============================================================
-
-    // Helper functions
-    function isAuthenticated() {
-      return request.auth != null;
+    function access() {
+      return get(/databases/$(database)/documents/config/access).data;
     }
 
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
+    function isFamily() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in access().emails;
     }
 
-    // Domain Validator for Tour Data
-    function isValidTourData() {
-      return hasRequiredFields(['tourInfo', 'itinerary', 'members', 'expenses', 'checklist']) &&
-        request.resource.data.tourInfo is map &&
-        request.resource.data.itinerary is list &&
-        request.resource.data.members is list &&
-        request.resource.data.expenses is list &&
-        request.resource.data.checklist is list;
+    function isAdmin() {
+      return isFamily() && request.auth.token.email in access().admins;
     }
 
-    // Tour Collection Rules
+    function myEmail() {
+      return request.auth.token.email;
+    }
+
+    function fits(maxFields) {
+      return request.resource.data.keys().size() <= maxFields;
+    }
+
+    // Optional text fields must stay within a size bound. Large images are not
+    // allowed in Firestore documents; full-size photos live in Google Drive.
+    function textWithin(field, maxLength) {
+      return !(field in request.resource.data)
+        || (request.resource.data[field] is string && request.resource.data[field].size() <= maxLength);
+    }
+
+    function onlyChanged(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // The family list is readable by family members (it only holds their own addresses),
+    // so the app can show admin-only controls. Nobody can change it from the app.
+    match /config/{docId} {
+      allow read: if isFamily();
+      allow write: if false;
+    }
+
     match /tours/{tourId} {
-      // Allow read access to authenticated family members
-      allow read: if isAuthenticated();
-
-      // Allow write access only if authenticated and data structure is valid
-      allow create, update: if isAuthenticated() && isValidTourData();
-
-      // Prevent accidental document deletion
+      allow read: if isFamily();
+      allow create, update: if isFamily()
+        && request.resource.data.updatedBy.uid == request.auth.uid
+        && fits(20);
       allow delete: if false;
+
+      match /itinerary/{itemId} {
+        allow read: if isFamily();
+        allow create, update: if isFamily() && fits(25) && textWithin('notes', 2000);
+        allow delete: if isFamily();
+      }
+
+      match /members/{memberId} {
+        allow read: if isFamily();
+        allow create, update: if isFamily() && fits(25);
+        allow delete: if isAdmin();
+      }
+
+      match /expenses/{expenseId} {
+        allow read: if isFamily();
+        allow create: if (isFamily() && request.resource.data.addedByEmail == myEmail()
+            || isAdmin() && request.resource.data.migrated == true)
+          && fits(25);
+        allow update: if isFamily()
+          && request.resource.data.addedByEmail == resource.data.addedByEmail
+          && fits(25);
+        allow delete: if isFamily()
+          && (resource.data.addedByEmail == myEmail() || isAdmin());
+      }
+
+      match /checklist/{itemId} {
+        allow read: if isFamily();
+        allow create, update: if isFamily() && fits(15);
+        allow delete: if isFamily();
+      }
+
+      match /notices/{noticeId} {
+        allow read: if isFamily();
+        allow create, update: if isFamily() && fits(20) && textWithin('content', 4000);
+        allow delete: if isAdmin();
+      }
+
+      match /posts/{postId} {
+        allow read: if isFamily();
+        allow create: if (isFamily() && request.resource.data.authorEmail == myEmail()
+            || isAdmin() && request.resource.data.migrated == true)
+          && fits(30)
+          && textWithin('thumb', 150000)
+          && textWithin('image', 600000);
+        allow update: if isFamily()
+          && request.resource.data.authorEmail == resource.data.authorEmail
+          && fits(30)
+          && textWithin('thumb', 150000)
+          && (resource.data.authorEmail == myEmail() || onlyChanged(['likes', 'comments']));
+        allow delete: if isFamily()
+          && (resource.data.authorEmail == myEmail() || isAdmin());
+      }
+
+      match /channels/{channelId}/messages/{messageId} {
+        allow read: if isFamily() && channelId in ['general', 'food', 'sightseeing', 'emergency'];
+        allow create: if channelId in ['general', 'food', 'sightseeing', 'emergency']
+          && (isFamily() && request.resource.data.senderEmail == myEmail()
+              || isAdmin() && request.resource.data.migrated == true)
+          && fits(15)
+          && textWithin('text', 4000);
+        allow update: if isFamily()
+          && channelId in ['general', 'food', 'sightseeing', 'emergency']
+          && request.resource.data.senderEmail == resource.data.senderEmail
+          && (resource.data.senderEmail == myEmail() || onlyChanged(['reactions']));
+        allow delete: if isFamily()
+          && (resource.data.senderEmail == myEmail() || isAdmin());
+      }
+
+      match /locations/{email} {
+        allow read: if isFamily();
+        allow create, update: if isFamily() && email == myEmail() && fits(15);
+        allow delete: if isFamily() && (email == myEmail() || isAdmin());
+      }
+
+      match /meta/{docId} {
+        allow read: if isFamily();
+        allow write: if isAdmin();
+      }
+
+      match /profiles/{email} {
+        allow read: if isFamily();
+        allow create, update: if isFamily()
+          && (email == myEmail() || isAdmin())
+          && fits(25)
+          && textWithin('customPhotoURL', 150000);
+        allow delete: if isAdmin();
+      }
     }
 
-    // Default deny for all other paths
     match /{document=**} {
       allow read, write: if false;
     }

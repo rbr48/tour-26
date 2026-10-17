@@ -1,7 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  Bell, BellRing, Check, X, Sparkles, MessageCircle,
-  Image as ImageIcon, Wallet, AlertCircle, ExternalLink, ChevronRight, Volume2
+  Bell,
+  BellRing,
+  Check,
+  Sparkles,
+  MessageCircle,
+  Image as ImageIcon,
+  Wallet,
+  AlertCircle,
+  ChevronRight,
+  Volume2,
 } from 'lucide-react';
 import {
   requestNotificationPermission,
@@ -18,17 +26,8 @@ export default function NotificationCenter({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [permission, setPermission] = useState(() => getNotificationPermission());
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    setPermission(getNotificationPermission());
-  }, []);
-
   // Calculate unread items
-  useEffect(() => {
-    const unread = activities.filter(a => !a.read).length;
-    setUnreadCount(unread);
-  }, [activities]);
+  const unreadCount = activities.filter(a => !a.read).length;
 
   const handleRequestPermission = async () => {
     const res = await requestNotificationPermission();
@@ -92,7 +91,9 @@ export default function NotificationCenter({
       {/* NOTIFICATION DROPDOWN MODAL / POPUP */}
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="fixed inset-0 z-40"role="presentation"
+ onClick={() => setIsOpen(false)}
+onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }} />
           <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden text-slate-800 animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="p-3.5 bg-gradient-to-r from-teal-900 to-slate-900 text-white flex items-center justify-between">
@@ -145,7 +146,7 @@ export default function NotificationCenter({
                 activities.slice(0, 10).map((act, idx) => (
                   <div
                     key={act.id || idx}
-                    onClick={() => {
+                   role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}  onClick={() => {
                       if (act.tab) onNavigate(act.tab);
                       setIsOpen(false);
                     }}
@@ -190,7 +191,7 @@ export default function NotificationCenter({
       {activeToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-md animate-in slide-in-from-top duration-300">
           <div
-            onClick={() => {
+           role="button" tabIndex={0} aria-label={activeToast.title} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}  onClick={() => {
               if (activeToast.tab) onNavigate(activeToast.tab);
               onDismissToast();
             }}

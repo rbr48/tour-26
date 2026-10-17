@@ -1,8 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  ShieldAlert, Compass, MapPin, PhoneCall, AlertOctagon, Navigation,
-  Share2, Volume2, VolumeX, X, Check, ExternalLink, Users, Battery,
-  Clock, Flame, ShieldCheck, HeartPulse
+  ShieldAlert,
+  Compass,
+  MapPin,
+  PhoneCall,
+  AlertOctagon,
+  Navigation,
+  Share2,
+  Volume2,
+  VolumeX,
+  X,
+  Check,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
@@ -45,12 +53,6 @@ const TOUR_LANDMARKS = [
 
 // Emergency Hotline Contacts
 const EMERGENCY_CONTACTS = [
-  {
-    name: 'সোহাগ রানা (ট্যুর কো-অর্ডিনেটর)',
-    phone: '01737-910040',
-    role: 'পরিচালক',
-    priority: true
-  },
   {
     name: 'কক্সবাজার ট্যুরিস্ট পুলিশ (হটলাইন)',
     phone: '01320-163599',
@@ -102,7 +104,9 @@ export default function FamilySafetyHub({
   currentUser = null,
   currentProfile = {},
   familyLocations = {},
-  onShareLocation
+  members = [],
+  onShareLocation,
+  onClearLocation
 }) {
   const [userLocation, setUserLocation] = useState(null);
   const [locationError, setLocationError] = useState('');
@@ -172,9 +176,9 @@ export default function FamilySafetyHub({
   };
 
   useEffect(() => {
-    if (isOpen) {
-      handleGetCurrentLocation();
-    }
+    if (!isOpen) return undefined;
+    const timer = setTimeout(() => handleGetCurrentLocation(), 0);
+    return () => clearTimeout(timer);
   }, [isOpen]);
 
   // Share user location to tour family
@@ -185,9 +189,8 @@ export default function FamilySafetyHub({
     }
 
     const payload = {
-      uid: currentUser?.uid || 'guest_' + Date.now(),
+      uid: currentUser?.uid ?? null,
       name: currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য',
-      avatar: currentProfile?.customPhotoURL || currentUser?.photoURL || null,
       role: currentProfile?.role || 'সদস্য',
       lat: userLocation.lat,
       lng: userLocation.lng,
@@ -268,6 +271,18 @@ export default function FamilySafetyHub({
   }, []);
 
   if (!isOpen) return null;
+
+  const coordinator = members.find((member) => member.role === 'coordinator');
+  const contacts = [
+    {
+      name: coordinator ? `${coordinator.name}` : 'ট্যুর কো-অর্ডিনেটর',
+      phone: coordinator?.phone || '',
+      role: 'পরিচালক',
+      priority: true,
+    },
+    ...EMERGENCY_CONTACTS,
+  ];
+
 
   // Calculate distance and bearing to selected target
   let distanceText = 'লোকেশন লোড হচ্ছে...';
@@ -428,6 +443,16 @@ export default function FamilySafetyHub({
               </button>
             </div>
 
+            {familyLocations[currentUser?.email?.toLowerCase()] && onClearLocation && (
+              <button
+                type="button"
+                onClick={onClearLocation}
+                className="text-[11px] font-semibold text-rose-700 hover:underline self-start"
+              >
+                আমার অবস্থান শেয়ার বন্ধ করুন
+              </button>
+            )}
+
             {shareSuccess && (
               <div className="p-2 bg-emerald-50 text-emerald-800 rounded-xl text-[11px] font-semibold flex items-center gap-1 border border-emerald-200 animate-in fade-in">
                 <Check size={14} className="text-emerald-600" /> আপনার অবস্থান সফলভাবে ফ্যামিলি ড্যাশবোর্ডে পোস্ট হয়েছে!
@@ -463,10 +488,11 @@ export default function FamilySafetyHub({
 
             {/* Quick Emergency Dial Buttons */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-              {EMERGENCY_CONTACTS.map((contact, idx) => (
+              {contacts.map((contact, idx) => (
                 <a
                   key={idx}
-                  href={`tel:${contact.phone}`}
+                  href={contact.phone ? `tel:${contact.phone}` : undefined}
+                  aria-disabled={!contact.phone}
                   className={`p-2.5 rounded-2xl flex items-center justify-between border transition shadow-2xs ${
                     contact.priority
                       ? 'bg-white hover:bg-rose-50 border-rose-200 text-rose-950 font-bold'
@@ -475,7 +501,7 @@ export default function FamilySafetyHub({
                 >
                   <div className="min-w-0">
                     <p className="text-xs truncate">{contact.name}</p>
-                    <p className="text-[10px] text-slate-500">{contact.phone}</p>
+                    <p className="text-[10px] text-slate-500">{contact.phone || 'নম্বর যুক্ত করা হয়নি'}</p>
                   </div>
                   <div className="w-7 h-7 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-xs">
                     <PhoneCall size={13} />

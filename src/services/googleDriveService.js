@@ -4,28 +4,14 @@
 export const GOOGLE_DRIVE_FOLDER_ID = '1G_g7cTkA489hbL9dsF6LU5tdfX3E54vM';
 export const GOOGLE_DRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${GOOGLE_DRIVE_FOLDER_ID}?usp=sharing`;
 
-// 1. Get cached Google Drive Access Token
-export const getDriveAccessToken = () => {
-  try {
-    return localStorage.getItem('tour_google_drive_token') || sessionStorage.getItem('tour_google_drive_token');
-  } catch {
-    return null;
-  }
-};
+// The OAuth access token lives only in memory. Persisting it in localStorage would
+// expose it to any script on the origin, and it expires after about an hour anyway.
+let driveAccessToken = null;
 
-// 2. Save Google Drive Access Token
+export const getDriveAccessToken = () => driveAccessToken;
+
 export const setDriveAccessToken = (token) => {
-  try {
-    if (token) {
-      localStorage.setItem('tour_google_drive_token', token);
-      sessionStorage.setItem('tour_google_drive_token', token);
-    } else {
-      localStorage.removeItem('tour_google_drive_token');
-      sessionStorage.removeItem('tour_google_drive_token');
-    }
-  } catch (e) {
-    console.warn('Failed to store drive token:', e);
-  }
+  driveAccessToken = token || null;
 };
 
 // 3. Convert Base64 / Data URL to Blob
@@ -99,7 +85,6 @@ export const uploadToGoogleDrive = async ({
     }
 
     const boundary = '-------tour2026_' + Math.random().toString(36).substring(2) + Date.now();
-    const delimiter = `\r\n--${boundary}\r\n`;
     const closeDelim = `\r\n--${boundary}--`;
 
     const preContent =

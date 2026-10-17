@@ -1,8 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Trophy, Award, Sparkles, CheckCircle2, XCircle, RotateCcw,
-  Share2, X, Star, HelpCircle, ArrowRight, Flame, Heart
-} from 'lucide-react';
+import { Trophy, Award, CheckCircle2, XCircle, RotateCcw, X, Star, ArrowRight } from 'lucide-react';
 
 const QUIZ_QUESTIONS = [
   {
@@ -68,7 +65,6 @@ export default function TourQuizModal({
   onClose,
   currentUser = null,
   currentProfile = {},
-  onShareScore
 }) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [selectedOpt, setSelectedOpt] = useState(null);

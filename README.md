@@ -1,16 +1,27 @@
-# React + Vite
+# রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A private app for one family's trip: itinerary, shared photos, family chat, the expense fund with settlements, seat and room plans, notices, packing checklist, and beach safety tools. It works as a web app and as an Android app (Capacitor).
 
-Currently, two official plugins are available:
+## Quick start
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+npm ci            # install exactly what package-lock.json specifies
+npm run dev       # local development (the backup API is proxied to localhost:3000)
+npm test          # unit and server tests
+npm run test:rules   # Firestore rules against the emulator (needs Java)
+npm run build     # production build into dist/
+npm run lint      # oxlint
+```
 
-## React Compiler
+Run the server locally with `ALLOWED_EMAILS=you@example.com node server.js` after `npm run build`.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Security model
 
-## Expanding the Oxlint configuration
+- Only Google accounts on the family list can read or change trip data. The list lives in Firestore (`config/access`) and in the server's `ALLOWED_EMAILS` variable.
+- Firestore rules enforce ownership: people can edit only their own profile and location, and only the author can delete their photo, message, or expense.
+- The backup API accepts only verified Firebase ID tokens for listed accounts.
+- Personal phone numbers are stored only in Firestore. Nothing personal is in the source or the web bundle.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+## Deployment
+
+See [AGENTS.md](AGENTS.md) for the deployment procedure, the first-time upgrade from the single-document data layout, and the rules for changes.

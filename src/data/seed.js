@@ -1,4 +1,7 @@
-{
+// Starter data for a brand-new tour. Personal phone numbers are intentionally
+// absent: they are entered by the organiser in the members list and stored only
+// in Firestore, never in the public web bundle.
+export const SEED_DATA = {
   "tourInfo": {
     "title": "রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬",
     "startDate": "2026-10-19",
@@ -8,7 +11,13 @@
     "busName": "এভারগ্রীন পরিবহন এসি বাস (Evergreen AC Bus)",
     "departure": "রংপুর কামারপাড়া বাস স্ট্যান্ড (১৯ অক্টোবর, সন্ধ্যা ০৬:০০ টা)",
     "returnDeparture": "ডলফিন মোড়, কক্সবাজার (২৩ অক্টোবর, দুপুর ০২:৪৫ টা)",
-    "photoAlbumUrl": "https://photos.google.com"
+    "driveFolderUrl": "https://drive.google.com/drive/folders/1G_g7cTkA489hbL9dsF6LU5tdfX3E54vM?usp=sharing",
+    "photoAlbumUrl": "https://drive.google.com/drive/folders/1G_g7cTkA489hbL9dsF6LU5tdfX3E54vM?usp=sharing"
+  },
+  "meetingPoint": {
+    "title": "হোটেল সি মুন লবি (কলাতলী মোড়)",
+    "note": "যেকোনো আউটডোর স্পটে যাওয়া ও ফেরার সময় সবাই হোটেল লবিতে সমবেত হবেন।",
+    "mapUrl": "https://maps.google.com/?q=Hotel+Sea+Moon+Kolatoli+Coxs+Bazar"
   },
   "itinerary": [
     {
@@ -170,82 +179,83 @@
     {
       "id": 1,
       "name": "রাজু ভাই (ট্যুর অর্গানাইজার)",
-      "phone": "01700000000",
-      "seat": "স্লিপার (২ সিট)",
-      "room": "রুম বরাদ্দ",
-      "deposit": 15000
+      "seat": "স্লিপার S1, S2 (২ সিট)",
+      "room": "রুম ৩০১ (সি-সাইড)",
+      "deposit": 15000,
+      "familyCount": 2
     },
     {
       "id": 2,
       "name": "মাসুদ ভাই (এসবিএল)",
-      "phone": "01700000000",
-      "seat": "বিজনেস ক্লাস (৩ সিট)",
-      "room": "ডাবল বেড রুম",
-      "deposit": 15000
+      "seat": "বিজনেস B1, B2, B3 (৩ সিট)",
+      "room": "রুম ৪০১ (ফ্যামিলি)",
+      "deposit": 15000,
+      "familyCount": 3
     },
     {
       "id": 3,
       "name": "আশেক মো: আসিফ ভাই",
-      "phone": "01700000000",
-      "seat": "স্লিপার (৪ সিট)",
-      "room": "ডাবল বেড রুম",
-      "deposit": 20000
+      "seat": "স্লিপার S3, S4, S5, S6 (৪ সিট)",
+      "room": "রুম ৫০১ ও ৫০২",
+      "deposit": 20000,
+      "familyCount": 4
     },
     {
       "id": 4,
       "name": "শশি ভাই (সচিবুল ভাই)",
-      "phone": "01700000000",
-      "seat": "বিজনেস ক্লাস (৩ সিট)",
-      "room": "রুম বরাদ্দ",
-      "deposit": 15000
+      "seat": "বিজনেস B4, B5, B6 (৩ সিট)",
+      "room": "রুম ৬০১ (ফ্যামিলি)",
+      "deposit": 15000,
+      "familyCount": 3
     },
     {
       "id": 5,
       "name": "নুরুজ্জামান ভাই",
-      "phone": "01700000000",
-      "seat": "বিজনেস ক্লাস (৩ সিট)",
-      "room": "ডাবল বেড রুম",
-      "deposit": 15000
+      "seat": "বিজনেস B7, B8, B9 (৩ সিট)",
+      "room": "রুম ৬০২ (ফ্যামিলি)",
+      "deposit": 15000,
+      "familyCount": 3
     },
     {
       "id": 6,
       "name": "লতিফ ভাই / খালু (কুড়িগ্রাম)",
-      "phone": "01700000000",
-      "seat": "বিজনেস ক্লাস (২ সিট)",
-      "room": "রুম বরাদ্দ",
-      "deposit": 10000
+      "seat": "বিজনেস B10, B11 (২ সিট)",
+      "room": "রুম ৩০২ (ফ্রন্ট ভিউ)",
+      "deposit": 10000,
+      "familyCount": 2
     },
     {
       "id": 7,
       "name": "আলিম ভাই",
-      "phone": "01700000000",
-      "seat": "স্লিপার (২ সিট)",
-      "room": "রুম বরাদ্দ",
-      "deposit": 10000
+      "seat": "স্লিপার S7, S8 (২ সিট)",
+      "room": "রুম ৫০৩ (ডাবল)",
+      "deposit": 10000,
+      "familyCount": 2
     },
     {
       "id": 8,
       "name": "সাইফুল ভাই / জামাই",
-      "phone": "01700000000",
-      "seat": "স্লিপার (২ সিট)",
-      "room": "রুম বরাদ্দ",
-      "deposit": 10000
+      "seat": "স্লিপার S9, S10 (২ সিট)",
+      "room": "রুম ৭০১ (সি-ভিউ)",
+      "deposit": 10000,
+      "familyCount": 2
     },
     {
       "id": 9,
-      "name": "এম এস রানা ভাই (বিকেবি)",
-      "phone": "01700000000",
-      "seat": "সিট নির্ধারিত",
-      "room": "ডাবল বেড রুম",
-      "deposit": 10000
+      "name": "মো: সোহাগ রানা / এম এস রানা (ট্যুর কো-অর্ডিনেটর)",
+      "seat": "বিজনেস B12 (সিঙ্গেল)",
+      "room": "রুম ৭০২ (শেয়ার্ড)",
+      "deposit": 10000,
+      "familyCount": 1,
+      "role": "coordinator"
     },
     {
       "id": 10,
       "name": "আলমগীর ভাই (ফটোগ্রাফার)",
-      "phone": "01700000000",
-      "seat": "সিট নির্ধারিত",
-      "room": "সিঙ্গেল রুম",
-      "deposit": 8000
+      "seat": "বিজনেস B13 (সিঙ্গেল)",
+      "room": "রুম ৭০২ (শেয়ার্ড)",
+      "deposit": 8000,
+      "familyCount": 1
     }
   ],
   "expenses": [
@@ -254,42 +264,60 @@
       "title": "হোটেল সি মুন রুম বুকিং অ্যাডভান্স (১০টি রুম)",
       "category": "হোটেল",
       "amount": 25000,
-      "date": "2026-09-04"
+      "paidBy": "ট্যুর ফান্ড",
+      "date": "2026-09-04",
+      "time": "11:30",
+      "paidById": null
     },
     {
       "id": 2,
       "title": "এভারগ্রীন এসি বাস টিকিট (আসা-যাওয়া ২১+ সিট কনফার্ম)",
       "category": "পরিবহন",
       "amount": 48000,
-      "date": "2026-09-26"
+      "paidBy": "ট্যুর ফান্ড",
+      "date": "2026-09-26",
+      "time": "16:00",
+      "paidById": null
     },
     {
       "id": 3,
       "title": "বিআরটিসি ছাদখোলা বাস মেরিন ড্রাইভ রিজার্ভেশন",
       "category": "লোকাল ট্রান্সপোর্ট",
       "amount": 12000,
-      "date": "2026-10-10"
+      "paidBy": "ট্যুর ফান্ড",
+      "date": "2026-10-10",
+      "time": "10:15",
+      "paidById": null
     },
     {
       "id": 4,
       "title": "মহেশখালী স্পিডবোট ও ট্রলার রিজার্ভ বুকিং",
       "category": "লোকাল ট্রান্সপোর্ট",
       "amount": 5000,
-      "date": "2026-10-12"
+      "paidBy": "ট্যুর ফান্ড",
+      "date": "2026-10-12",
+      "time": "14:20",
+      "paidById": null
     },
     {
       "id": 5,
       "title": "সী বীচ বারবিকিউ (BBQ) ও পার্টি স্পেশাল আয়োজন",
       "category": "খাবার",
       "amount": 8000,
-      "date": "2026-10-13"
+      "paidBy": "ট্যুর ফান্ড",
+      "date": "2026-10-13",
+      "time": "19:45",
+      "paidById": null
     },
     {
       "id": 6,
       "title": "ট্যুর স্পেশাল উপহার ও জরুরি সামগ্রী স্টক",
       "category": "অন্যান্য",
       "amount": 3500,
-      "date": "2026-10-13"
+      "paidBy": "ট্যুর ফান্ড",
+      "date": "2026-10-13",
+      "time": "18:10",
+      "paidById": null
     }
   ],
   "checklist": [
@@ -353,5 +381,23 @@
       "category": "ভ্রমণ সামগ্রী",
       "checked": false
     }
+  ],
+  "notices": [
+    {
+      "id": 1,
+      "title": "যাত্রার দিন কামারপাড়া বাস স্ট্যান্ডে উপস্থিতি",
+      "content": "১৯ অক্টোবর বিকাল ৫:৩০ টার মধ্যে সবাইকে কামারপাড়া বাস স্ট্যান্ডে উপস্থিত হতে অনুরোধ করা হচ্ছে। বাস ঠিক সন্ধ্যা ৬:১৫ টায় ছাড়বে।",
+      "author": "রাজু ভাই",
+      "date": "১৬ অক্টোবর",
+      "urgent": true
+    },
+    {
+      "id": 2,
+      "title": "হোটেল চেক-ইন ও মূল NID কার্ড প্রদর্শন",
+      "content": "হোটেল সি মুনে চেক-ইনের জন্য পরিবারের সকল প্রাপ্তবয়স্ক সদস্য ও ভাবীদের মূল NID কার্ড সাথে রাখুন।",
+      "author": "রাজু ভাই",
+      "date": "১৬ অক্টোবর",
+      "urgent": false
+    }
   ]
-}
+};

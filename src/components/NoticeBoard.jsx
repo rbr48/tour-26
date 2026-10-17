@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import {
-  Megaphone, MapPin, AlertOctagon, Plus, Trash2,
-  PhoneCall, ShieldCheck, Clock, ExternalLink, Navigation, Sparkles, X
-} from 'lucide-react';
+import { Megaphone, MapPin, AlertOctagon, Plus, Trash2, ShieldCheck, Navigation, X } from 'lucide-react';
 
 export default function NoticeBoard({
   notices = [],
   meetingPoint = {},
+  canDelete = false,
   onAddNotice,
   onDeleteNotice,
   onUpdateMeetingPoint
@@ -24,7 +22,6 @@ export default function NoticeBoard({
     e.preventDefault();
     if (!newNotice.title || !newNotice.content) return;
     onAddNotice({
-      id: Date.now(),
       title: newNotice.title,
       content: newNotice.content,
       author: newNotice.author || 'ট্যুর লিডার',
@@ -80,8 +77,8 @@ export default function NoticeBoard({
         {isEditingMeeting && (
           <form onSubmit={handleSaveMeetingPoint} className="pt-3 border-t border-teal-700/60 grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="text-[10px] text-teal-200 block mb-1">মিটিং স্পটের নাম</label>
-              <input
+              <label className="text-[10px] text-teal-200 block mb-1" htmlFor="noticeboard-field-1">মিটিং স্পটের নাম</label>
+              <input id="noticeboard-field-1"
                 type="text"
                 value={meetingForm.title}
                 onChange={e => setMeetingForm({ ...meetingForm, title: e.target.value })}
@@ -89,8 +86,8 @@ export default function NoticeBoard({
               />
             </div>
             <div>
-              <label className="text-[10px] text-teal-200 block mb-1">বিশেষ নির্দেশনা / সময়</label>
-              <input
+              <label className="text-[10px] text-teal-200 block mb-1" htmlFor="noticeboard-field-2">বিশেষ নির্দেশনা / সময়</label>
+              <input id="noticeboard-field-2"
                 type="text"
                 value={meetingForm.note}
                 onChange={e => setMeetingForm({ ...meetingForm, note: e.target.value })}
@@ -154,7 +151,7 @@ export default function NoticeBoard({
                     )}
                     <span className="text-[11px] text-slate-500">{notice.date}</span>
                   </div>
-                  {onDeleteNotice && (
+                  {canDelete && onDeleteNotice && (
                     <button
                       onClick={() => onDeleteNotice(notice.id)}
                       className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
@@ -192,7 +189,7 @@ export default function NoticeBoard({
         </p>
         <ul className="text-xs text-rose-200 space-y-1 list-disc list-inside">
           <li>নিকটস্থ ট্যুরিস্ট পুলিশ বুথে গিয়ে জানান এবং <strong>হোটেল সি মুন (কলাতলী)</strong>-এর ঠিকানা দিন।</li>
-          <li>ট্যুর লিডারকে সরাসরি কল করুন: <strong>০১৭১১-০০০০০০</strong> (রাজু ভাই) অথবা ট্যুরিস্ট পুলিশ <strong>০১৩২০-১৬০০০১</strong>-এ কল দিন।</li>
+          <li>ট্যুর লিডার বা কোঅর্ডিনেটরকে সরাসরি কল করুন (নম্বর আছে সদস্য তালিকায়), অথবা ট্যুরিস্ট পুলিশ <strong>০১৩২০-১৬০০০১</strong>-এ কল দিন।</li>
           <li>বিচের লাইফগার্ড মাইকে তাৎক্ষণিক নাম ও বিবরণ ঘোষণার জন্য অনুরোধ করুন।</li>
         </ul>
       </div>
@@ -215,8 +212,8 @@ export default function NoticeBoard({
 
             <form onSubmit={handleCreateNotice} className="space-y-3">
               <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">নোটিশের শিরোনাম</label>
-                <input
+                <label className="text-[11px] font-bold text-slate-600 block mb-1" htmlFor="noticeboard-field-3">নোটিশের শিরোনাম</label>
+                <input id="noticeboard-field-3"
                   type="text"
                   placeholder="যেমন: কাল সকালের নাস্তা ও মহেশখালী যাত্রা..."
                   value={newNotice.title}
@@ -227,8 +224,8 @@ export default function NoticeBoard({
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">ঘোষণার বিস্তারিত তথ্য</label>
-                <textarea
+                <label className="text-[11px] font-bold text-slate-600 block mb-1" htmlFor="noticeboard-field-4">ঘোষণার বিস্তারিত তথ্য</label>
+                <textarea id="noticeboard-field-4"
                   rows={3}
                   placeholder="যেমন: সকাল ৮টায় সবাই নাস্তা শেষ করে লবিতে চলে আসবেন..."
                   value={newNotice.content}
@@ -240,8 +237,8 @@ export default function NoticeBoard({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">ঘোষক / নাম</label>
-                  <input
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1" htmlFor="noticeboard-field-5">ঘোষক / নাম</label>
+                  <input id="noticeboard-field-5"
                     type="text"
                     placeholder="যেমন: রাজু ভাই / মাসুদ ভাই"
                     value={newNotice.author}
