@@ -3,7 +3,7 @@ import {
   Calendar, Wallet, CheckSquare, PhoneCall, Trash2, CheckCircle2, Circle, RefreshCw, Bus, Hotel,
   Navigation, Eye, ShieldCheck, Clock, LogOut, Flame, Megaphone, Printer, Edit3, Save, X,
   Camera, MessageSquare, Menu, Smartphone, Sparkles, Compass, Plus, ExternalLink, Users,
-  ImageIcon, Terminal, AlertTriangle, MapPin, HardDrive,
+  ImageIcon, Terminal, AlertTriangle, MapPin, HardDrive, RotateCcw,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -41,6 +41,7 @@ import {
 import { saveBackup } from './services/backupService';
 import { FUND_LABEL, computeLedger, payerIdFor } from './utils/ledger';
 import { localISODate, localTimeHHMM } from './utils/date';
+import { toBnNum } from './utils/videoHelper';
 
 // Heavy screens load on demand so the first screen opens quickly.
 const SplitwiseManager = lazy(() => import('./components/SplitwiseManager'));
@@ -66,6 +67,8 @@ const nowLabel = () => new Date().toLocaleTimeString('bn-BD', { hour: '2-digit',
 const emptyTrip = () => ({
   tourInfo: SEED_DATA.tourInfo,
   meetingPoint: SEED_DATA.meetingPoint,
+  hotelRooms: null,
+  busSeats: null,
   itinerary: [],
   members: [],
   expenses: [],
@@ -618,6 +621,21 @@ export default function App() {
   };
 
   const handleSaveProfile = (profile) => {
+    const userEmail = emailRef.current || (currentUser?.email ? currentUser.email.toLowerCase() : null);
+    if (userEmail) {
+      setData((prev) => ({
+        ...prev,
+        userProfiles: {
+          ...prev.userProfiles,
+          [userEmail]: {
+            ...(prev.userProfiles?.[userEmail] || {}),
+            ...profile,
+            email: userEmail,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      }));
+    }
     save(saveProfile({ ...profile, updatedAt: new Date().toISOString() }));
   };
 
@@ -682,7 +700,46 @@ export default function App() {
   };
 
   const handleAddComment = (postId, comment) => {
+    setData((prev) => ({
+      ...prev,
+      posts: (prev.posts || []).map((p) =>
+        String(p.id) === String(postId)
+          ? { ...p, comments: [...(p.comments || []), comment] }
+          : p
+      ),
+    }));
     save(pushToArray(['posts'], postId, 'comments', comment));
+  };
+
+  const handleCommentReaction = (postId, commentId, emoji) => {
+    const post = (data.posts || []).find((p) => String(p.id) === String(postId));
+    if (!post) return;
+    const me = (emailRef.current || currentUser?.email || currentProfile?.displayName || currentUser?.displayName || 'user').toLowerCase();
+
+    const updatedComments = (post.comments || []).map((c, idx) => {
+      const cId = c.id !== undefined && c.id !== null ? String(c.id) : String(idx);
+      if (cId !== String(commentId)) return c;
+      const currentReactions = { ...(c.reactions || {}) };
+      const currentVoters = Array.isArray(currentReactions[emoji]) ? [...currentReactions[emoji]] : [];
+      const alreadyVoted = currentVoters.map((v) => String(v).toLowerCase()).includes(me);
+      if (alreadyVoted) {
+        currentReactions[emoji] = currentVoters.filter((v) => String(v).toLowerCase() !== me);
+        if (currentReactions[emoji].length === 0) {
+          delete currentReactions[emoji];
+        }
+      } else {
+        currentReactions[emoji] = [...currentVoters, me];
+      }
+      return { ...c, reactions: currentReactions };
+    });
+
+    setData((prev) => ({
+      ...prev,
+      posts: (prev.posts || []).map((p) =>
+        String(p.id) === String(postId) ? { ...p, comments: updatedComments } : p
+      ),
+    }));
+    save(updateItem(['posts'], postId, { comments: updatedComments }));
   };
 
   const handleDeletePost = (postId) => {
@@ -728,7 +785,33 @@ export default function App() {
   };
 
   const handleUpdatePost = (postId, patch, options) => {
+    setData((prev) => ({
+      ...prev,
+      posts: (prev.posts || []).map((p) => (String(p.id) === String(postId) ? { ...p, ...patch } : p)),
+    }));
     save(updateItem(['posts'], postId, patch, options));
+  };
+
+  const handleViewPost = (postId) => {
+    const post = (data.posts || []).find((p) => String(p.id) === String(postId));
+    if (!post) return;
+    const currentViews = Number(post.views || 0);
+    const newViews = currentViews + 1;
+    setData((prev) => ({
+      ...prev,
+      posts: (prev.posts || []).map((p) => (String(p.id) === String(postId) ? { ...p, views: newViews } : p)),
+    }));
+    save(updateItem(['posts'], postId, { views: newViews }));
+  };
+
+  const handleUpdateHotelRooms = (rooms) => {
+    setData((prev) => ({ ...prev, hotelRooms: rooms }));
+    save(updateTourDetails({ hotelRooms: rooms }));
+  };
+
+  const handleUpdateBusSeats = (seats) => {
+    setData((prev) => ({ ...prev, busSeats: seats }));
+    save(updateTourDetails({ busSeats: seats }));
   };
 
   // Discussion Handlers
@@ -751,10 +834,50 @@ export default function App() {
   };
 
   const handleAddReaction = (channelId, messageId, emoji) => {
-    const me = emailRef.current;
-    const message = (data.discussions?.[channelId] || []).find((item) => item.id === messageId);
-    const alreadyReacted = (message?.reactions?.[emoji] || []).includes(me);
-    save(setReaction(channelId, messageId, emoji, me, !alreadyReacted));
+    const me = (emailRef.current || currentUser?.email || currentProfile?.displayName || currentUser?.displayName || 'user').toLowerCase();
+    const message = (data.discussions?.[channelId] || []).find((item) => String(item.id) === String(messageId));
+    if (!message) return;
+
+    // Collect all emojis where this user has previously reacted
+    const reactions = message.reactions || {};
+    const previousEmojis = [];
+    for (const [e, voters] of Object.entries(reactions)) {
+      if (Array.isArray(voters) && voters.some((v) => String(v).toLowerCase() === me)) {
+        previousEmojis.push(e);
+      }
+    }
+
+    const isTogglingOff = previousEmojis.length === 1 && previousEmojis[0] === emoji;
+
+    // Construct next reactions map removing 'me' from any existing emoji
+    const nextReactions = {};
+    for (const [e, voters] of Object.entries(reactions)) {
+      if (Array.isArray(voters)) {
+        const remaining = voters.filter((v) => String(v).toLowerCase() !== me);
+        if (remaining.length > 0) {
+          nextReactions[e] = remaining;
+        }
+      }
+    }
+
+    if (!isTogglingOff) {
+      // Add 'me' only to the selected emoji
+      nextReactions[emoji] = [...(nextReactions[emoji] || []), me];
+    }
+
+    // Optimistically update discussion messages in state
+    setData((prev) => ({
+      ...prev,
+      discussions: {
+        ...(prev.discussions || {}),
+        [channelId]: (prev.discussions?.[channelId] || []).map((m) =>
+          String(m.id) === String(messageId) ? { ...m, reactions: nextReactions } : m
+        ),
+      },
+    }));
+
+    const removeEmojis = previousEmojis.filter((e) => e !== emoji);
+    save(setReaction(channelId, messageId, emoji, me, !isTogglingOff, removeEmojis));
   };
 
   // Itinerary Handlers
@@ -1689,126 +1812,194 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </button>
               </div>
 
-              {/* Route Progress Banner */}
-              <div className="bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xs sm:text-sm font-semibold text-slate-700 flex items-center gap-2">
-                    <Bus size={17} className="text-teal-600" /> যাত্রাপথ: রংপুর কামারপাড়া ➔ কক্সবাজার ডলফিন মোড়
+              {/* Route Progress & Milestone Timeline */}
+              <div className="bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-100 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-2">
+                    <Bus size={17} className="text-teal-700" /> যাত্রাপথ ও সম্ভাব্য সময়সূচি (রংপুর ➔ কক্সবাজার)
                   </h3>
-                  <span className="text-[10px] sm:text-xs bg-teal-50 text-teal-700 font-medium px-2 py-0.5 rounded-lg border border-teal-200">
+                  <span className="text-[10px] sm:text-xs bg-teal-50 text-teal-800 font-bold px-2.5 py-0.5 rounded-full border border-teal-200">
                     এভারগ্রীন এসি বাস
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-xs md:text-sm font-medium text-slate-700 overflow-x-auto pb-2">
-                  <div className="flex flex-col items-center min-w-[75px]">
-                    <span className="w-3.5 h-3.5 rounded-full bg-teal-600 mb-1"></span>
-                    <span className="font-bold">রংপুর</span>
-                    <span className="text-[10px] text-slate-400">কামারপাড়া</span>
-                  </div>
-                  <div className="flex-1 h-1 bg-teal-200 mx-1"></div>
-                  <div className="flex flex-col items-center min-w-[75px]">
-                    <span className="w-3.5 h-3.5 rounded-full bg-amber-500 mb-1"></span>
-                    <span className="font-bold">বগুড়া</span>
-                    <span className="text-[10px] text-slate-400">ফুড ভিলেজ (ডিনার)</span>
-                  </div>
-                  <div className="flex-1 h-1 bg-teal-200 mx-1"></div>
-                  <div className="flex flex-col items-center min-w-[75px]">
-                    <span className="w-3.5 h-3.5 rounded-full bg-amber-500 mb-1"></span>
-                    <span className="font-bold">চট্টগ্রাম</span>
-                    <span className="text-[10px] text-slate-400">হাইওয়ে নাস্তা</span>
-                  </div>
-                  <div className="flex-1 h-1 bg-teal-200 mx-1"></div>
-                  <div className="flex flex-col items-center min-w-[75px]">
-                    <span className="w-3.5 h-3.5 rounded-full bg-emerald-600 mb-1"></span>
-                    <span className="font-bold">কক্সবাজার</span>
-                    <span className="text-[10px] text-slate-400">হোটেল সি মুন</span>
+
+                {/* Milestone Stepper */}
+                <div className="pt-2 pb-1 overflow-x-auto">
+                  <div className="grid grid-cols-4 min-w-[340px] gap-2 text-center relative">
+                    {/* Connecting Line */}
+                    <div className="absolute top-4 left-6 right-6 h-0.5 bg-slate-200 -z-0"></div>
+
+                    {/* Milestone 1: Rangpur */}
+                    <div className="flex flex-col items-center relative z-10">
+                      <div className="w-8 h-8 rounded-full bg-teal-800 text-white flex items-center justify-center font-bold text-xs shadow-sm ring-4 ring-teal-100">
+                        ১
+                      </div>
+                      <p className="font-bold text-xs text-slate-900 mt-2">রংপুর</p>
+                      <span className="text-[10px] text-teal-800 font-bold bg-teal-50 px-1.5 py-0.5 rounded mt-0.5">
+                        সন্ধ্যা ০৬:০০
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">কামারপাড়া ছাড়বে</span>
+                    </div>
+
+                    {/* Milestone 2: Bogura */}
+                    <div className="flex flex-col items-center relative z-10">
+                      <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 border-2 border-slate-300 flex items-center justify-center font-bold text-xs shadow-xs ring-4 ring-white">
+                        ২
+                      </div>
+                      <p className="font-bold text-xs text-slate-800 mt-2">বগুড়া</p>
+                      <span className="text-[10px] text-slate-700 font-bold bg-slate-100 px-1.5 py-0.5 rounded mt-0.5">
+                        রাত ১০:৩০
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">ফুড ভিলেজ (ডিনার)</span>
+                    </div>
+
+                    {/* Milestone 3: Chittagong */}
+                    <div className="flex flex-col items-center relative z-10">
+                      <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 border-2 border-slate-300 flex items-center justify-center font-bold text-xs shadow-xs ring-4 ring-white">
+                        ৩
+                      </div>
+                      <p className="font-bold text-xs text-slate-800 mt-2">চট্টগ্রাম</p>
+                      <span className="text-[10px] text-slate-700 font-bold bg-slate-100 px-1.5 py-0.5 rounded mt-0.5">
+                        ভোর ০৫:০০
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">হাইওয়ে নাস্তা ও ফ্রেশ</span>
+                    </div>
+
+                    {/* Milestone 4: Cox's Bazar */}
+                    <div className="flex flex-col items-center relative z-10">
+                      <div className="w-8 h-8 rounded-full bg-amber-400 text-teal-950 flex items-center justify-center font-extrabold text-xs shadow-sm ring-4 ring-amber-100">
+                        ৪
+                      </div>
+                      <p className="font-bold text-xs text-slate-900 mt-2">কক্সবাজার</p>
+                      <span className="text-[10px] text-amber-900 font-bold bg-amber-100 px-1.5 py-0.5 rounded mt-0.5">
+                        সকাল ০৮:৩০
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">হোটেল সি মুন</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Emergency Contacts & Tourist Police Section */}
-              <div className="bg-amber-50/70 border border-amber-200 rounded-3xl p-4 sm:p-5 shadow-xs">
-                <div className="flex items-center gap-2 mb-3">
-                  <AlertTriangle className="text-amber-600" size={20} />
-                  <h3 className="font-bold text-amber-900 text-sm">জরুরি যোগাযোগ ও পর্যটক নিরাপত্তা নির্দেশিকা</h3>
-                </div>
-                <div className="space-y-3 text-xs text-amber-900">
-                  <ul className="space-y-1">
-                    <li>• সমুদ্রে নামার আগে লাল পতাকা (বিপদ সংকেত) টাঙানো আছে কিনা তা নিশ্চিত হয়ে নিন।</li>
-                    <li>• শিশুদের সবসময় বড়দের নজরে রাখুন এবং সাথে হোটেলের ফোন নম্বর রাখুন।</li>
-                    <li>• জরুরি যেকোনো প্রয়োজনে নিচের নম্বরে সরাসরি ট্যাপ করে কল করুন:</li>
-                  </ul>
-                  
-                  {/* Emergency Direct Call Grid */}
-                  <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <a
-                      href="tel:01320160001"
-                      className="p-3 bg-white hover:bg-emerald-50 text-slate-800 rounded-2xl border border-amber-200/90 shadow-2xs flex items-center justify-between transition group"
-                    >
-                      <div>
-                        <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-800">ট্যুরিস্ট পুলিশ হটলাইন ১</p>
-                        <p className="text-[11px] text-slate-500">মোবাইল কল সার্ভিস</p>
-                      </div>
-                      <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200">
-                        <PhoneCall size={13} /> ০১৩২০-১৬০০০১
-                      </span>
-                    </a>
-
-                    <a
-                      href="tel:01320160000"
-                      className="p-3 bg-white hover:bg-teal-50 text-slate-800 rounded-2xl border border-amber-200/90 shadow-2xs flex items-center justify-between transition group"
-                    >
-                      <div>
-                        <p className="text-xs font-bold text-slate-900 group-hover:text-teal-800">ট্যুরিস্ট পুলিশ হটলাইন ২</p>
-                        <p className="text-[11px] text-slate-500">কক্সবাজার হেল্পডেস্ক</p>
-                      </div>
-                      <span className="flex items-center gap-1 text-xs font-bold text-teal-700 bg-teal-50 px-2 py-1 rounded-lg border border-teal-200">
-                        <PhoneCall size={13} /> ০১৩২০-১৬০০০০
-                      </span>
-                    </a>
-
-                    <a
-                      href="tel:01320222222"
-                      className="p-3 bg-white hover:bg-sky-50 text-slate-800 rounded-2xl border border-amber-200/90 shadow-2xs flex items-center justify-between transition group"
-                    >
-                      <div>
-                        <p className="text-xs font-bold text-slate-900 group-hover:text-sky-800">ট্যুরিস্ট পুলিশ কন্ট্রোল রুম</p>
-                        <p className="text-[11px] text-slate-500">কেন্দ্রীয় মনিটরিং</p>
-                      </div>
-                      <span className="flex items-center gap-1 text-xs font-bold text-sky-700 bg-sky-50 px-2 py-1 rounded-lg border border-sky-200">
-                        <PhoneCall size={13} /> ০১৩২০-২২২২২২
-                      </span>
-                    </a>
-
-                    <a
-                      href="tel:01320158995"
-                      className="p-3 bg-white hover:bg-indigo-50 text-slate-800 rounded-2xl border border-amber-200/90 shadow-2xs flex items-center justify-between transition group"
-                    >
-                      <div>
-                        <p className="text-xs font-bold text-slate-900 group-hover:text-indigo-800">এসপি (কক্সবাজার রিজিয়ন)</p>
-                        <p className="text-[11px] text-slate-500">পুলিশ সুপার অফিস</p>
-                      </div>
-                      <span className="flex items-center gap-1 text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-200">
-                        <PhoneCall size={13} /> ০১৩২০-১৫৮৯৯৫
-                      </span>
-                    </a>
-
-                    <a
-                      href="tel:999"
-                      className="sm:col-span-2 p-3 bg-rose-50 hover:bg-rose-100 text-rose-950 rounded-2xl border border-rose-200 shadow-2xs flex items-center justify-between transition group"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping"></span>
-                        <div>
-                          <p className="text-xs font-bold text-rose-900">জাতীয় জরুরি সেবা (টোল ফ্রি)</p>
-                          <p className="text-[11px] text-rose-700">পুলিশ, ফায়ার সার্ভিস ও জরুরি অ্যাম্বুলেন্স</p>
-                        </div>
-                      </div>
-                      <span className="flex items-center gap-1 text-xs font-extrabold text-white bg-rose-600 px-3 py-1 rounded-lg shadow-xs">
-                        <PhoneCall size={13} /> ৯৯৯ (কল করুন)
-                      </span>
-                    </a>
+              <div className="bg-amber-50/70 border border-amber-200 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3.5">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="text-amber-600 shrink-0" size={20} />
+                  <div>
+                    <h3 className="font-bold text-amber-950 text-sm">জরুরি যোগাযোগ ও নিরাপত্তা নির্দেশিকা</h3>
+                    <p className="text-[11px] text-amber-800">যেকোনো প্রয়োজনে সরাসরি ট্যাপ করে কল করুন</p>
                   </div>
+                </div>
+
+                {/* Priority Contacts (Tour Coordinator, Hotel & Bus) */}
+                {(() => {
+                  const coordinatorMember = (data.members || []).find(
+                    (m) =>
+                      m.role === 'coordinator' ||
+                      m.name?.includes('রাজু') ||
+                      m.name?.includes('সমন্বয়') ||
+                      m.name?.includes('কো-অর্ডিনেটর')
+                  );
+                  const coordinatorPhone = coordinatorMember?.phone || '';
+
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {/* 1. Tour Leader */}
+                      <a
+                        href={coordinatorPhone ? `tel:${coordinatorPhone}` : '#roster'}
+                        onClick={(e) => {
+                          if (!coordinatorPhone) {
+                            e.preventDefault();
+                            setActiveTab('seats_rooms');
+                            setSeatRoomSubTab('roster');
+                          }
+                        }}
+                        className="p-3 bg-white hover:bg-teal-50 text-slate-800 rounded-2xl border-2 border-teal-600/30 shadow-xs flex items-center justify-between transition group cursor-pointer"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-teal-950 truncate">
+                            {coordinatorMember?.name || 'ট্যুর লিডার (রাজু ভাই)'}
+                          </p>
+                          <p className="text-[10px] text-slate-500">মূল ট্যুর সমন্বয়ক</p>
+                        </div>
+                        <span className="flex items-center gap-1 text-[11px] font-bold text-teal-800 bg-teal-100/80 px-2 py-1 rounded-xl shrink-0">
+                          <PhoneCall size={12} /> {coordinatorPhone ? 'কল দিন' : 'নম্বর দেখুন'}
+                        </span>
+                      </a>
+
+                      {/* 2. Hotel Sea Moon Reception */}
+                      <a
+                        href="tel:01819012345"
+                        className="p-3 bg-white hover:bg-amber-50 text-slate-800 rounded-2xl border border-amber-200/90 shadow-2xs flex items-center justify-between transition group cursor-pointer"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-amber-950 truncate">হোটেল সি মুন (রিসিপশন)</p>
+                          <p className="text-[10px] text-slate-500">কলাতলী, কক্সবাজার</p>
+                        </div>
+                        <span className="flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100/80 px-2 py-1 rounded-xl shrink-0">
+                          <PhoneCall size={12} /> কল দিন
+                        </span>
+                      </a>
+
+                      {/* 3. Evergreen Bus Helpline */}
+                      <a
+                        href="tel:01711000000"
+                        className="p-3 bg-white hover:bg-cyan-50 text-slate-800 rounded-2xl border border-amber-200/90 shadow-2xs flex items-center justify-between transition group cursor-pointer"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-900 truncate">এভারগ্রীন এসি বাস হেল্পলাইন</p>
+                          <p className="text-[10px] text-slate-500">কামারপাড়া কাউন্টার</p>
+                        </div>
+                        <span className="flex items-center gap-1 text-[11px] font-bold text-cyan-800 bg-cyan-100/80 px-2 py-1 rounded-xl shrink-0">
+                          <PhoneCall size={12} /> কল দিন
+                        </span>
+                      </a>
+                    </div>
+                  );
+                })()}
+
+                {/* Public Tourist Police & Emergency 999 Grid */}
+                <div className="pt-1 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <a
+                    href="tel:01320160001"
+                    className="p-2.5 bg-white hover:bg-emerald-50 text-slate-800 rounded-2xl border border-amber-200/70 shadow-2xs flex items-center justify-between transition group"
+                  >
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-800">ট্যুরিস্ট পুলিশ হটলাইন ১</p>
+                      <p className="text-[10px] text-slate-500">সৈকত নিরাপত্তা হেল্পডেস্ক</p>
+                    </div>
+                    <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                      <PhoneCall size={12} /> ০১৩২০-১৬০০০১
+                    </span>
+                  </a>
+
+                  <a
+                    href="tel:01320160000"
+                    className="p-2.5 bg-white hover:bg-teal-50 text-slate-800 rounded-2xl border border-amber-200/70 shadow-2xs flex items-center justify-between transition group"
+                  >
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 group-hover:text-teal-800">ট্যুরিস্ট পুলিশ হটলাইন ২</p>
+                      <p className="text-[10px] text-slate-500">কক্সবাজার হেল্পলাইন</p>
+                    </div>
+                    <span className="flex items-center gap-1 text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-200">
+                      <PhoneCall size={12} /> ০১৩২০-১৬০০০০
+                    </span>
+                  </a>
+
+                  <a
+                    href="tel:999"
+                    className="sm:col-span-2 p-3 bg-rose-50 hover:bg-rose-100 text-rose-950 rounded-2xl border border-rose-200 shadow-2xs flex items-center justify-between transition group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping"></span>
+                      <div>
+                        <p className="text-xs font-bold text-rose-900">জাতীয় জরুরি সেবা (টোল ফ্রি)</p>
+                        <p className="text-[11px] text-rose-700">পুলিশ, ফায়ার সার্ভিস ও অ্যাম্বুলেন্স</p>
+                      </div>
+                    </div>
+                    <span className="flex items-center gap-1 text-xs font-extrabold text-white bg-rose-600 px-3 py-1 rounded-xl shadow-xs">
+                      <PhoneCall size={13} /> ৯৯৯ (কল করুন)
+                    </span>
+                  </a>
                 </div>
               </div>
             </div>
@@ -2002,11 +2193,22 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               </div>
 
               {seatRoomSubTab === 'bus' && (
-                <BusSeatMap members={data.members || []} onUpdateMember={handleUpdateMember} />
+                <BusSeatMap
+                  members={data.members || []}
+                  seats={data.busSeats}
+                  onUpdateSeats={handleUpdateBusSeats}
+                  onUpdateMember={handleUpdateMember}
+                  currentUser={currentUser}
+                />
               )}
 
               {seatRoomSubTab === 'hotel' && (
-                <HotelRoomMap members={data.members || []} />
+                <HotelRoomMap
+                  members={data.members || []}
+                  rooms={data.hotelRooms}
+                  onUpdateRooms={handleUpdateHotelRooms}
+                  currentUser={currentUser}
+                />
               )}
 
               {seatRoomSubTab === 'roster' && (
@@ -2156,6 +2358,8 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               onAddComment={handleAddComment}
               onDeletePost={handleDeletePost}
               onUpdatePost={handleUpdatePost}
+              onViewPost={handleViewPost}
+              onCommentReaction={handleCommentReaction}
             />
           )}
 
@@ -2240,14 +2444,6 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         </main>
       </div>
 
-      {/* Floating Quick Action Command Button (Mobile & Desktop) */}
-      <button
-        onClick={() => setIsCommandOpen(true)}
-        className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-30 bg-gradient-to-r from-teal-800 to-teal-900 hover:from-teal-700 hover:to-teal-800 text-amber-300 font-bold text-xs py-2.5 px-3.5 sm:py-3 sm:px-4 rounded-full shadow-2xl border-2 border-amber-400/80 flex items-center gap-2 transition transform hover:scale-105 active:scale-95 cursor-pointer backdrop-blur-md"
-      >
-        <Terminal size={15} />
-        <span>কমান্ড (Ctrl+K)</span>
-      </button>
 
       {/* =========================================================================
           EXACTLY 5 BUTTONS FOR MOBILE BOTTOM NAVIGATION (Polished & Balanced)
@@ -2320,155 +2516,232 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       />
 
       {/* EDIT MEMBER & DEPOSIT UPDATE MODAL (Pinned header/footer, mobile-friendly) */}
-      {editingMember && (
-        <div
-          className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in duration-150"
-         role="presentation"
- onClick={() => setEditingMember(null)}
-onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
-        >
+      {editingMember && (() => {
+        const originalMember = (data.members || []).find((m) => m.id === editingMember.id) || editingMember;
+        const initialDeposit = Number(originalMember.deposit || 0);
+        const currentDeposit = Number(editingMember.deposit || 0);
+        const addedAmount = currentDeposit - initialDeposit;
+
+        return (
           <div
-            className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl max-h-[88vh] flex flex-col overflow-hidden my-auto border border-slate-100 animate-in fade-in zoom-in-95 duration-200"
+            className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in duration-150"
+            role="presentation"
+            onClick={() => setEditingMember(null)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setEditingMember(null); }}
           >
-            {/* PINNED TOP HEADER */}
-            <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-200 bg-slate-50/95 backdrop-blur-md shrink-0 z-20">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-9 h-9 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
-                  <Edit3 size={18} />
-                </div>
-                <div className="truncate">
-                  <h3 className="font-bold text-sm sm:text-base text-slate-800 truncate">সদস্যের তথ্য ও ডিপোজিট আপডেট</h3>
-                  <p className="text-[11px] text-slate-500 truncate">{editingMember.name}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingMember(null)}
-                className="w-8 h-8 rounded-full bg-slate-200 hover:bg-rose-100 hover:text-rose-600 text-slate-700 flex items-center justify-center transition cursor-pointer active:scale-95 shrink-0"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* SCROLLABLE FORM BODY */}
-            <form
-              id="edit-member-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleUpdateMember(editingMember);
-              }}
-              className="flex-1 flex flex-col min-h-0 overflow-hidden"
+            <div
+              className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl max-h-[90vh] flex flex-col overflow-hidden my-auto border border-slate-100 animate-in fade-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-                <div className="bg-amber-50 p-3.5 rounded-2xl border border-amber-200/80 space-y-2">
-                  <span className="text-xs font-bold text-amber-900 block">
-                    ⚡ দ্রুত ডিপোজিট যোগ করুন (ট্যাপ করলেই জমা বাড়বে):
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[1000, 2000, 3000, 5000, 10000].map(addAmt => (
-                      <button
-                        key={addAmt}
-                        type="button"
-                        onClick={() => {
-                          const cur = Number(editingMember.deposit || 0);
-                          setEditingMember({ ...editingMember, deposit: cur + addAmt });
-                        }}
-                        className="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-900 font-bold text-xs rounded-lg border border-amber-300 transition cursor-pointer shadow-2xs"
-                      >
-                        + ৳{addAmt.toLocaleString()}
-                      </button>
-                    ))}
+              {/* PINNED TOP HEADER */}
+              <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-200 bg-slate-50/95 backdrop-blur-md shrink-0 z-20">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
+                    <Edit3 size={18} />
+                  </div>
+                  <div className="truncate">
+                    <h3 className="font-bold text-sm sm:text-base text-slate-800 truncate">সদস্যের তথ্য ও ডিপোজিট আপডেট</h3>
+                    <p className="text-[11px] text-slate-500 truncate">{editingMember.name}</p>
                   </div>
                 </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="app-field-1">মোট জমা ফান্ড / ডিপোজিট (৳)</label>
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-2.5 text-slate-400 font-bold">৳</span>
-                    <input id="app-field-1"
-                      type="number"
-                      value={editingMember.deposit}
-                      onChange={e => setEditingMember({ ...editingMember, deposit: e.target.value })}
-                      className="w-full pl-8 pr-3.5 py-2.5 text-sm font-bold text-emerald-800 border-2 border-emerald-400 rounded-xl focus:outline-none focus:border-teal-700 bg-emerald-50/20"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="app-field-2">সদস্যের নাম</label>
-                    <input id="app-field-2"
-                      type="text"
-                      value={editingMember.name}
-                      onChange={e => setEditingMember({ ...editingMember, name: e.target.value })}
-                      className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="app-field-3">মোবাইল নম্বর</label>
-                    <input id="app-field-3"
-                      type="text"
-                      value={editingMember.phone}
-                      onChange={e => setEditingMember({ ...editingMember, phone: e.target.value })}
-                      className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="app-field-4">সদস্য সংখ্যা</label>
-                    <input id="app-field-4"
-                      type="number"
-                      value={editingMember.familyCount || 1}
-                      onChange={e => setEditingMember({ ...editingMember, familyCount: e.target.value })}
-                      className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                      min="1"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="app-field-5">বাস সিট</label>
-                    <input id="app-field-5"
-                      type="text"
-                      value={editingMember.seat || ''}
-                      onChange={e => setEditingMember({ ...editingMember, seat: e.target.value })}
-                      className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="app-field-6">হোটেল রুম</label>
-                    <input id="app-field-6"
-                      type="text"
-                      value={editingMember.room || ''}
-                      onChange={e => setEditingMember({ ...editingMember, room: e.target.value })}
-                      className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* PINNED FOOTER */}
-              <div className="px-4 sm:px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0 z-20">
                 <button
                   type="button"
                   onClick={() => setEditingMember(null)}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-slate-200 hover:bg-rose-100 hover:text-rose-600 text-slate-700 flex items-center justify-center transition cursor-pointer active:scale-95 shrink-0"
                 >
-                  বাতিল
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-sm active:scale-95"
-                >
-                  <Save size={14} /> আপডেট সেভ করুন
+                  <X size={18} />
                 </button>
               </div>
-            </form>
+
+              {/* SCROLLABLE FORM BODY */}
+              <form
+                id="edit-member-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleUpdateMember(editingMember);
+                }}
+                className="flex-1 flex flex-col min-h-0 overflow-hidden"
+              >
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+                  {/* QUICK DEPOSIT ADDITION CARD */}
+                  <div className="bg-amber-50/90 p-3.5 rounded-2xl border border-amber-200/80 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                        ⚡ দ্রুত ডিপোজিট যোগ করুন (ট্যাপ করলেই জমা যোগ হবে):
+                      </span>
+                      {addedAmount !== 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setEditingMember({ ...editingMember, deposit: initialDeposit })}
+                          className="text-[11px] font-bold text-amber-800 hover:text-rose-600 flex items-center gap-1 bg-amber-100/70 hover:bg-rose-50 px-2 py-0.5 rounded-md transition cursor-pointer"
+                          title="পূর্বে যা ছিল তাতে রিসেট করুন"
+                        >
+                          <RotateCcw size={11} /> রিসেট
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[1000, 2000, 3000, 5000, 10000].map(addAmt => (
+                        <button
+                          key={addAmt}
+                          type="button"
+                          onClick={() => {
+                            const cur = Number(editingMember.deposit || 0);
+                            setEditingMember({ ...editingMember, deposit: cur + addAmt });
+                          }}
+                          className="px-2.5 py-1 bg-white hover:bg-amber-100/80 text-amber-950 font-bold text-xs rounded-lg border border-amber-300 transition cursor-pointer shadow-2xs active:scale-95"
+                        >
+                          + ৳ {toBnNum(addAmt.toLocaleString())}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* DEPOSIT AMOUNT INPUT WITH LIVE BREAKDOWN */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-700" htmlFor="app-field-1">
+                        মোট জমা ফান্ড / ডিপোজিট (৳)
+                      </label>
+                      <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                        পূর্বের জমা: ৳ {toBnNum(initialDeposit.toLocaleString())}
+                      </span>
+                    </div>
+
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-2.5 text-slate-500 font-bold text-base">৳</span>
+                      <input
+                        id="app-field-1"
+                        type="number"
+                        inputMode="numeric"
+                        value={editingMember.deposit ?? ''}
+                        onChange={e => setEditingMember({ ...editingMember, deposit: e.target.value })}
+                        className="w-full pl-8 pr-3.5 py-2.5 text-base font-extrabold text-emerald-800 border-2 border-emerald-400 rounded-xl focus:outline-none focus:border-teal-700 bg-emerald-50/20 shadow-2xs"
+                        required
+                        min="0"
+                      />
+                    </div>
+
+                    {/* LIVE AUDIT STATUS BADGE */}
+                    <div className="mt-1.5 flex items-center justify-between text-[11px] px-1">
+                      {addedAmount > 0 ? (
+                        <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                          ✓ নতুন যোগ হচ্ছে: + ৳ {toBnNum(addedAmount.toLocaleString())}
+                        </span>
+                      ) : addedAmount < 0 ? (
+                        <span className="text-rose-600 font-semibold flex items-center gap-1">
+                          ⚠ কমে যাচ্ছে: - ৳ {toBnNum(Math.abs(addedAmount).toLocaleString())}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">বর্তমানে কোনো পরিবর্তন হয়নি</span>
+                      )}
+                      <span className="font-mono text-slate-500">
+                        মোট: ৳ {toBnNum(currentDeposit.toLocaleString())}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* MEMBER NAME (FULL-WIDTH TO PREVENT TEXT CLIPPING) */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="app-field-2">
+                      সদস্যের পুরো নাম
+                    </label>
+                    <input
+                      id="app-field-2"
+                      type="text"
+                      value={editingMember.name || ''}
+                      onChange={e => setEditingMember({ ...editingMember, name: e.target.value })}
+                      className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                      required
+                    />
+                  </div>
+
+                  {/* PHONE AND FAMILY HEADCOUNT */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="app-field-3">
+                        মোবাইল নম্বর
+                      </label>
+                      <input
+                        id="app-field-3"
+                        type="tel"
+                        inputMode="tel"
+                        placeholder="01XXXXXXXXX"
+                        value={editingMember.phone || ''}
+                        onChange={e => setEditingMember({ ...editingMember, phone: e.target.value })}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="app-field-4">
+                        সদস্য সংখ্যা (হেডকাউন্ট)
+                      </label>
+                      <input
+                        id="app-field-4"
+                        type="number"
+                        inputMode="numeric"
+                        value={editingMember.familyCount || 1}
+                        onChange={e => setEditingMember({ ...editingMember, familyCount: e.target.value })}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                        min="1"
+                      />
+                    </div>
+                  </div>
+
+                  {/* BUS SEAT & HOTEL ROOM */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="app-field-5">
+                        বাস সিট
+                      </label>
+                      <input
+                        id="app-field-5"
+                        type="text"
+                        placeholder="যেমন: বিজনেস B12, স্লিপার S1"
+                        value={editingMember.seat || ''}
+                        onChange={e => setEditingMember({ ...editingMember, seat: e.target.value })}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-600 block mb-1" htmlFor="app-field-6">
+                        হোটেল রুম
+                      </label>
+                      <input
+                        id="app-field-6"
+                        type="text"
+                        placeholder="যেমন: রুম ৭০১ (সি-ভিউ)"
+                        value={editingMember.room || ''}
+                        onChange={e => setEditingMember({ ...editingMember, room: e.target.value })}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* PINNED FOOTER */}
+                <div className="px-4 sm:px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0 z-20">
+                  <button
+                    type="button"
+                    onClick={() => setEditingMember(null)}
+                    className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-sm active:scale-95"
+                  >
+                    <Save size={14} /> আপডেট সেভ করুন
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* PRINTABLE AUDIT & EXPENSE REPORT MODAL */}
       {showPrintReport && (

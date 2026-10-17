@@ -67,6 +67,32 @@ export default function UserProfileModal({
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [photoNotification, setPhotoNotification] = useState('');
 
+  // Sync state whenever modal is opened with the latest currentProfile & member info
+  useEffect(() => {
+    if (isOpen) {
+      const matchedMember = findLinkedMember(members, currentProfile, currentUser?.displayName);
+      setProfile({
+        memberId: currentProfile?.memberId ?? matchedMember?.id ?? null,
+        displayName: currentProfile?.displayName || currentUser?.displayName || '',
+        nickname: currentProfile?.nickname || '',
+        role: currentProfile?.role || 'সদস্য',
+        phone: String(currentProfile?.phone || matchedMember?.phone || ''),
+        bloodGroup: currentProfile?.bloodGroup || 'O+',
+        foodPreference: currentProfile?.foodPreference || '',
+        emergencyContact: currentProfile?.emergencyContact || '',
+        emergencyPhone: String(currentProfile?.emergencyPhone || ''),
+        avatarEmoji: currentProfile?.avatarEmoji || '👑',
+        customPhotoURL: currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL || '',
+        seat: currentProfile?.seat || matchedMember?.seat || 'স্লিপার / বিজনেস',
+        room: currentProfile?.room || matchedMember?.room || 'হোটেল সি মুন',
+      });
+      setShowUrlInput(false);
+      setUrlInput('');
+      setSavedSuccess(false);
+      setPhotoNotification('');
+    }
+  }, [isOpen, currentProfile, currentUser, members]);
+
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -126,27 +152,43 @@ export default function UserProfileModal({
     }
   };
 
-  const linkedMember = members.find((member) => member.id === profile.memberId) ?? null;
+  const linkedMember = members.find((member) => String(member.id) === String(profile.memberId)) ?? null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSaveProfile({ ...profile, memberId: profile.memberId ?? null, phone: profile.phone.trim() });
-    setSavedSuccess(true);
-    setTimeout(() => {
-      setSavedSuccess(false);
-      onClose();
-    }, 1200);
+    e.stopPropagation();
+    try {
+      const cleanPhone = String(profile.phone || '').trim();
+      const cleanEmergencyPhone = String(profile.emergencyPhone || '').trim();
+      const cleanDisplayName = String(profile.displayName || currentUser?.displayName || '').trim();
+
+      onSaveProfile?.({
+        ...profile,
+        displayName: cleanDisplayName,
+        memberId: profile.memberId ?? null,
+        phone: cleanPhone,
+        emergencyPhone: cleanEmergencyPhone,
+      });
+      setSavedSuccess(true);
+      setTimeout(() => {
+        setSavedSuccess(false);
+        onClose();
+      }, 1000);
+    } catch (err) {
+      console.error('Save profile error:', err);
+    }
   };
 
   return (
     <div
       className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 animate-in fade-in duration-200"
-     role="presentation"
- onClick={onClose}
-onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
+      role="presentation"
+      onClick={onClose}
+      onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
     >
       <div
         className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full shadow-2xl max-h-[88vh] flex flex-col overflow-hidden my-auto border border-slate-100 animate-in fade-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* PINNED TOP HEADER BAR (Never scrolls off the screen) */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-200 bg-slate-50/95 backdrop-blur-md shrink-0 z-20">

@@ -232,9 +232,9 @@ export default function TideWeatherWidget() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 bg-amber-400 text-teal-950 text-xs font-bold rounded-full inline-flex items-center gap-1 shadow-2xs">
+            <span className="px-2.5 py-0.5 bg-amber-400 text-teal-950 text-xs font-bold rounded-full inline-flex items-center gap-1.5 shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-emerald-700 animate-pulse"></span>
-              {isLiveApi ? '🔴 সরাসরি কক্সবাজার লাইভ স্যাটেলাইট ডেটা' : 'কক্সবাজার লাইভ ডেটা'}
+              লাইভ আবহাওয়া ও সম্ভাব্য জোয়ার-ভাটা
             </span>
             {lastUpdated && (
               <span className="text-[10px] text-teal-200 hidden sm:inline">
@@ -303,8 +303,8 @@ export default function TideWeatherWidget() {
           <span className="text-xs font-bold text-teal-200 flex items-center gap-1.5">
             <Calendar size={14} className="text-amber-300" /> দিন অনুযায়ী জোয়ার-ভাটা সময়সূচি (কক্সবাজার):
           </span>
-          <span className="text-[10px] text-amber-300 font-semibold bg-white/10 px-2 py-0.5 rounded-full">
-            {selectedDate === todayISO ? '📍 আজকের লাইভ চার্ট' : '📅 হাতে লেখা সময়সূচি'}
+          <span className="text-[10px] text-amber-300 font-semibold bg-white/10 px-2.5 py-0.5 rounded-full">
+            {selectedDate === todayISO ? '📍 আজকের চার্ট' : '📅 ৫ দিনের ভ্রমণ চার্ট'}
           </span>
         </div>
 
@@ -332,7 +332,12 @@ export default function TideWeatherWidget() {
           এই তারিখের জন্য সময়সূচি অ্যাপে লেখা নেই। স্থানীয় জোয়ার-ভাটার তালিকা দেখুন।
         </div>
       )}
-      <p className="text-[10px] text-teal-200/80">{TIDE_SCHEDULE_SOURCE}</p>
+      <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-400/30 text-amber-200/95 flex items-start gap-2 leading-relaxed">
+        <AlertTriangle size={15} className="text-amber-300 shrink-0 mt-0.5" />
+        <p className="text-[11px]">
+          <strong>সতর্কতা:</strong> জোয়ার-ভাটার সময়সূচি চন্দ্রতিথি অনুযায়ী আনুমানিক। সমুদ্রে গোসল বা সাঁতার কাটার পূর্বে সৈকতের লাইফগার্ড নির্দেশনা ও লাল-হলুদ সতর্কতা পতাকা অবশ্যই মেনে চলুন।
+        </p>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {dynamicTidePhases.map((t, idx) => (
           <div

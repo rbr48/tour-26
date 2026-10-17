@@ -38,11 +38,13 @@ export default function VideoTrimmerModal({
   const [isCapturingThumb, setIsCapturingThumb] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [loadError, setLoadError] = useState('');
+  const isConfirmedRef = useRef(false);
 
   // Setup video URL from File/Blob or string
   useEffect(() => {
     if (!videoSource) return;
     setLoadError('');
+    isConfirmedRef.current = false;
 
     let url = '';
     if (typeof videoSource === 'string') {
@@ -54,7 +56,8 @@ export default function VideoTrimmerModal({
     setVideoUrl(url);
 
     return () => {
-      if (typeof videoSource !== 'string' && url) {
+      // Only revoke if user cancelled or closed without confirming
+      if (!isConfirmedRef.current && typeof videoSource !== 'string' && url) {
         URL.revokeObjectURL(url);
       }
     };
@@ -172,6 +175,7 @@ export default function VideoTrimmerModal({
   };
 
   const handleConfirm = () => {
+    isConfirmedRef.current = true;
     const selectedDuration = Math.max(0, endTime - startTime);
     onConfirm?.({
       videoSource,

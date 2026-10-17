@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import http from 'node:http';
 import { createBackupStore } from './backup-store.js';
 import { AuthError, createFirebaseTokenVerifier } from './firebase-auth.js';
@@ -15,7 +18,7 @@ function corsHeaders(origin, allowedOrigins) {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': API_METHODS,
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-File-Name',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin',
   };
@@ -203,12 +206,50 @@ export function createApp({ config, verifyToken, store, pushService }) {
     sendJson(res, 404, { error: 'push endpoint not found' }, headers);
   }
 
+  async function handleUploadApi(req, res) {
+    const headers = corsHeaders(req.headers.origin, allowedOrigins);
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, headers);
+      res.end();
+      return;
+    }
+
+    if (req.method !== 'POST') {
+      sendJson(res, 405, { error: 'method not allowed' }, { ...headers, Allow: 'POST, OPTIONS' });
+      return;
+    }
+
+    try {
+      const uploadsDir = path.join(config.distDir, 'uploads');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+
+      const clientName = req.headers['x-file-name'] ? decodeURIComponent(req.headers['x-file-name']) : 'video.mp4';
+      const ext = path.extname(clientName) || '.mp4';
+      const safeName = `reel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+      const targetPath = path.join(uploadsDir, safeName);
+
+      await pipeline(req, fs.createWriteStream(targetPath));
+
+      sendJson(res, 200, { success: true, url: `/uploads/${safeName}`, fileName: safeName }, headers);
+    } catch (err) {
+      console.error('Upload failed:', err);
+      sendJson(res, 500, { error: 'Upload failed: ' + (err.message || String(err)) }, headers);
+    }
+  }
+
   const server = http.createServer(async (req, res) => {
     try {
       const { pathname } = new URL(req.url || '/', 'http://localhost');
 
       if (pathname === '/api') {
         await handleApi(req, res);
+        return;
+      }
+      if (pathname === '/api/upload') {
+        await handleUploadApi(req, res);
         return;
       }
       if (pathname.startsWith('/api/push/')) {

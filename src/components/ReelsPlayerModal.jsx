@@ -15,8 +15,12 @@ import {
   Send,
   Sparkles,
   Music,
+  Eye,
 } from 'lucide-react';
 import { formatDuration, toBnNum } from '../utils/videoHelper';
+import { getLocalVideoUrl } from '../utils/localVideoCache';
+
+const COMMENT_REACTIONS = ['❤️', '👍', '😂', '🔥', '👏'];
 
 export default function ReelsPlayerModal({
   reels = [],
@@ -27,6 +31,8 @@ export default function ReelsPlayerModal({
   onClose,
   onLikePost,
   onAddComment,
+  onViewPost,
+  onCommentReaction,
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -37,6 +43,7 @@ export default function ReelsPlayerModal({
   const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
   const [progress, setProgress] = useState(0);
   const [videoLoadError, setVideoLoadError] = useState(false);
+  const [localVideoUrl, setLocalVideoUrl] = useState(null);
 
   const videoRef = useRef(null);
   const touchStartY = useRef(null);
@@ -48,8 +55,39 @@ export default function ReelsPlayerModal({
 
   const currentReel = reels[currentIndex] || null;
 
-  // Video source resolution
-  const videoSource = currentReel?.videoUrl || currentReel?.video || currentReel?.driveViewUrl || null;
+  // Resolve local IndexedDB video if available on this device
+  useEffect(() => {
+    let active = true;
+    let objectUrl = null;
+
+    if (currentReel?.id) {
+      getLocalVideoUrl(currentReel.id).then((url) => {
+        if (!active) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
+        if (url) {
+          objectUrl = url;
+          setLocalVideoUrl(url);
+        } else {
+          setLocalVideoUrl(null);
+        }
+      });
+    } else {
+      setLocalVideoUrl(null);
+    }
+
+    return () => {
+      active = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [currentReel?.id]);
+
+  // Video source resolution: prioritize local device cache, then server/cloud URL
+  const rawVideoSource = currentReel?.videoUrl || currentReel?.video || currentReel?.driveViewUrl || null;
+  const videoSource = localVideoUrl || rawVideoSource;
   const isGoogleDriveEmbed = videoSource && videoSource.includes('drive.google.com/file/d/') && !videoSource.includes('preview');
   const embedUrl = isGoogleDriveEmbed
     ? videoSource.replace('/view', '/preview')
@@ -58,6 +96,13 @@ export default function ReelsPlayerModal({
   const startTime = Number(currentReel?.startTime) || 0;
   const endTime = Number(currentReel?.endTime) || (Number(currentReel?.duration) || 0);
   const segmentDuration = Math.max(0.1, endTime > startTime ? endTime - startTime : (Number(currentReel?.duration) || 1));
+
+  // Trigger view count increment when reel is opened/viewed
+  useEffect(() => {
+    if (isOpen && currentReel?.id) {
+      onViewPost?.(currentReel.id);
+    }
+  }, [isOpen, currentReel?.id, onViewPost]);
 
   // Initialize playback at startTime whenever reel changes
   useEffect(() => {
@@ -240,12 +285,12 @@ export default function ReelsPlayerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/95 backdrop-blur-lg flex items-center justify-center select-none"
+      className="fixed inset-0 z-50 bg-black/95 backdrop-blur-lg flex items-center justify-center select-none sm:gap-4 p-0 sm:p-4"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
       {/* Container: 9:16 vertical Reels player */}
-      <div className="relative w-full h-full max-w-md max-h-[100dvh] sm:max-h-[92vh] sm:rounded-3xl overflow-hidden bg-black flex flex-col justify-between shadow-2xl border border-white/10">
+      <div className="relative w-full h-full max-w-md max-h-[100dvh] sm:max-h-[92vh] sm:rounded-3xl overflow-hidden bg-black flex flex-col justify-between shadow-2xl border border-white/10 shrink-0">
         
         {/* Top Header Bar */}
         <div className="absolute top-0 inset-x-0 z-30 p-4 flex items-center justify-between bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-auto">
@@ -276,14 +321,7 @@ export default function ReelsPlayerModal({
           className="relative w-full h-full flex items-center justify-center bg-black cursor-pointer overflow-hidden"
           onClick={handleVideoTap}
         >
-          {embedUrl && videoLoadError ? (
-            <iframe
-              src={embedUrl}
-              title="Reel video"
-              className="w-full h-full border-0"
-              allow="autoplay; encrypted-media; fullscreen"
-            />
-          ) : videoSource ? (
+          {(videoSource && !videoLoadError) ? (
             <video
               ref={videoRef}
               src={videoSource}
@@ -292,18 +330,21 @@ export default function ReelsPlayerModal({
               loop={endTime <= startTime}
               onTimeUpdate={handleTimeUpdate}
               onError={() => {
-                if (embedUrl) setVideoLoadError(true);
+                setVideoLoadError(true);
               }}
               className="w-full h-full object-cover sm:object-contain"
             />
           ) : (
-            <div className="text-center p-6 text-white/60">
-              <img
-                src={currentReel.thumb}
-                alt="Reel preview"
-                className="w-full max-h-72 object-cover rounded-2xl mb-4 opacity-70"
-              />
-              <p className="text-xs">ভিডিও লোড হচ্ছে বা অফলাইনে আছে</p>
+            <div className="text-center p-6 text-white/80 max-w-sm flex flex-col items-center select-none">
+              {currentReel.thumb ? (
+                <img
+                  src={currentReel.thumb}
+                  alt="Reel preview"
+                  className="w-full max-h-72 object-cover rounded-2xl mb-4 opacity-75 shadow-lg"
+                />
+              ) : null}
+              <p className="text-sm font-medium text-amber-300 mb-1">ভিডিওটি প্রস্তুত হচ্ছে</p>
+              <p className="text-xs text-white/60">ক্লিপটি ডিভাইসে সংরক্ষিত থাকলে স্বয়ংক্রিয়ভাবে প্লে হবে</p>
             </div>
           )}
 
@@ -322,24 +363,6 @@ export default function ReelsPlayerModal({
               </div>
             </div>
           )}
-        </div>
-
-        {/* Vertical Up / Down navigation buttons (desktop and tablet convenience) */}
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 hidden sm:flex flex-col gap-2 pointer-events-auto">
-          <button
-            onClick={handlePrev}
-            className="p-2 rounded-full bg-black/50 hover:bg-black/80 text-white backdrop-blur-md transition cursor-pointer border border-white/10"
-            title="পূর্ববর্তী রিলস (Up Arrow)"
-          >
-            <ChevronUp size={20} />
-          </button>
-          <button
-            onClick={handleNext}
-            className="p-2 rounded-full bg-black/50 hover:bg-black/80 text-white backdrop-blur-md transition cursor-pointer border border-white/10"
-            title="পরবর্তী রিলস (Down Arrow)"
-          >
-            <ChevronDown size={20} />
-          </button>
         </div>
 
         {/* Right Floating Actions (Instagram Style) */}
@@ -382,6 +405,19 @@ export default function ReelsPlayerModal({
             </div>
             <span className="text-[10px] font-semibold drop-shadow">শেয়ার</span>
           </button>
+
+          {/* Views Indicator */}
+          <div
+            className="flex flex-col items-center gap-1 cursor-default select-none"
+            title="মোট ভিউ সংখ্যা"
+          >
+            <div className="p-2.5 rounded-full bg-black/50 text-teal-300 backdrop-blur-md">
+              <Eye size={22} />
+            </div>
+            <span className="text-[11px] font-bold font-mono drop-shadow text-white/95">
+              {toBnNum(currentReel.views || 0)}
+            </span>
+          </div>
 
           {/* Download / Direct Link */}
           {videoSource && (
@@ -494,15 +530,46 @@ export default function ReelsPlayerModal({
                     এখনও কোনো মন্তব্য নেই। প্রথম মন্তব্যটি করুন! ✨
                   </p>
                 ) : (
-                  commentsList.map((c, idx) => (
-                    <div key={c.id || idx} className="text-xs bg-slate-800/60 p-2.5 rounded-xl border border-slate-750">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-pink-300">{c.user || 'পরিবারের সদস্য'}</span>
-                        <span className="text-[10px] text-slate-500">{c.time || 'এইমাত্র'}</span>
+                  commentsList.map((c, idx) => {
+                    const commentId = c.id !== undefined && c.id !== null ? c.id : idx;
+                    const myIdentifier = (currentUser?.email || currentProfile?.displayName || currentUser?.displayName || 'user').toLowerCase();
+                    return (
+                      <div key={c.id || idx} className="text-xs bg-slate-800/60 p-2.5 rounded-xl border border-slate-750 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-pink-300">{c.user || 'পরিবারের সদস্য'}</span>
+                          <span className="text-[10px] text-slate-500">{c.time || 'এইমাত্র'}</span>
+                        </div>
+                        <p className="text-slate-200 leading-relaxed">{c.text}</p>
+
+                        {/* Comment Reactions */}
+                        <div className="flex items-center flex-wrap gap-1 pt-1 border-t border-slate-700/40">
+                          {COMMENT_REACTIONS.map((emoji) => {
+                            const voters = Array.isArray(c.reactions?.[emoji]) ? c.reactions[emoji] : [];
+                            const count = voters.length;
+                            const hasVoted = voters.some((v) => String(v).toLowerCase() === myIdentifier);
+                            return (
+                              <button
+                                key={emoji}
+                                type="button"
+                                onClick={() => onCommentReaction?.(currentReel.id, commentId, emoji)}
+                                className={`px-2 py-0.5 rounded-full text-[11px] flex items-center gap-1 transition cursor-pointer select-none ${
+                                  hasVoted
+                                    ? 'bg-pink-900/60 text-pink-200 border border-pink-500/50 font-bold scale-105'
+                                    : count > 0
+                                    ? 'bg-slate-700/60 text-slate-200 border border-slate-600/50'
+                                    : 'bg-slate-800/40 hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 opacity-60 hover:opacity-100'
+                                }`}
+                                title={`${emoji} রিঅ্যাক্ট করুন`}
+                              >
+                                <span>{emoji}</span>
+                                {count > 0 && <span className="text-[10px] font-mono">{toBnNum(count)}</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <p className="text-slate-200">{c.text}</p>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
@@ -527,6 +594,24 @@ export default function ReelsPlayerModal({
           </div>
         )}
 
+      </div>
+
+      {/* Desktop External Next/Prev Navigation Buttons (Floating outside player on PC - Zero overlap!) */}
+      <div className="hidden sm:flex flex-col gap-3 shrink-0 z-50">
+        <button
+          onClick={handlePrev}
+          className="w-12 h-12 rounded-full bg-slate-900/90 hover:bg-slate-800 active:scale-90 text-white backdrop-blur-md flex items-center justify-center transition cursor-pointer border border-white/20 shadow-2xl group hover:border-pink-500/50"
+          title="পূর্ববর্তী রিলস (Up Arrow)"
+        >
+          <ChevronUp size={24} className="group-hover:-translate-y-0.5 transition-transform text-slate-200 group-hover:text-white" />
+        </button>
+        <button
+          onClick={handleNext}
+          className="w-12 h-12 rounded-full bg-slate-900/90 hover:bg-slate-800 active:scale-90 text-white backdrop-blur-md flex items-center justify-center transition cursor-pointer border border-white/20 shadow-2xl group hover:border-pink-500/50"
+          title="পরবর্তী রিলস (Down Arrow)"
+        >
+          <ChevronDown size={24} className="group-hover:translate-y-0.5 transition-transform text-slate-200 group-hover:text-white" />
+        </button>
       </div>
     </div>
   );

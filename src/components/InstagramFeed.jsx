@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Heart,
   MessageCircle,
@@ -10,6 +10,8 @@ import {
   Plus,
   HardDrive,
   ExternalLink,
+  CloudUpload,
+  FolderOpen,
   X,
   Check,
   Trash2,
@@ -23,10 +25,13 @@ import {
   Video,
   Sparkles,
   Clock,
+  Edit3,
+  Eye,
 } from 'lucide-react';
 import VideoTrimmerModal from './VideoTrimmerModal';
 import ReelsPlayerModal from './ReelsPlayerModal';
 import { formatDuration } from '../utils/videoHelper';
+import { saveLocalVideo } from '../utils/localVideoCache';
 import { compressImageFile } from '../utils/imageCompressor';
 import {
   getDriveAccessToken,
@@ -89,6 +94,8 @@ const DEFAULT_LOCATIONS = [
   'রেডিয়েন্ট ফিশ ওয়ার্ল্ড একুরিয়াম'
 ];
 
+const COMMENT_REACTIONS = ['❤️', '👍', '😂', '🔥', '👏'];
+
 export default function InstagramFeed({
   posts = [],
   currentUser = null,
@@ -98,12 +105,35 @@ export default function InstagramFeed({
   onLikePost,
   onAddComment,
   onDeletePost,
-  onUpdatePost
+  onUpdatePost,
+  onViewPost,
+  onCommentReaction,
 }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeStoryFilter, setActiveStoryFilter] = useState('all');
   const [previewMedia, setPreviewMedia] = useState(null);
   const [sharingPostId, setSharingPostId] = useState(null);
+
+  // Deduplicated view tracker per session
+  const viewedPostsRef = useRef(new Set());
+
+  const recordPostView = (postId) => {
+    if (!postId || !onViewPost) return;
+    const strId = String(postId);
+    if (viewedPostsRef.current.has(strId)) return;
+    try {
+      const sessionKey = `tour_viewed_${strId}`;
+      if (sessionStorage.getItem(sessionKey)) {
+        viewedPostsRef.current.add(strId);
+        return;
+      }
+      sessionStorage.setItem(sessionKey, '1');
+    } catch {
+      // ignore storage access errors
+    }
+    viewedPostsRef.current.add(strId);
+    onViewPost(postId);
+  };
 
   // New post form state with auto-save draft
   const [caption, setCaption] = useState(() => {
@@ -151,6 +181,27 @@ export default function InstagramFeed({
   const [showTrimmerModal, setShowTrimmerModal] = useState(false);
   const [trimmedReelData, setTrimmedReelData] = useState(null);
   const [videoUrlInput, setVideoUrlInput] = useState('');
+
+  // Post & Reel Edit State
+  const [editingPost, setEditingPost] = useState(null);
+  const [editCaption, setEditCaption] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+
+  const handleStartEditPost = (post) => {
+    setEditingPost(post);
+    setEditCaption(post.caption || '');
+    setEditLocation(post.location || '');
+  };
+
+  const handleSavePostEdit = (e) => {
+    e.preventDefault();
+    if (!editingPost) return;
+    onUpdatePost?.(editingPost.id, {
+      caption: editCaption.trim(),
+      location: editLocation.trim(),
+    });
+    setEditingPost(null);
+  };
 
   const handleVideoFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -560,13 +611,40 @@ export default function InstagramFeed({
       } catch {}
       setShowCreateModal(false);
 
-      // Background Drive backup for video file if provided
+      // Background storage & upload for video file if provided
       const fileToUpload = (trimmedReelData.videoSource instanceof Blob || trimmedReelData.videoSource instanceof File)
         ? trimmedReelData.videoSource
         : null;
 
       if (fileToUpload) {
         (async () => {
+          // 1. Instantly cache in IndexedDB on this device
+          try {
+            await saveLocalVideo(postId, fileToUpload);
+          } catch (e) {
+            console.warn('Local video save failed:', e);
+          }
+
+          // 2. Upload to server storage so all family members can view it
+          try {
+            const uploadRes = await fetch('/api/upload', {
+              method: 'POST',
+              headers: {
+                'X-File-Name': encodeURIComponent(fileToUpload.name || `reel_${postId}.mp4`),
+              },
+              body: fileToUpload,
+            });
+            if (uploadRes.ok) {
+              const resData = await uploadRes.json();
+              if (resData?.url) {
+                onUpdatePost?.(postId, { videoUrl: resData.url });
+              }
+            }
+          } catch (uploadErr) {
+            console.warn('Server video upload failed, keeping local/blob:', uploadErr);
+          }
+
+          // 3. Backup to Google Drive if authorized
           try {
             const upload = await uploadToGoogleDrive({
               file: fileToUpload,
@@ -578,7 +656,6 @@ export default function InstagramFeed({
                 driveBackedUp: true,
                 driveFileId: upload.fileId,
                 driveViewUrl: upload.webViewLink,
-                videoUrl: upload.webViewLink,
               });
             }
           } catch (err) {
@@ -708,6 +785,31 @@ export default function InstagramFeed({
   const filteredReelPosts = filteredPosts.filter(isPostReel);
   const filteredPhotoPosts = filteredPosts.filter((p) => !isPostReel(p));
 
+  // Auto-record post view when post card is visible in viewport
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const id = entry.target.getAttribute('data-post-id');
+            if (id) {
+              recordPostView(id);
+            }
+          }
+        });
+      },
+      { threshold: 0.3 }
+    );
+
+    const elements = document.querySelectorAll('[data-post-id]');
+    elements.forEach((el) => observer.observe(el));
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [filteredPosts, feedSubTab]);
+
   return (
     <div className="max-w-xl mx-auto space-y-5 pb-8">
       {/* Top Banner: InstaTour & Google Drive Backup Status */}
@@ -729,82 +831,93 @@ export default function InstagramFeed({
       </div>
 
       {/* Google Drive Backup Hub Bar */}
-      <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 p-3.5 sm:p-4 rounded-3xl border border-emerald-200/90 shadow-2xs space-y-2.5 text-xs text-slate-700">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <HardDrive size={18} />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="font-extrabold text-xs text-slate-900">গুগল ড্রাইভ ব্যাকআপ হাব</p>
-                {isDriveConfigured ? (
-                  <span className="text-[9px] bg-emerald-200 text-emerald-900 font-bold px-1.5 py-0.2 rounded-md">
-                    ✓ ড্রাইভ সংযুক্ত
-                  </span>
-                ) : (
-                  <span className="text-[9px] bg-amber-200 text-amber-900 font-bold px-1.5 py-0.2 rounded-md">
-                    কানেক্ট বাকি
-                  </span>
-                )}
+      {(() => {
+        const unbackedPostsCount = posts.filter((p) => !p.driveBackedUp && (p.image || p.images?.length)).length;
+        const backedUpPostsCount = posts.filter((p) => p.driveBackedUp).length;
+
+        return (
+          <div className="bg-gradient-to-r from-emerald-50/90 via-teal-50/80 to-cyan-50/90 p-3.5 sm:p-4 rounded-3xl border border-emerald-200/90 shadow-2xs text-xs text-slate-700 transition">
+            <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3">
+              {/* Left: Hub Title, Status Badge & Backup Counts */}
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <HardDrive size={18} />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 truncate">
+                      গুগল ড্রাইভ ব্যাকআপ হাব
+                    </h4>
+                    {isDriveConfigured ? (
+                      <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-md border border-emerald-300/60 shrink-0">
+                        ✓ ড্রাইভ সংযুক্ত
+                      </span>
+                    ) : (
+                      <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.5 rounded-md border border-amber-300/60 shrink-0">
+                        কানেক্ট বাকি
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-emerald-800 truncate mt-0.5">
+                    {posts.length > 0
+                      ? `${toBnNum(posts.length)}টি ছবির মধ্যে ${toBnNum(backedUpPostsCount)}টি ড্রাইভে ব্যাকআপ সম্পন্ন`
+                      : 'কক্সবাজার ট্যুরের সব ছবি ড্রাইভে ক্লাউড ব্যাকআপ হবে'}
+                  </p>
+                </div>
               </div>
-              <p className="text-[11px] text-emerald-800">
-                {posts.length > 0
-                  ? `${posts.length}টি ছবির মধ্যে ${posts.filter(p => p.driveBackedUp).length}টি ড্রাইভে ব্যাকআপ সম্পন্ন`
-                  : 'কক্সবাজার ট্যুরের সব ছবি ড্রাইভে ক্লাউড ব্যাকআপ হবে'}
-              </p>
-            </div>
-          </div>
 
-          <a
-            href={GOOGLE_DRIVE_FOLDER_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-[11px] font-bold flex items-center gap-1 transition shadow-xs shrink-0 cursor-pointer"
-            title="গুগল ড্রাইভ ফোল্ডার ব্রাউজ করুন"
-          >
-            <ExternalLink size={12} /> ফোল্ডার
-          </a>
-        </div>
-
-        {/* Action Controls: Batch Sync All & Connect */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-emerald-200/80 text-[11px]">
-          {isBatchSyncing ? (
-            <div className="flex items-center gap-2 text-teal-900 font-bold w-full py-1">
-              <Loader2 size={14} className="animate-spin text-teal-700" />
-              <span>{batchSyncProgress || 'ড্রাইভে ছবি আপলোড হচ্ছে...'}</span>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-1.5">
-                {posts.filter(p => !p.driveBackedUp && p.image).length > 0 ? (
+              {/* Right: Actions (Sync Button to the Left of Folder Open Button) */}
+              <div className="flex items-center gap-2 shrink-0">
+                {unbackedPostsCount > 0 ? (
                   <button
                     type="button"
                     onClick={handleSyncAllToDrive}
-                    className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer transition text-[11px]"
+                    disabled={isBatchSyncing}
+                    className="px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 active:scale-95 text-white font-bold rounded-2xl flex items-center gap-1.5 shadow-xs transition cursor-pointer text-xs shrink-0 disabled:opacity-75"
+                    title="ড্রাইভে বাকি ছবিগুলো সিঙ্ক করুন"
                   >
-                    <HardDrive size={13} /> সব ({posts.filter(p => !p.driveBackedUp && p.image).length}টি) ছবি ড্রাইভে সিঙ্ক করুন
+                    {isBatchSyncing ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin text-white" />
+                        <span className="text-[11px] font-semibold">{batchSyncProgress || 'সিঙ্ক হচ্ছে...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <CloudUpload size={14} className="text-emerald-100" />
+                        <span>সিঙ্ক করুন ({toBnNum(unbackedPostsCount)})</span>
+                      </>
+                    )}
                   </button>
                 ) : (
-                  <span className="text-emerald-800 font-semibold flex items-center gap-1">
-                    <Check size={13} className="text-emerald-600" /> সব ছবি ড্রাইভে সুরক্ষিত আছে
-                  </span>
+                  <div className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-white/80 px-2.5 py-1.5 rounded-xl border border-emerald-200/80 shadow-2xs">
+                    <Check size={13} className="text-emerald-600" />
+                    <span>সব সুরক্ষিত</span>
+                  </div>
                 )}
-              </div>
 
-              {!hasDriveToken && (
-                <button
-                  type="button"
-                  onClick={handleConnectDrive}
-                  className="px-2.5 py-1.5 bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 font-bold rounded-xl flex items-center gap-1 cursor-pointer transition text-[10px]"
+                <a
+                  href={GOOGLE_DRIVE_FOLDER_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3.5 py-2 bg-emerald-800 hover:bg-emerald-900 active:scale-95 text-white rounded-2xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs shrink-0 cursor-pointer"
+                  title="গুগল ড্রাইভ ফোল্ডার খুলুন"
                 >
-                  🔗 ড্রাইভ পারমিশন দিন
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+                  <FolderOpen size={14} className="text-emerald-200" />
+                  <span>ফোল্ডার</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Mobile Progress Bar if Batch Syncing is in flight */}
+            {isBatchSyncing && (
+              <div className="mt-2.5 pt-2 border-t border-emerald-200/60 flex items-center gap-2 text-teal-900 font-bold text-[11px]">
+                <Loader2 size={13} className="animate-spin text-teal-700 shrink-0" />
+                <span className="truncate">{batchSyncProgress || 'ড্রাইভে ছবি আপলোড হচ্ছে...'}</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Sub-tab Switcher: Photos Feed vs Reels Shorts */}
       <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
@@ -854,15 +967,20 @@ export default function InstagramFeed({
                 return (
                   <div
                     key={reel.id}
+                    data-post-id={reel.id}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
+                        recordPostView(reel.id);
                         setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, reelIndexInAll) });
                       }
                     }}
-                    onClick={() => setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, reelIndexInAll) })}
+                    onClick={() => {
+                      recordPostView(reel.id);
+                      setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, reelIndexInAll) });
+                    }}
                     className="relative aspect-[9/16] bg-slate-900 rounded-2xl overflow-hidden cursor-pointer group shadow-md border border-slate-200 select-none"
                   >
                     <img
@@ -898,7 +1016,11 @@ export default function InstagramFeed({
                       {reel.caption && (
                         <p className="text-[10px] text-white/80 truncate drop-shadow">{reel.caption}</p>
                       )}
-                      <div className="flex items-center gap-3 mt-1 text-[10px] text-white/90 font-mono">
+                      <div className="flex items-center gap-2.5 mt-1 text-[10px] text-white/90 font-mono">
+                        <span className="flex items-center gap-0.5" title="ভিউ সংখ্যা">
+                          <Eye size={11} className="text-teal-300" />
+                          {toBnNum(reel.views || 0)}
+                        </span>
                         <span className="flex items-center gap-0.5">
                           <Heart size={11} className="fill-rose-500 text-rose-500" />
                           {toBnNum((reel.likes || []).length)}
@@ -999,6 +1121,7 @@ export default function InstagramFeed({
                 return (
                   <div
                     key={post.id}
+                    data-post-id={post.id}
                     className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
                   >
                     {/* Post Header */}
@@ -1032,17 +1155,30 @@ export default function InstagramFeed({
 
                       <div className="flex items-center gap-2 text-slate-400">
                         <span className="text-[10px] text-slate-400">{post.createdAt}</span>
-                        {onDeletePost && Boolean(
+                        {Boolean(
                           (currentUser?.email && post.authorEmail && post.authorEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
                           (!post.authorEmail && (currentProfile?.displayName || currentUser?.displayName) && post.author === (currentProfile?.displayName || currentUser?.displayName))
                         ) && (
-                          <button
-                            onClick={() => onDeletePost(post.id)}
-                            className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
-                            title="নিজের পোস্ট মুছুন"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditPost(post)}
+                              className="text-slate-400 hover:text-teal-600 p-1 transition cursor-pointer"
+                              title="ক্যাপশন ও স্থান পরিবর্তন করুন"
+                            >
+                              <Edit3 size={13} />
+                            </button>
+                            {onDeletePost && (
+                              <button
+                                type="button"
+                                onClick={() => onDeletePost(post.id)}
+                                className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
+                                title="নিজের পোস্ট মুছুন"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1055,11 +1191,12 @@ export default function InstagramFeed({
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
+                          recordPostView(post.id);
                           if (postIsReel) {
                             const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
                             setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
                           } else {
-                            setPreviewMedia({ images: postImages, index: currentIdx });
+                            setPreviewMedia({ images: postImages, index: currentIdx, post });
                           }
                         } else if (e.key === 'ArrowLeft' && currentIdx > 0) {
                           setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx - 1 }));
@@ -1068,11 +1205,12 @@ export default function InstagramFeed({
                         }
                       }}
                       onClick={() => {
+                        recordPostView(post.id);
                         if (postIsReel) {
                           const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
                           setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
                         } else {
-                          setPreviewMedia({ images: postImages, index: currentIdx });
+                          setPreviewMedia({ images: postImages, index: currentIdx, post });
                         }
                       }}
                       onTouchStart={(e) => handleTouchStart(post.id, e)}
@@ -1209,14 +1347,25 @@ export default function InstagramFeed({
                         }`}
                       >
                         <Heart size={22} fill={isLiked ? 'currentColor' : 'none'} />
-                        <span className="text-xs font-bold">{likeCount}</span>
+                        <span className="text-xs font-bold font-mono">{toBnNum(likeCount)}</span>
                       </button>
 
                       {/* Comment Count */}
                       <button className="flex items-center gap-1.5 text-slate-700 hover:text-teal-600 transition cursor-pointer">
                         <MessageCircle size={21} />
-                        <span className="text-xs font-bold">{(post.comments || []).length}</span>
+                        <span className="text-xs font-bold font-mono">{toBnNum((post.comments || []).length)}</span>
                       </button>
+
+                      {/* Views Count */}
+                      <div
+                        className="flex items-center gap-1.5 text-slate-500 select-none"
+                        title="মোট ভিউ সংখ্যা"
+                      >
+                        <Eye size={20} className="text-slate-400" />
+                        <span className="text-xs font-semibold text-slate-600 font-mono">
+                          {toBnNum(post.views || 0)}
+                        </span>
+                      </div>
 
                       {/* Share Original Media Button */}
                       <button
@@ -1254,13 +1403,49 @@ export default function InstagramFeed({
 
                   {/* Comments Preview */}
                   {(post.comments || []).length > 0 && (
-                    <div className="space-y-1.5 pt-1.5 border-t border-slate-100">
-                      {post.comments.slice(-3).map(c => (
-                        <div key={c.id} className="text-[11px] text-slate-700">
-                          <strong className="font-bold text-slate-900 mr-1">{c.user}:</strong>
-                          <span>{c.text}</span>
-                        </div>
-                      ))}
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      {post.comments.slice(-4).map((c, idx) => {
+                        const commentId = c.id !== undefined && c.id !== null ? c.id : idx;
+                        const myIdentifier = (currentUser?.email || currentProfile?.displayName || currentUser?.displayName || 'user').toLowerCase();
+                        return (
+                          <div key={c.id || idx} className="text-xs text-slate-700 bg-slate-50/80 p-2 rounded-xl border border-slate-100 space-y-1">
+                            <div className="flex items-start justify-between gap-1">
+                              <div className="leading-relaxed">
+                                <strong className="font-bold text-slate-900 mr-1.5">{c.user}:</strong>
+                                <span>{c.text}</span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 shrink-0">{c.time || 'এইমাত্র'}</span>
+                            </div>
+
+                            {/* Comment Emoji Reactions */}
+                            <div className="flex items-center flex-wrap gap-1 pt-1 border-t border-slate-200/50">
+                              {COMMENT_REACTIONS.map((emoji) => {
+                                const voters = Array.isArray(c.reactions?.[emoji]) ? c.reactions[emoji] : [];
+                                const count = voters.length;
+                                const hasVoted = voters.some((v) => String(v).toLowerCase() === myIdentifier);
+                                return (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={() => onCommentReaction?.(post.id, commentId, emoji)}
+                                    className={`px-1.5 py-0.5 rounded-full text-[10px] flex items-center gap-0.5 transition cursor-pointer select-none ${
+                                      hasVoted
+                                        ? 'bg-rose-100 text-rose-700 border border-rose-300 font-bold scale-105'
+                                        : count > 0
+                                        ? 'bg-white text-slate-700 border border-slate-200 shadow-2xs'
+                                        : 'bg-white/40 hover:bg-white text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 opacity-60 hover:opacity-100'
+                                    }`}
+                                    title={`${emoji} রিঅ্যাক্ট করুন`}
+                                  >
+                                    <span>{emoji}</span>
+                                    {count > 0 && <span className="text-[10px] font-mono">{toBnNum(count)}</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
 
@@ -1865,6 +2050,12 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                         {toBnNum(currentGalleryIdx + 1)} / {toBnNum(galleryImages.length)}
                       </span>
                     )}
+                    {previewMedia?.post && (
+                      <span className="text-xs bg-white/20 backdrop-blur-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1.5 shadow-sm text-white/95">
+                        <Eye size={13} className="text-teal-300" />
+                        {toBnNum(previewMedia.post.views || 0)} ভিউ
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2.5">
                     <a
@@ -1901,7 +2092,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   {galleryImages.length > 1 && currentGalleryIdx > 0 && (
                     <button
                       type="button"
-                      onClick={() => setPreviewMedia({ images: galleryImages, index: currentGalleryIdx - 1 })}
+                      onClick={() => setPreviewMedia({ images: galleryImages, index: currentGalleryIdx - 1, post: previewMedia.post })}
                       className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center transition shadow-lg cursor-pointer active:scale-90"
                       title="পূর্ববর্তী ছবি"
                       aria-label="Previous image"
@@ -1914,7 +2105,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   {galleryImages.length > 1 && currentGalleryIdx < galleryImages.length - 1 && (
                     <button
                       type="button"
-                      onClick={() => setPreviewMedia({ images: galleryImages, index: currentGalleryIdx + 1 })}
+                      onClick={() => setPreviewMedia({ images: galleryImages, index: currentGalleryIdx + 1, post: previewMedia.post })}
                       className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center transition shadow-lg cursor-pointer active:scale-90"
                       title="পরবর্তী ছবি"
                       aria-label="Next image"
@@ -1939,7 +2130,90 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         onClose={() => setReelsPlayer({ isOpen: false, initialIndex: 0 })}
         onLikePost={onLikePost}
         onAddComment={onAddComment}
+        onViewPost={recordPostView}
+        onCommentReaction={onCommentReaction}
       />
+
+      {/* EDIT POST / REEL MODAL */}
+      {editingPost && (
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in"
+          role="presentation"
+          onClick={() => setEditingPost(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setEditingPost(null); }}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden my-auto border border-slate-100 animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 bg-teal-900 text-white flex items-center justify-between">
+              <h4 className="font-bold text-sm flex items-center gap-2">
+                <Edit3 size={16} className="text-amber-300" />
+                {editingPost.type === 'reel' ? 'রিলসের ক্যাপশন ও স্থান এডিট করুন' : 'ছবির ক্যাপশন ও স্থান এডিট করুন'}
+              </h4>
+              <button
+                type="button"
+                onClick={() => setEditingPost(null)}
+                className="p-1 rounded-full hover:bg-white/20 text-white cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePostEdit} className="p-5 space-y-4">
+              <div className="flex items-center gap-3 p-2.5 bg-slate-50 rounded-2xl border border-slate-100">
+                <img
+                  src={editingPost.thumb || photoSource(editingPost)}
+                  alt="Preview"
+                  className="w-14 h-14 object-cover rounded-xl shrink-0 border border-slate-200"
+                />
+                <div className="text-xs min-w-0">
+                  <p className="font-bold text-slate-800 truncate">{editingPost.author}</p>
+                  <p className="text-slate-500 text-[11px] truncate">{editingPost.createdAt}</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">ক্যাপশন</label>
+                <textarea
+                  rows={3}
+                  value={editCaption}
+                  onChange={(e) => setEditCaption(e.target.value)}
+                  placeholder="একটি সুন্দর ক্যাপশন লিখুন..."
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">স্থান / লোকেশন</label>
+                <input
+                  type="text"
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                  placeholder="যেমন: সুগন্ধা বিচ, কলাতলী, ইনানী বিচ"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingPost(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-teal-800 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-md active:scale-95"
+                >
+                  আপডেট সেভ করুন
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* VIDEO TRIMMER MODAL (up to 3 minutes / 180s) */}
       <VideoTrimmerModal

@@ -69,6 +69,9 @@ Upgrade order for the live project (the old app wrote everything into one docume
 - **Family Safety & Beach Compass** (`src/components/FamilySafetyHub.jsx`): live location (one document per person, cleared on request), compass to Hotel Sea Moon and the bus meeting point, siren, dialer for the coordinator (from members) and public emergency numbers.
 - **Family Travel Trivia Quiz** (`src/components/TourQuizModal.jsx`).
 - **Seat and room maps** (`src/components/BusSeatMap.jsx`, `HotelRoomMap.jsx`): contact numbers are looked up from members by exact name.
+- **Discord Discussion Hub** (`src/components/DiscordDiscussion.jsx`): mobile Discord-style drawer, real-time channels, reactions (single reaction per person per message), message deletion, and unified Bengali numeric counters.
+- **Media Feed & Reels** (`src/components/InstagramFeed.jsx`, `ReelsPlayerModal.jsx`, `VideoTrimmerModal.jsx`): album galleries, video trimmers up to 3 mins, client-side video caching (`src/utils/localVideoCache.js`), and Apps Script Google Drive backup hub.
+- **Member & Deposit Management** (`src/App.jsx`): live deposit breakdown (+/- calculation with quick preset adders and reset button), full-width clean labels, responsive inputs with `inputMode="numeric"`, and event isolation against accidental backdrop dismissals.
 - **Native Android** (`android/`): Capacitor plugins for authentication, app lifecycle, geolocation, haptics, network, splash screen, status bar. Back button: modals, drawer, dashboard, exit.
 - **Service worker** (`public/sw.js`): build-stamped cache name (`vite.config.js`), network-first navigations, cache-first hashed assets.
 

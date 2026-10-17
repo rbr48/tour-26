@@ -1,6 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { newId } from '../services/tourStore';
-import { Hash, MessageSquare, Send, Users, ShieldAlert, Utensils, Compass } from 'lucide-react';
+import {
+  Hash,
+  MessageSquare,
+  Send,
+  Users,
+  ShieldAlert,
+  Utensils,
+  Compass,
+  Menu,
+  X,
+  Zap,
+} from 'lucide-react';
 
 const CHANNELS = [
   {
@@ -61,7 +72,22 @@ export default function DiscordDiscussion({
     }
   });
 
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [showQuickPrompts, setShowQuickPrompts] = useState(false);
+
   const messagesEndRef = useRef(null);
+
+  // Close drawer and quick prompts on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setIsMobileDrawerOpen(false);
+        setShowQuickPrompts(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Persist channel selection and draft text
   useEffect(() => {
@@ -116,9 +142,99 @@ export default function DiscordDiscussion({
   };
 
   return (
-    <div className="bg-slate-900 text-white rounded-3xl shadow-xl overflow-hidden border border-slate-800 flex flex-col md:flex-row h-[78vh] min-h-[550px]">
-      {/* Channels Sidebar */}
-      <div className="w-full md:w-64 bg-slate-950 p-4 border-b md:border-b-0 md:border-r border-slate-800 flex flex-col justify-between shrink-0">
+    <div className="bg-slate-900 text-white rounded-3xl shadow-xl overflow-hidden border border-slate-800 flex h-[78vh] min-h-[500px] max-h-[850px] relative">
+      {/* Mobile Drawer Backdrop & Drawer */}
+      {isMobileDrawerOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex animate-in fade-in duration-150"
+          role="presentation"
+          onClick={() => setIsMobileDrawerOpen(false)}
+        >
+          <div
+            className="w-[82%] max-w-xs h-full bg-slate-950 p-4 border-r border-slate-800 flex flex-col justify-between shadow-2xl animate-in slide-in-from-left duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                    DC
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-white leading-tight">ফ্যামিলি ডিসকর্ড</h3>
+                    <p className="text-[10px] text-indigo-400">রংপুর ➔ কক্সবাজার ২০২৬</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileDrawerOpen(false)}
+                  className="p-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+                  title="বন্ধ করুন"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Channel List in Mobile Drawer */}
+              <div className="mt-4 space-y-1.5">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 mb-1.5">
+                  চ্যাট চ্যানেলসমূহ
+                </p>
+                {CHANNELS.map(ch => {
+                  const Icon = ch.icon;
+                  const isActive = activeChannelId === ch.id;
+                  const count = (discussions[ch.id] || []).length;
+
+                  return (
+                    <button
+                      key={ch.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveChannelId(ch.id);
+                        setIsMobileDrawerOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2.5 truncate">
+                        <Icon size={16} className={isActive ? 'text-amber-300' : 'text-slate-500'} />
+                        <span className="truncate">{ch.name}</span>
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+                        isActive ? 'bg-indigo-800 text-amber-200' : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Current User in Drawer */}
+            <div className="pt-3 border-t border-slate-800 mt-2 flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xl">{currentProfile?.avatarEmoji || '👑'}</span>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-white truncate">
+                    {currentProfile?.displayName || currentUser?.displayName || 'সদস্য'}
+                  </p>
+                  <p className="text-[10px] text-emerald-400 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> অনলাইনে আছেন
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop Channels Sidebar (Hidden on mobile) */}
+      <div className="hidden md:flex md:w-64 bg-slate-950 p-4 border-r border-slate-800 flex-col justify-between shrink-0">
         <div>
           {/* Header */}
           <div className="flex items-center gap-2.5 pb-4 border-b border-slate-800">
@@ -185,18 +301,36 @@ export default function DiscordDiscussion({
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col justify-between bg-slate-900/90 overflow-hidden">
         {/* Chat Header */}
-        <div className="p-3.5 px-4 bg-slate-950/70 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <Hash size={18} className="text-indigo-400" />
-            <div className="min-w-0">
-              <h4 className="font-bold text-sm text-white truncate">{activeChannel.name}</h4>
-              <p className="text-[10px] text-slate-400 truncate">{activeChannel.desc}</p>
+        <div className="p-3 px-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {/* Mobile Channel Switcher Button */}
+            <button
+              type="button"
+              onClick={() => setIsMobileDrawerOpen(true)}
+              className="md:hidden px-2.5 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95 shrink-0"
+              title="চ্যানেলসমূহ দেখুন"
+            >
+              <Menu size={16} />
+              <span className="text-xs font-bold">চ্যানেল</span>
+            </button>
+
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Hash size={18} className="text-indigo-400 shrink-0 hidden sm:inline" />
+              <div className="min-w-0">
+                <h4 className="font-bold text-sm text-white truncate flex items-center gap-1.5">
+                  <span className="truncate">{activeChannel.name}</span>
+                  <span className="text-[10px] bg-indigo-900/60 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-700/40 hidden xs:inline">
+                    {activeChannel.badge}
+                  </span>
+                </h4>
+                <p className="text-[10px] text-slate-400 truncate max-w-xs">{activeChannel.desc}</p>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400">
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 shrink-0">
             <Users size={14} className="text-teal-400" />
-            <span className="hidden sm:inline font-medium">{members.length} জন ফ্যামিলি মেম্বার</span>
+            <span className="font-medium text-[11px] sm:text-xs">{members.length} জন</span>
           </div>
         </div>
 
@@ -242,23 +376,24 @@ export default function DiscordDiscussion({
                     {/* Emoji Reactions Bar */}
                     <div className="flex items-center gap-1 pt-0.5">
                       {EMOJI_REACTIONS.map(emoji => {
-                        // One vote per person: the list holds the emails that reacted.
                         const voters = Array.isArray(msg.reactions?.[emoji]) ? msg.reactions[emoji] : [];
                         const count = voters.length;
-                        const reactedByMe = Boolean(myEmail) && voters.includes(myEmail);
+                        const myIdentifier = (myEmail || currentProfile?.displayName || currentUser?.displayName || '').toLowerCase();
+                        const reactedByMe = Boolean(myIdentifier) && voters.some(v => String(v).toLowerCase() === myIdentifier);
                         return (
                           <button
                             key={emoji}
                             type="button"
                             aria-pressed={reactedByMe}
                             onClick={() => onAddReaction(activeChannelId, msg.id, emoji)}
-                            className={`px-1.5 py-0.5 rounded-lg text-[10px] flex items-center gap-0.5 transition cursor-pointer ${
+                            className={`px-1.5 py-0.5 rounded-lg text-[10px] flex items-center gap-0.5 transition cursor-pointer select-none ${
                               reactedByMe
-                                ? 'bg-indigo-900 text-amber-300 border border-amber-400'
+                                ? 'bg-indigo-900 text-amber-300 border border-amber-400 font-bold scale-105 shadow-xs'
                                 : count > 0
-                                  ? 'bg-indigo-950/80 text-amber-300 border border-indigo-700'
-                                  : 'bg-slate-800/60 text-slate-400 hover:bg-slate-800 border border-transparent'
+                                  ? 'bg-indigo-950/80 text-amber-300 border border-indigo-700/80 font-medium'
+                                  : 'bg-slate-800/40 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent'
                             }`}
+                            title={reactedByMe ? `${emoji} রিঅ্যাকশন বাতিল করুন` : `${emoji} রিঅ্যাক্ট করুন`}
                           >
                             <span>{emoji}</span>
                             {count > 0 && <span className="font-bold">{count}</span>}
@@ -285,28 +420,46 @@ export default function DiscordDiscussion({
         </div>
 
         {/* Message Input Box */}
-        <div className="p-3 bg-slate-950/80 border-t border-slate-800 space-y-2">
-          {/* Quick Reaction Pill Shortcuts */}
-          <div className="flex items-center gap-1.5 overflow-x-auto text-xs pb-1">
-            <span className="text-[10px] text-slate-500">দ্রুত বার্তা:</span>
-            {[
-              'সবাই কি রেডি? 🏖️',
-              'আমরা এখন লবিতে আছি 📍',
-              'লাঞ্চ করতে যাচ্ছি 🍤',
-              'ছবিগুলো দারুণ হয়েছে! 📸',
-              'বাস ছাড়তে কতক্ষণ? 🚌'
-            ].map((shortcut, idx) => (
-              <button
-                key={idx}
-                onClick={() => setInputText(shortcut)}
-                className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] rounded-lg shrink-0 border border-slate-700/50 transition cursor-pointer"
-              >
-                {shortcut}
-              </button>
-            ))}
-          </div>
+        <div className="p-3 bg-slate-950/90 border-t border-slate-800 space-y-2 shrink-0">
+          {/* Collapsible Quick Reaction Pill Shortcuts */}
+          {showQuickPrompts && (
+            <div className="flex items-center gap-1.5 overflow-x-auto text-xs pb-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
+              <span className="text-[10px] text-slate-400 font-semibold shrink-0">দ্রুত বার্তা:</span>
+              {[
+                'সবাই কি রেডি? 🏖️',
+                'আমরা এখন লবিতে আছি 📍',
+                'লাঞ্চ করতে যাচ্ছি 🍤',
+                'ছবিগুলো দারুণ হয়েছে! 📸',
+                'বাস ছাড়তে কতক্ষণ? 🚌'
+              ].map((shortcut, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setInputText(shortcut);
+                    setShowQuickPrompts(false);
+                  }}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 text-[11px] rounded-lg shrink-0 border border-slate-700/60 transition cursor-pointer"
+                >
+                  {shortcut}
+                </button>
+              ))}
+            </div>
+          )}
 
           <form onSubmit={handleSend} className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowQuickPrompts(!showQuickPrompts)}
+              className={`p-2.5 rounded-2xl transition cursor-pointer shrink-0 border ${
+                showQuickPrompts
+                  ? 'bg-amber-400/20 text-amber-300 border-amber-400/50'
+                  : 'bg-slate-900 text-slate-400 hover:text-white border-slate-700 hover:bg-slate-800'
+              }`}
+              title="দ্রুত বার্তা নির্বাচন করুন"
+            >
+              <Zap size={16} className={showQuickPrompts ? 'fill-amber-300' : ''} />
+            </button>
             <input
               type="text"
               placeholder={`#${activeChannel.name} চ্যানেলে বার্তা পাঠান...`}
@@ -316,7 +469,8 @@ export default function DiscordDiscussion({
             />
             <button
               type="submit"
-              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-2xl flex items-center gap-1.5 transition cursor-pointer shadow-md"
+              disabled={!inputText.trim()}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold text-xs rounded-2xl flex items-center gap-1.5 transition cursor-pointer shadow-md shrink-0 active:scale-95"
             >
               <Send size={14} />
               <span className="hidden sm:inline">পাঠান</span>

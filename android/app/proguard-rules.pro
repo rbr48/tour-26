@@ -17,3 +17,7 @@
 -keep class com.google.android.gms.** { *; }
 -dontwarn com.google.firebase.**
 -dontwarn com.google.android.gms.**
+
+# Capacitor Firebase Authentication optional providers (Facebook, Play Games, etc.)
+-dontwarn com.facebook.**
+-dontwarn io.capawesome.capacitorjs.plugins.firebase.authentication.**

@@ -13,6 +13,10 @@ const MIME_TYPES = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.apk': 'application/vnd.android.package-archive',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.m4v': 'video/mp4',
 };
 
 const SECURITY_HEADERS = {
@@ -98,9 +102,38 @@ export function createStaticHandler(distDir) {
 
     const relativePath = path.relative(root, filePath).split(path.sep).join('/');
     const stat = fs.statSync(filePath);
+    const mimeType = MIME_TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+
+    // Support HTTP Range Requests (essential for HTML5 video playback and seeking)
+    const rangeHeader = req.headers.range;
+    if (rangeHeader && req.method === 'GET') {
+      const parts = rangeHeader.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+
+      if (!isNaN(start) && start <= stat.size - 1) {
+        const actualEnd = Math.min(end, stat.size - 1);
+        const chunkSize = (actualEnd - start) + 1;
+
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${actualEnd}/${stat.size}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunkSize,
+          'Content-Type': mimeType,
+          ...SECURITY_HEADERS,
+        });
+
+        const stream = fs.createReadStream(filePath, { start, end: actualEnd });
+        stream.on('error', () => res.destroy());
+        stream.pipe(res);
+        return;
+      }
+    }
+
     res.writeHead(200, {
-      'Content-Type': MIME_TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+      'Content-Type': mimeType,
       'Content-Length': stat.size,
+      'Accept-Ranges': 'bytes',
       'Cache-Control': cacheControlFor(relativePath),
       ...SECURITY_HEADERS,
     });

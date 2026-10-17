@@ -105,6 +105,8 @@ function assemble(state) {
   return {
     tourInfo: state.tour?.tourInfo ?? null,
     meetingPoint: state.tour?.meetingPoint ?? null,
+    hotelRooms: state.tour?.hotelRooms ?? null,
+    busSeats: state.tour?.busSeats ?? null,
     itinerary: list('itinerary'),
     members: list('members'),
     expenses: list('expenses', 'desc'),
@@ -238,11 +240,18 @@ export function pullFromArray(path, id, field, value) {
   return updateDoc(itemRef(path, id), { [field]: arrayRemove(stripUndefined(value)) });
 }
 
-/** One reaction per person per emoji. `active` toggles the caller's own vote. */
-export function setReaction(channel, messageId, emoji, email, active) {
-  return updateDoc(itemRef(['channels', channel, 'messages'], messageId), {
-    [`reactions.${emoji}`]: active ? arrayUnion(email) : arrayRemove(email),
-  });
+/** One reaction per person per message. If already on `emoji`, toggles off. If switching from other emojis, removes them and activates `emoji`. */
+export function setReaction(channel, messageId, emoji, email, active, removeEmojis = []) {
+  const updates = {};
+  if (Array.isArray(removeEmojis)) {
+    for (const prev of removeEmojis) {
+      if (prev && prev !== emoji) {
+        updates[`reactions.${prev}`] = arrayRemove(email);
+      }
+    }
+  }
+  updates[`reactions.${emoji}`] = active ? arrayUnion(email) : arrayRemove(email);
+  return updateDoc(itemRef(['channels', channel, 'messages'], messageId), updates);
 }
 
 export function saveProfile(profile) {
