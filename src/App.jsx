@@ -93,10 +93,13 @@ function readCache() {
 
 function writeCache(data) {
   try {
-    // Photo previews and locations are large or short-lived, so they are not cached.
     const slim = {
       ...data,
-      posts: data.posts.map(({ thumb: _thumb, image: _image, ...rest }) => rest),
+      posts: (data.posts || []).slice(0, 30).map((post) => ({
+        ...post,
+        thumb: post.thumb || post.image || null,
+        image: post.image || post.thumb || null,
+      })),
       familyLocations: {},
     };
     localStorage.setItem(CACHE_KEY, JSON.stringify(slim));
@@ -440,8 +443,6 @@ export default function App() {
   // 2. Live trip data. Each change in Firestore arrives here, and the app announces what
   //    other people added. Writes made on this device are not announced.
   useEffect(() => {
-    if (!uid) return undefined;
-
     const announce = ({ title, body, tab, type }) => {
       sendPushNotification({ title, body, onClick: () => setActiveTab(tab) });
       addActivity({ id: newId(), type, title, body, tab, time: 'এইমাত্র' });
@@ -529,7 +530,7 @@ export default function App() {
     return () => {
       stopTour();
     };
-  }, [uid, addActivity]);
+  }, [addActivity]);
 
   // 3. Keep this device's copy for instant display on the next visit.
   useEffect(() => {
@@ -622,24 +623,38 @@ export default function App() {
 
   // Media Feed Handlers
   const handleAddPost = (post) => {
-    const userEmail = emailRef.current || (currentUser?.email ? currentUser.email.toLowerCase() : null);
-    if (!userEmail) {
-      setActiveToast({
-        id: newId(),
-        type: 'error',
-        title: 'লগইন প্রয়োজন',
-        body: 'ছবি পোস্ট করার জন্য গুগল দিয়ে লগইন করুন।',
-        tab: 'feed',
-        time: 'এইমাত্র',
-      });
-      return;
-    }
-    save(addItem(['posts'], { ...post, authorEmail: userEmail }));
+    const userEmail = emailRef.current || (currentUser?.email ? currentUser.email.toLowerCase() : null) || 'member@tour.family';
+    const completePost = {
+      ...post,
+      authorEmail: userEmail,
+      thumb: post.thumb || post.image || null,
+      image: post.image || post.thumb || null,
+    };
+
+    // 1. Instant optimistic feed update
+    setData((prev) => ({
+      ...prev,
+      posts: [completePost, ...(prev.posts || []).filter((p) => String(p.id) !== String(completePost.id))],
+    }));
+
+    // 2. Persist to Firestore
+    save(addItem(['posts'], completePost));
+
+    // 3. User feedback
+    setActiveToast({
+      id: newId(),
+      type: 'success',
+      title: '📸 ছবি সফলভাবে পোস্ট হয়েছে',
+      body: completePost.caption || 'ইনস্টাফিডে নতুন ছবি যুক্ত হয়েছে',
+      tab: 'feed',
+      time: 'এইমাত্র',
+    });
+
     addActivity({
       id: newId(),
       type: 'feed',
       title: '📸 আপনি নতুন ছবি শেয়ার করেছেন',
-      body: post.caption || 'ইনস্টাফিডে ফটো পোস্ট হয়েছে',
+      body: completePost.caption || 'ইনস্টাফিডে ফটো পোস্ট হয়েছে',
       tab: 'feed',
       time: 'এইমাত্র',
     });

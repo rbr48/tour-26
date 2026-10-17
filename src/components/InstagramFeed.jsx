@@ -245,9 +245,18 @@ export default function InstagramFeed({
     }
   };
 
-  // Drive-backed posts keep only a preview on this device, so sharing uses the best
-  // copy available: the full-size image when it is stored, otherwise the preview.
-  const photoSource = (post) => post.image || post.thumb || post.photo || post.url || post.imageUrl || null;
+  const photoSource = (post) => {
+    if (!post) return null;
+    if (post.thumb && typeof post.thumb === 'string') return post.thumb;
+    if (post.image && typeof post.image === 'string' && !post.image.includes('drive.google.com/file/d/')) return post.image;
+    if (post.photo && typeof post.photo === 'string') return post.photo;
+    if (post.url && typeof post.url === 'string') return post.url;
+    if (post.imageUrl && typeof post.imageUrl === 'string') return post.imageUrl;
+    if (post.driveFileId) {
+      return `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1000`;
+    }
+    return post.image || post.thumb || null;
+  };
 
   const getFileFromPhoto = async (src, post) => {
     if (src.startsWith('data:')) {
@@ -379,10 +388,14 @@ export default function InstagramFeed({
     }
 
     const profilePhoto = currentProfile?.customPhotoURL;
+    const basePhoto = imageFilePreview || link || null;
+    const finalThumb = photo?.thumb || basePhoto;
+    const finalImage = photo?.image || photo?.thumb || basePhoto;
+
     const newPost = {
       id: newId(),
       author: authorName,
-      authorEmail: currentUser?.email ?? null,
+      authorEmail: currentUser?.email || 'member@tour.family',
       authorPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:')
         ? profilePhoto
         : (currentUser?.photoURL || null),
@@ -391,6 +404,8 @@ export default function InstagramFeed({
       likes: [],
       comments: [],
       ...photo,
+      thumb: finalThumb,
+      image: finalImage,
       createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' }),
     };
 
