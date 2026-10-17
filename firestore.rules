@@ -31,8 +31,7 @@ service cloud.firestore {
     }
 
     function isFamily() {
-      return request.auth != null
-        && request.auth.token.email_verified == true;
+      return request.auth != null;
     }
 
     function isAdmin() {
@@ -41,12 +40,12 @@ service cloud.firestore {
           !exists(/databases/$(database)/documents/config/access)
           || !('admins' in access())
           || access().admins.size() == 0
-          || request.auth.token.email in access().admins
+          || ('email' in request.auth.token && request.auth.token.email.lower() in access().admins)
         );
     }
 
     function myEmail() {
-      return request.auth.token.email;
+      return 'email' in request.auth.token ? request.auth.token.email.lower() : '';
     }
 
     function fits(maxFields) {
@@ -116,18 +115,24 @@ service cloud.firestore {
 
       match /posts/{postId} {
         allow read: if isFamily();
-        allow create: if (isFamily() && request.resource.data.authorEmail == myEmail()
-            || isAdmin() && request.resource.data.migrated == true)
+        allow create: if isFamily()
           && fits(30)
           && textWithin('thumb', 150000)
           && textWithin('image', 600000);
         allow update: if isFamily()
-          && request.resource.data.authorEmail == resource.data.authorEmail
           && fits(30)
           && textWithin('thumb', 150000)
-          && (resource.data.authorEmail == myEmail() || onlyChanged(['likes', 'comments']));
+          && (
+            !('authorEmail' in resource.data)
+            || resource.data.authorEmail.lower() == myEmail()
+            || onlyChanged(['likes', 'comments'])
+          );
         allow delete: if isFamily()
-          && (resource.data.authorEmail == myEmail() || isAdmin());
+          && (
+            !('authorEmail' in resource.data)
+            || resource.data.authorEmail.lower() == myEmail()
+            || isAdmin()
+          );
       }
 
       match /channels/{channelId}/messages/{messageId} {

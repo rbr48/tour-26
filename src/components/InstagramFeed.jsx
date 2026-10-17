@@ -367,14 +367,13 @@ export default function InstagramFeed({
         ? await preparePhotoFromDataUrl({ dataUrl: imageFilePreview, authorName, caption: postCaption })
         : preparePhotoFromUrl(link);
     } catch (err) {
-      console.warn('Photo upload failed:', err.message);
-      if (err.message === 'NO_TOKEN' || err.message === 'TOKEN_EXPIRED') {
-        setHasDriveToken(false);
-        setPostError('গুগল ড্রাইভ সংযোগ নেই। "ড্রাইভ কানেক্ট করুন" চাপুন, তারপর আবার চেষ্টা করুন।');
-      } else {
-        setPostError(err.message);
-      }
-      return;
+      console.warn('Drive upload warning, proceeding with thumbnail:', err.message);
+      photo = {
+        thumb: imageFilePreview || link,
+        driveBackedUp: false,
+        driveFileId: null,
+        driveViewUrl: null,
+      };
     } finally {
       setIsDriveUploading(false);
     }

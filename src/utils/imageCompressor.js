@@ -52,7 +52,11 @@ export const compressImage = (dataUrl, maxWidth = 900, maxHeight = 900, quality 
 // Compress a File object directly from <input type="file">
 export const compressImageFile = (file, maxWidth = 900, maxHeight = 900, quality = 0.7) => {
   return new Promise((resolve, reject) => {
-    if (!file || !file.type.startsWith('image/')) {
+    const isImage = Boolean(file) && (
+      (typeof file.type === 'string' && file.type.startsWith('image/')) ||
+      /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(file.name || '')
+    );
+    if (!isImage) {
       return reject(new Error('Selected file is not an image'));
     }
 

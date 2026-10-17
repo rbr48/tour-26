@@ -189,20 +189,31 @@ export const uploadViaAppsScript = async (webhookUrl, { imageDataUrl, fileName, 
     folderId: GOOGLE_DRIVE_FOLDER_ID
   };
 
-  const response = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload)
-  });
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 8000) : null;
 
-  if (!response.ok) {
-    throw new Error(`Apps Script HTTP error: ${response.status}`);
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+      signal: controller?.signal,
+    });
+
+    if (timeoutId) clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`Apps Script HTTP error: ${response.status}`);
+    }
+
+    const resJson = await response.json();
+    if (resJson.error) {
+      throw new Error(resJson.error);
+    }
+
+    return resJson;
+  } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId);
+    throw err;
   }
-
-  const resJson = await response.json();
-  if (resJson.error) {
-    throw new Error(resJson.error);
-  }
-
-  return resJson;
 };
