@@ -50,8 +50,21 @@ export const signInWithGoogle = async () => {
   try {
     if (Capacitor.isNativePlatform()) {
       // Native Android / iOS sign-in using Google Play Services / Credential Manager
-      const result = await FirebaseAuthentication.signInWithGoogle();
-      const idToken = result.credential?.idToken;
+      let result;
+      try {
+        result = await FirebaseAuthentication.signInWithGoogle({
+          skipNativeAuth: true,
+          useCredentialManager: true
+        });
+      } catch (err1) {
+        console.warn('Native Google Sign-In with CredentialManager failed, trying legacy GoogleSignInClient:', err1);
+        result = await FirebaseAuthentication.signInWithGoogle({
+          skipNativeAuth: true,
+          useCredentialManager: false
+        });
+      }
+
+      const idToken = result.credential?.idToken || result.idToken;
       if (idToken) {
         const credential = GoogleAuthProvider.credential(idToken);
         const userCredential = await signInWithCredential(auth, credential);

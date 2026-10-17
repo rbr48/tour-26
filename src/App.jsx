@@ -815,11 +815,13 @@ export default function App() {
       }
     } catch (err) {
       console.error('Google Sign-in failed:', err);
-      let msg = 'গুগল সাইন-ইন সম্পন্ন হয়নি। নিচে আপনার নাম নির্বাচন করে সরাসরি প্রবেশ করতে পারেন।';
+      let msg = 'গুগল সাইন-ইন সম্পন্ন হয়নি।';
       if (err.code === 'auth/unauthorized-domain') {
         msg = 'ডোমেইনটি ফায়ারবেসে অনুমোদিত নয়। নিচের সদস্য তালিকা থেকে সরাসরি প্রবেশ করুন।';
       } else if (err.code === 'auth/popup-closed-by-user') {
-        msg = 'পপআপ উইন্ডো বন্ধ করা হয়েছে।';
+        msg = 'সাইন-ইন উইন্ডো বন্ধ করা হয়েছে।';
+      } else if (err.message) {
+        msg += ` (${err.message})`;
       }
       setAuthError(msg);
       setSyncStatus('সাইন-ইন ব্যর্থ');

@@ -28,3 +28,14 @@ public/*.apk
 *.apk
 dist.tar
 
+
+*.tar
+*.tar.gz
+
+# Private chat logs and backups
+extracted_chat/
+
+# Environment files
+.env
+.env.*
+!.env.example
