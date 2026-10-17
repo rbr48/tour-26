@@ -34,7 +34,7 @@ export default function BusSeatMap({ members = [] }) {
     { id: 'B9', type: 'business', position: 'right-window', member: 'নুরুজ্জামান ভাই', phone: '01715000000', label: 'বিজনেস B9', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
     { id: 'B10', type: 'business', position: 'left-single', member: 'লতিফ ভাই / খালু (কুড়িগ্রাম)', phone: '01716000000', label: 'বিজনেস B10', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
     { id: 'B11', type: 'business', position: 'right-aisle', member: 'লতিফ ভাই / খালু (কুড়িগ্রাম)', phone: '01716000000', label: 'বিজনেস B11', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
-    { id: 'B12', type: 'business', position: 'right-window', member: 'এম এস রানা ভাই (বিকেবি)', phone: '01719000000', label: 'বিজনেস B12', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
+    { id: 'B12', type: 'business', position: 'right-window', member: 'এম এস রানা ভাই (বিকেবি)', phone: '01737910040', label: 'বিজনেস B12', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
     { id: 'B13', type: 'business', position: 'back-row', member: 'আলমগীর ভাই (ফটোগ্রাফার)', phone: '01720000000', label: 'বিজনেস B13', desc: 'লোয়ার ডেক • ব্যাক রো' },
     { id: 'B14', type: 'business', position: 'back-row', member: 'অতিরিক্ত / ব্যাকআপ সিট', phone: null, label: 'বিজনেস B14', desc: 'লোয়ার ডেক • রিজার্ভ সিট' },
   ];

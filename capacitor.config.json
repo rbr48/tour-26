@@ -2,7 +2,28 @@
   "appId": "com.izhaanintellect.tour2026",
   "appName": "Family Tour 2026",
   "webDir": "dist",
+  "backgroundColor": "#134e4a",
   "server": {
     "androidScheme": "https"
+  },
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": [
+        "google.com"
+      ]
+    },
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "launchAutoHide": true,
+      "backgroundColor": "#134e4a",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#134e4a"
+    }
   }
 }

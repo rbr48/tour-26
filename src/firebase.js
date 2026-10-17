@@ -1,8 +1,11 @@
 import { initializeApp } from 'firebase/app';
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithCredential,
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
@@ -45,12 +48,28 @@ export const db = getFirestore(app);
 // Authentication Helpers
 export const signInWithGoogle = async () => {
   try {
-    const result = await signInWithPopup(auth, googleProvider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential?.accessToken) {
-      setDriveAccessToken(credential.accessToken);
+    if (Capacitor.isNativePlatform()) {
+      // Native Android / iOS sign-in using Google Play Services / Credential Manager
+      const result = await FirebaseAuthentication.signInWithGoogle();
+      const idToken = result.credential?.idToken;
+      if (idToken) {
+        const credential = GoogleAuthProvider.credential(idToken);
+        const userCredential = await signInWithCredential(auth, credential);
+        return userCredential.user;
+      }
+      if (result.user) {
+        return result.user;
+      }
+      throw new Error('গুগল অ্যাকাউন্ট থেকে কোনো ক্রেডেনশিয়াল পাওয়া যায়নি');
+    } else {
+      // Web browser sign-in using popup
+      const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setDriveAccessToken(credential.accessToken);
+      }
+      return result.user;
     }
-    return result.user;
   } catch (error) {
     console.error('Google Sign-In Error:', error);
     throw error;
@@ -76,6 +95,11 @@ export const connectGoogleDrive = async () => {
 export const logoutUser = async () => {
   try {
     setDriveAccessToken(null);
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await FirebaseAuthentication.signOut();
+      } catch {}
+    }
     await signOut(auth);
   } catch (error) {
     console.error('Logout Error:', error);

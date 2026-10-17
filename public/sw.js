@@ -41,12 +41,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Skip non-GET requests, chrome-extension, and Google Drive upload
+  // Skip non-GET requests, chrome-extension, Google Drive upload, and APK files
   if (
     event.request.method !== 'GET' ||
     url.origin.includes('chrome-extension') ||
     url.pathname.includes('/drive/v3') ||
-    url.pathname.includes('/macros/s/')
+    url.pathname.includes('/macros/s/') ||
+    url.pathname.endsWith('.apk')
   ) {
     return;
   }

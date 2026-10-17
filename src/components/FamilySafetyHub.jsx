@@ -4,6 +4,8 @@ import {
   Share2, Volume2, VolumeX, X, Check, ExternalLink, Users, Battery,
   Clock, Flame, ShieldCheck, HeartPulse
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 
 // Preset Critical Tour Landmarks
 const TOUR_LANDMARKS = [
@@ -45,7 +47,7 @@ const TOUR_LANDMARKS = [
 const EMERGENCY_CONTACTS = [
   {
     name: 'সোহাগ রানা (ট্যুর কো-অর্ডিনেটর)',
-    phone: '01712345678',
+    phone: '01737-910040',
     role: 'পরিচালক',
     priority: true
   },
@@ -115,15 +117,39 @@ export default function FamilySafetyHub({
   const oscillatorRef = useRef(null);
   const sirenIntervalRef = useRef(null);
 
-  // Get current GPS location
-  const handleGetCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setLocationError('আপনার ডিভাইসে জিপিএস লোকেশন সমর্থিত নয়');
-      return;
-    }
-
+  // Get current GPS location (Native Android Geolocation + Web fallback)
+  const handleGetCurrentLocation = async () => {
     setIsLocating(true);
     setLocationError('');
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const pos = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 10000
+        });
+        if (pos && pos.coords) {
+          const coords = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: Math.round(pos.coords.accuracy || 10),
+            timestamp: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })
+          };
+          setUserLocation(coords);
+          setIsLocating(false);
+          return;
+        }
+      } catch (nativeErr) {
+        console.warn('Native geolocation failed, falling back to browser API:', nativeErr);
+      }
+    }
+
+    if (!navigator.geolocation) {
+      setLocationError('আপনার ডিভাইসে জিপিএস লোকেশন সমর্থিত নয়');
+      setIsLocating(false);
+      return;
+    }
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {

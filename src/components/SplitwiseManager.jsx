@@ -11,7 +11,6 @@ export default function SplitwiseManager({
   onAddExpense,
   onDeleteExpense,
   onOpenPrintModal,
-  onOpenBkashModal,
   onEditMemberDeposit
 }) {
   const [newExpense, setNewExpense] = useState({
@@ -177,15 +176,6 @@ export default function SplitwiseManager({
             <PieChart size={17} className="text-teal-700" /> খাতভিত্তিক ব্যয়ের বিশ্লেষণ
           </h3>
           <div className="flex items-center gap-2">
-            {onOpenBkashModal && (
-              <button
-                type="button"
-                onClick={onOpenBkashModal}
-                className="px-3 py-1.5 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-bold rounded-xl flex items-center gap-1.5 text-xs shadow-xs transition cursor-pointer"
-              >
-                <DollarSign size={14} /> ফান্ডে টাকা জমা (bKash/নগদ)
-              </button>
-            )}
             <button
               onClick={onOpenPrintModal}
               className="text-xs font-semibold text-teal-700 hover:text-teal-900 flex items-center gap-1.5 transition cursor-pointer"

@@ -93,7 +93,7 @@ export default function HotelRoomMap({ members = [] }) {
       floor: 7,
       type: 'ডাবল বেড সি-ভিউ এসি',
       occupants: 'এম এস রানা ভাই ও পরিবার (বিকেবি)',
-      phone: '01719000000',
+      phone: '01737910040',
       beds: '১টি কিং সাইজ ডাবল বেড',
       view: 'টপ ফ্লোর সি-ভিউ',
       color: 'border-sky-300 bg-sky-50/50'

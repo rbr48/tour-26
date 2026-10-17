@@ -7,7 +7,7 @@ import {
   LogIn, LogOut, Check, UserCheck, Flame, Megaphone, Terminal,
   Printer, Edit3, Save, X, Waves, ArrowRight, DollarSign, Split,
   SlidersHorizontal, Camera, MessageSquare, User, HardDrive, Menu,
-  ExternalLink
+  ExternalLink, Smartphone, Download
 } from 'lucide-react';
 import {
   auth,
@@ -30,10 +30,14 @@ import UserProfileModal from './components/UserProfileModal';
 import InstagramFeed from './components/InstagramFeed';
 import DiscordDiscussion from './components/DiscordDiscussion';
 import NotificationCenter from './components/NotificationCenter';
-import AITourGuideModal from './components/AITourGuideModal';
 import FamilySafetyHub from './components/FamilySafetyHub';
-import BkashDepositModal from './components/BkashDepositModal';
 import TourQuizModal from './components/TourQuizModal';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { StatusBar, Style } from '@capacitor/status-bar';
+import { SplashScreen } from '@capacitor/splash-screen';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { Network } from '@capacitor/network';
 import { sendPushNotification } from './services/notificationService';
 import { sanitizeAndCompressTourData } from './utils/imageCompressor';
 
@@ -215,7 +219,7 @@ const INITIAL_DATA = {
     { id: 6, name: 'লতিফ ভাই / খালু (কুড়িগ্রাম)', phone: '01716000000', seat: 'বিজনেস B10, B11 (২ সিট)', room: 'রুম ৩০২ (ফ্রন্ট ভিউ)', deposit: 10000, familyCount: 2 },
     { id: 7, name: 'আলিম ভাই', phone: '01717000000', seat: 'স্লিপার S7, S8 (২ সিট)', room: 'রুম ৫০৩ (ডাবল)', deposit: 10000, familyCount: 2 },
     { id: 8, name: 'সাইফুল ভাই / জামাই', phone: '01718000000', seat: 'স্লিপার S9, S10 (২ সিট)', room: 'রুম ৭০১ (সি-ভিউ)', deposit: 10000, familyCount: 2 },
-    { id: 9, name: 'এম এস রানা ভাই (বিকেবি)', phone: '01719000000', seat: 'বিজনেস B12 (সিঙ্গেল)', room: 'রুম ৭০২ (শেয়ার্ড)', deposit: 10000, familyCount: 1 },
+    { id: 9, name: 'মো: সোহাগ রানা / এম এস রানা (ট্যুর কো-অর্ডিনেটর)', phone: '01737910040', seat: 'বিজনেস B12 (সিঙ্গেল)', room: 'রুম ৭০২ (শেয়ার্ড)', deposit: 10000, familyCount: 1 },
     { id: 10, name: 'আলমগীর ভাই (ফটোগ্রাফার)', phone: '01720000000', seat: 'বিজনেস B13 (সিঙ্গেল)', room: 'রুম ৭০২ (শেয়ার্ড)', deposit: 8000, familyCount: 1 }
   ],
   expenses: [
@@ -388,10 +392,8 @@ export default function App() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
 
-  // Superpower Feature Modals
-  const [showAIGuideModal, setShowAIGuideModal] = useState(false);
+  // Feature Modals
   const [showSafetyHubModal, setShowSafetyHubModal] = useState(false);
-  const [showBkashModal, setShowBkashModal] = useState(false);
   const [showQuizModal, setShowQuizModal] = useState(false);
 
   // Activity Feed & Push Notification State
@@ -453,6 +455,106 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
+  // Native Android Platform Lifecycle: Status Bar, Splash Screen, & Network Listener
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      // 1. Configure Native Status Bar
+      try {
+        StatusBar.setStyle({ style: Style.Dark });
+        StatusBar.setBackgroundColor({ color: '#134e4a' });
+      } catch (err) {
+        console.warn('StatusBar configuration skipped:', err);
+      }
+
+      // 2. Hide Splash Screen smoothly once React mounts
+      setTimeout(() => {
+        try {
+          SplashScreen.hide({ fadeOutDuration: 350 });
+        } catch {}
+      }, 300);
+
+      // 3. Listen to Network state changes
+      try {
+        Network.addListener('networkStatusChange', (status) => {
+          if (!status.connected) {
+            setSyncStatus('ইন্টারনেট অফলাইন (লোকাল মোড)');
+          } else {
+            setSyncStatus('ইন্টারনেট সংযুক্ত');
+          }
+        });
+      } catch {}
+    }
+  }, []);
+
+  // Native Android Hardware Back Button: Modals -> Drawer -> Dashboard -> Exit
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const backListenerPromise = CapApp.addListener('backButton', () => {
+      if (previewImage) {
+        setPreviewImage(null);
+        return;
+      }
+      if (showSafetyHubModal) {
+        setShowSafetyHubModal(false);
+        return;
+      }
+      if (showQuizModal) {
+        setShowQuizModal(false);
+        return;
+      }
+      if (showProfileModal) {
+        setShowProfileModal(false);
+        return;
+      }
+      if (showPrintReport) {
+        setShowPrintReport(false);
+        return;
+      }
+      if (showServerModal) {
+        setShowServerModal(false);
+        return;
+      }
+      if (isCommandOpen) {
+        setIsCommandOpen(false);
+        return;
+      }
+      if (isMobileSidebarOpen) {
+        setIsMobileSidebarOpen(false);
+        return;
+      }
+      if (activeTab !== 'dashboard') {
+        setActiveTab('dashboard');
+        return;
+      }
+      CapApp.exitApp();
+    });
+
+    return () => {
+      backListenerPromise.then(handler => handler.remove()).catch(() => {});
+    };
+  }, [
+    previewImage,
+    showSafetyHubModal,
+    showQuizModal,
+    showProfileModal,
+    showPrintReport,
+    showServerModal,
+    isCommandOpen,
+    isMobileSidebarOpen,
+    activeTab
+  ]);
+
+  // Haptic Feedback Tab Navigation
+  const handleSelectTab = (tabId) => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        Haptics.impact({ style: ImpactStyle.Light });
+      } catch {}
+    }
+    setActiveTab(tabId);
+  };
+
   // Form States
   const [newMember, setNewMember] = useState({ name: '', phone: '', seat: '', room: '', deposit: '', familyCount: 1 });
   const [newPlan, setNewPlan] = useState({ day: '', title: '', time: '', location: '', notes: '' });
@@ -461,12 +563,25 @@ export default function App() {
   // 1. Listen for Firebase Auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setIsAuthLoading(false);
       if (user) {
+        setCurrentUser(user);
+        setIsAuthLoading(false);
         setSyncStatus('ফায়ারবেস ক্লাউড সক্রিয়');
       } else {
-        setSyncStatus('অফলাইন / স্থানীয় মোড');
+        const savedGuest = localStorage.getItem('tour_guest_user');
+        if (savedGuest) {
+          try {
+            setCurrentUser(JSON.parse(savedGuest));
+            setSyncStatus('সদস্য মোড সক্রিয়');
+          } catch {
+            setCurrentUser(null);
+            setSyncStatus('অফলাইন / স্থানীয় মোড');
+          }
+        } else {
+          setCurrentUser(null);
+          setSyncStatus('অফলাইন / স্থানীয় মোড');
+        }
+        setIsAuthLoading(false);
       }
     });
     return () => unsubscribe();
@@ -691,6 +806,7 @@ export default function App() {
     try {
       setAuthError(null);
       setSyncStatus('গুগলে লগইন হচ্ছে...');
+      localStorage.removeItem('tour_guest_user');
       const user = await signInWithGoogle();
       if (user) {
         setActiveTab('dashboard');
@@ -699,9 +815,9 @@ export default function App() {
       }
     } catch (err) {
       console.error('Google Sign-in failed:', err);
-      let msg = 'লগইন ব্যর্থ হয়েছে। আবার চেষ্টা করুন।';
+      let msg = 'গুগল সাইন-ইন সম্পন্ন হয়নি। নিচে আপনার নাম নির্বাচন করে সরাসরি প্রবেশ করতে পারেন।';
       if (err.code === 'auth/unauthorized-domain') {
-        msg = 'ডোমেইনটি ফায়ারবেসে অনুমোদিত নয়। অনুগ্রহ করে Firebase Console এ গিয়ে tour2026.izhaanintellect.fun যোগ করুন।';
+        msg = 'ডোমেইনটি ফায়ারবেসে অনুমোদিত নয়। নিচের সদস্য তালিকা থেকে সরাসরি প্রবেশ করুন।';
       } else if (err.code === 'auth/popup-closed-by-user') {
         msg = 'পপআপ উইন্ডো বন্ধ করা হয়েছে।';
       }
@@ -710,12 +826,34 @@ export default function App() {
     }
   };
 
+  const handleMemberQuickLogin = (selectedMember) => {
+    if (!selectedMember) return;
+    const guestUser = {
+      uid: 'member_' + (selectedMember.id || Date.now()),
+      email: selectedMember.phone ? `${selectedMember.phone}@tour2026.app` : `member_${selectedMember.id}@tour2026.app`,
+      displayName: selectedMember.name,
+      photoURL: null,
+      isAnonymous: true
+    };
+    try {
+      localStorage.setItem('tour_guest_user', JSON.stringify(guestUser));
+    } catch {}
+    setCurrentUser(guestUser);
+    setActiveTab('dashboard');
+    setShowServerModal(false);
+    setSyncStatus('সদস্য মোড সক্রিয়');
+  };
+
   const handleLogout = async () => {
     try {
+      localStorage.removeItem('tour_guest_user');
       await logoutUser();
+      setCurrentUser(null);
       setSyncStatus('লগআউট সম্পন্ন');
     } catch (err) {
       console.error('Logout error:', err);
+      localStorage.removeItem('tour_guest_user');
+      setCurrentUser(null);
     }
   };
 
@@ -1015,48 +1153,6 @@ export default function App() {
     });
   };
 
-  const handleAddDepositTransaction = (trx) => {
-    const newExpense = {
-      id: trx.id,
-      title: `ট্যুর ফান্ডে জমা: ${trx.depositorName} (${trx.method})`,
-      category: 'অন্যান্য',
-      amount: Number(trx.amount),
-      paidBy: trx.depositorName,
-      date: new Date().toISOString().slice(0, 10),
-      time: trx.time,
-      isDeposit: true,
-      trxId: trx.trxId
-    };
-
-    const updatedMembers = (data.members || []).map(m => {
-      if (m.name.includes(trx.depositorName) || trx.depositorName.includes(m.name)) {
-        return { ...m, deposit: Number(m.deposit || 0) + Number(trx.amount) };
-      }
-      return m;
-    });
-
-    const updated = {
-      ...data,
-      members: updatedMembers,
-      expenses: [newExpense, ...(data.expenses || [])]
-    };
-    pushToServer(updated);
-
-    addActivity({
-      id: Date.now(),
-      type: 'deposit',
-      title: '💰 নতুন জমা অন্তর্ভুক্ত হয়েছে',
-      body: `${trx.depositorName} • ৳${Number(trx.amount).toLocaleString()} (${trx.method})`,
-      tab: 'expenses',
-      time: 'এইমাত্র'
-    });
-    sendPushNotification({
-      title: '💰 ফান্ডে নতুন জমা যুক্ত হয়েছে',
-      body: `${trx.depositorName}: ৳${Number(trx.amount).toLocaleString()} (${trx.method})`,
-      onClick: () => setActiveTab('expenses')
-    });
-  };
-
   // Notice Handlers
   const handleAddNotice = (notice) => {
     const updated = {
@@ -1227,6 +1323,51 @@ export default function App() {
               )}
             </div>
 
+            {/* Quick Member Access / Instant Entry */}
+            <div className="pt-2">
+              <div className="relative flex py-2 items-center">
+                <div className="flex-grow border-t border-slate-200"></div>
+                <span className="flex-shrink mx-3 text-[11px] text-slate-500 font-bold uppercase tracking-wider">অথবা সরাসরি ড্যাশবোর্ডে প্রবেশ</span>
+                <div className="flex-grow border-t border-slate-200"></div>
+              </div>
+
+              <div className="space-y-3 mt-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    সদস্য তালিকা থেকে আপনার নাম নির্বাচন করুন:
+                  </label>
+                  <select
+                    id="quick-member-select"
+                    className="w-full text-xs sm:text-sm bg-slate-50 border-2 border-slate-200 hover:border-teal-500 rounded-xl px-3.5 py-3 text-slate-800 font-semibold focus:ring-2 focus:ring-teal-500 focus:outline-none transition"
+                    defaultValue={data.members?.[8]?.name || data.members?.[0]?.name || ''}
+                  >
+                    {(data.members || []).map((m) => (
+                      <option key={m.id} value={m.name}>
+                        {m.name} {m.phone ? `(${m.phone})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  onClick={() => {
+                    const sel = document.getElementById('quick-member-select');
+                    const selectedName = sel?.value;
+                    const matchedMember = (data.members || []).find(m => m.name === selectedName) || data.members?.[0];
+                    handleMemberQuickLogin(matchedMember);
+                  }}
+                  className="w-full py-3.5 px-4 bg-teal-800 hover:bg-teal-900 active:bg-teal-950 text-amber-300 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-md hover:shadow-lg"
+                >
+                  <UserCheck size={18} />
+                  <span>পরিবারের সদস্য হিসেবে সরাসরি প্রবেশ করুন</span>
+                </button>
+
+                <p className="text-[11px] text-slate-500 text-center font-medium">
+                  💡 গুগল সাইন-ইন ছাড়াও পরিবারের যে-কোনো সদস্য হিসেবে সরাসরি ড্যাশবোর্ড ব্যবহার করতে পারবেন
+                </p>
+              </div>
+            </div>
+
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2 text-xs text-slate-600">
               <div className="flex items-center gap-2 text-slate-700 font-medium">
                 <Bus size={14} className="text-teal-600 shrink-0" />
@@ -1271,7 +1412,7 @@ export default function App() {
       {/* =========================================================================
           DESKTOP SIDEBAR
       ========================================================================= */}
-      <aside className="hidden md:flex md:w-64 bg-teal-900 text-white flex-col justify-between p-5 shadow-xl shrink-0">
+      <aside className="hidden md:flex md:w-64 bg-teal-900 text-white flex-col justify-between p-4 shadow-xl shrink-0 h-screen sticky top-0 overflow-y-auto">
         <div>
           <div className="flex items-center gap-3 pb-6 border-b border-teal-700">
             <div className="relative">
@@ -1308,7 +1449,7 @@ export default function App() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id)}
+                  onClick={() => handleSelectTab(item.id)}
                   className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
                     activeTab === item.id
                       ? 'bg-amber-400 text-teal-950 shadow-md font-bold'
@@ -1321,6 +1462,53 @@ export default function App() {
               );
             })}
           </nav>
+
+          {/* Special Features & Tools */}
+          <div className="mt-4 pt-3 border-t border-teal-800 space-y-1.5">
+            <p className="text-[10px] font-bold text-amber-300 uppercase tracking-wider px-2">
+              ট্যুর সুপারপাওয়ার ও বিশেষ টুলস
+            </p>
+
+            <button
+              onClick={() => setShowSafetyHubModal(true)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-teal-800 to-rose-950 hover:from-teal-700 hover:to-rose-900 text-teal-100 hover:text-white transition cursor-pointer border border-rose-600/40 shadow-xs"
+            >
+              <div className="flex items-center gap-2.5 truncate">
+                <Compass size={15} className="text-rose-400 shrink-0" />
+                <span className="truncate">সুরক্ষা ও বিচ কম্পাস</span>
+              </div>
+              <span className="text-[9px] bg-rose-500 text-white font-bold px-1.5 py-0.5 rounded shrink-0">
+                GPS
+              </span>
+            </button>
+
+            <button
+              onClick={() => setShowQuizModal(true)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-teal-800 to-amber-950 hover:from-teal-700 hover:to-amber-900 text-teal-100 hover:text-white transition cursor-pointer border border-amber-600/40 shadow-xs"
+            >
+              <div className="flex items-center gap-2.5 truncate">
+                <Flame size={15} className="text-amber-400 shrink-0" />
+                <span className="truncate">ফ্যামিলি কুইজ</span>
+              </div>
+              <span className="text-[9px] bg-amber-400 text-teal-950 font-bold px-1.5 py-0.5 rounded shrink-0">
+                ৮ রাউন্ড
+              </span>
+            </button>
+
+            <a
+              href="/Tour2026-v2.apk"
+              download="Tour2026-v2.apk"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-950 hover:bg-emerald-900 text-emerald-200 hover:text-white transition cursor-pointer border border-emerald-500/50 shadow-xs"
+            >
+              <div className="flex items-center gap-2.5 truncate">
+                <Smartphone size={15} className="text-emerald-400 shrink-0" />
+                <span className="truncate">অ্যান্ড্রয়েড APK</span>
+              </div>
+              <span className="text-[9px] bg-emerald-500 text-teal-950 font-extrabold px-1.5 py-0.5 rounded shrink-0">
+                ডাউনলোড
+              </span>
+            </a>
+          </div>
         </div>
 
         {/* Desktop Sidebar Bottom: Auth & Profile */}
@@ -1470,7 +1658,7 @@ export default function App() {
                     <button
                       key={item.id}
                       onClick={() => {
-                        setActiveTab(item.id);
+                        handleSelectTab(item.id);
                         setIsMobileSidebarOpen(false);
                       }}
                       className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
@@ -1493,6 +1681,50 @@ export default function App() {
                     </button>
                   );
                 })}
+              </div>
+
+              {/* Special Features in Mobile Drawer */}
+              <div className="pt-2 border-t border-teal-800/90 space-y-1.5">
+                <p className="text-[10px] font-bold text-amber-300 uppercase tracking-wider px-2">
+                  ট্যুর সুপারপাওয়ার ও বিশেষ ফিচার
+                </p>
+
+                <button
+                  onClick={() => {
+                    setIsMobileSidebarOpen(false);
+                    setShowSafetyHubModal(true);
+                  }}
+                  className="w-full py-2 px-3 bg-gradient-to-r from-teal-900 to-rose-950 hover:bg-teal-800 text-teal-100 rounded-xl text-xs font-semibold flex items-center justify-between border border-rose-700/50 transition cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Compass size={14} className="text-rose-400" /> ফ্যামিলি সুরক্ষা ও বিচ কম্পাস
+                  </span>
+                  <span className="text-[9px] bg-rose-500 text-white font-bold px-1.5 py-0.5 rounded">GPS</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsMobileSidebarOpen(false);
+                    setShowQuizModal(true);
+                  }}
+                  className="w-full py-2 px-3 bg-gradient-to-r from-teal-900 to-amber-950 hover:bg-teal-800 text-teal-100 rounded-xl text-xs font-semibold flex items-center justify-between border border-amber-700/50 transition cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Flame size={14} className="text-amber-400" /> ফ্যামিলি ট্রাভেল কুইজ
+                  </span>
+                  <span className="text-[9px] bg-amber-400 text-teal-950 font-bold px-1.5 py-0.5 rounded">৮ রাউন্ড</span>
+                </button>
+
+                <a
+                  href="/Tour2026-v2.apk"
+                  download="Tour2026-v2.apk"
+                  className="w-full py-2 px-3 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 rounded-xl text-xs font-semibold flex items-center justify-between border border-emerald-600/60 transition cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Smartphone size={14} className="text-emerald-400" /> অ্যান্ড্রয়েড অ্যাপ (APK ডাউনলোড)
+                  </span>
+                  <span className="text-[9px] bg-emerald-500 text-teal-950 font-extrabold px-1.5 py-0.5 rounded">ইনস্টল</span>
+                </a>
               </div>
 
               {/* Quick Access & Tools Section */}
@@ -1600,73 +1832,20 @@ export default function App() {
                 className="w-9 h-9 md:w-11 md:h-11 rounded-xl object-cover ring-2 ring-amber-400 shadow-md md:hidden"
               />
 
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <span className="px-2 py-0.5 text-[9px] md:text-[10px] bg-amber-400 text-teal-950 font-extrabold rounded-full">
+                  <span className="px-2 py-0.5 text-[9px] md:text-[10px] bg-amber-400 text-teal-950 font-extrabold rounded-full whitespace-nowrap">
                     {data.tourInfo.duration}
                   </span>
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] bg-white/20 px-2 py-0.5 rounded-full text-teal-100">
+                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] bg-white/20 px-2 py-0.5 rounded-full text-teal-100 whitespace-nowrap">
                     <Bus size={10} /> {data.tourInfo.busName}
                   </span>
                 </div>
-                <h2 className="text-sm md:text-lg font-bold leading-tight">{data.tourInfo.title}</h2>
+                <h2 className="text-sm md:text-lg font-bold leading-tight truncate">{data.tourInfo.title}</h2>
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              {/* Google Drive Shortcut */}
-              <a
-                href="https://drive.google.com/drive/folders/1G_g7cTkA489hbL9dsF6LU5tdfX3E54vM?usp=sharing"
-                target="_blank"
-                rel="noreferrer"
-                className="p-2 sm:px-2.5 sm:py-1.5 bg-emerald-600/40 hover:bg-emerald-600 text-emerald-200 hover:text-white rounded-xl border border-emerald-400/40 transition flex items-center gap-1 text-xs"
-                title="গুগল ড্রাইভ মিডিয়া ফোল্ডার"
-              >
-                <HardDrive size={15} />
-                <span className="hidden md:inline font-semibold">ড্রাইভ</span>
-              </a>
-
-              {/* AI Copilot Button */}
-              <button
-                onClick={() => setShowAIGuideModal(true)}
-                className="p-2 sm:px-2.5 sm:py-1.5 bg-indigo-600/40 hover:bg-indigo-600 text-indigo-200 hover:text-white rounded-xl border border-indigo-400/40 transition flex items-center gap-1 text-xs font-semibold cursor-pointer shadow-sm"
-                title="AI ট্যুর গাইড ও বিচ অ্যাসিস্ট্যান্ট"
-              >
-                <Sparkles size={15} className="text-amber-300 animate-pulse" />
-                <span className="hidden sm:inline">AI গাইড</span>
-              </button>
-
-              {/* Family Safety & Compass Hub */}
-              <button
-                onClick={() => setShowSafetyHubModal(true)}
-                className="p-2 sm:px-2.5 sm:py-1.5 bg-rose-600/40 hover:bg-rose-600 text-rose-200 hover:text-white rounded-xl border border-rose-400/40 transition flex items-center gap-1 text-xs font-semibold cursor-pointer shadow-sm"
-                title="ফ্যামিলি সুরক্ষা, বিচ কম্পাস ও জরুরি SOS"
-              >
-                <ShieldCheck size={15} className="text-rose-300" />
-                <span className="hidden sm:inline">সুরক্ষা</span>
-              </button>
-
-              {/* Travel Trivia Quiz */}
-              <button
-                onClick={() => setShowQuizModal(true)}
-                className="p-2 sm:px-2.5 sm:py-1.5 bg-amber-500/30 hover:bg-amber-500 text-amber-200 hover:text-slate-900 rounded-xl border border-amber-400/40 transition flex items-center gap-1 text-xs font-semibold cursor-pointer shadow-sm"
-                title="ফ্যামিলি ট্রাভেল কুইজ ও ডিজিটাল ট্রফি"
-              >
-                <span className="text-xs">🎮</span>
-                <span className="hidden md:inline">কুইজ</span>
-              </button>
-
-              {/* Android APK Download */}
-              <a
-                href="/Tour2026.apk"
-                download="Tour2026.apk"
-                className="p-2 sm:px-2.5 sm:py-1.5 bg-cyan-600/40 hover:bg-cyan-600 text-cyan-200 hover:text-white rounded-xl border border-cyan-400/40 transition flex items-center gap-1 text-xs font-semibold shadow-sm"
-                title="অ্যান্ড্রয়েড অ্যাপ (APK) ডাউনলোড করুন"
-              >
-                <span className="text-xs">📱</span>
-                <span className="hidden lg:inline">APK</span>
-              </a>
-
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               {/* Notification Center (Push alerts & activity history) */}
               <NotificationCenter
                 activities={activities}
@@ -1697,14 +1876,14 @@ export default function App() {
                 </button>
               )}
 
-              {/* Quick Command Button in Header */}
+              {/* Quick Command Button in Header (Desktop / Tablet only) */}
               <button
                 onClick={() => setIsCommandOpen(true)}
-                className="p-2 md:px-3 md:py-1.5 bg-amber-400 hover:bg-amber-300 text-teal-950 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                className="hidden md:flex p-2 md:px-3 md:py-1.5 bg-amber-400 hover:bg-amber-300 text-teal-950 font-bold text-xs rounded-xl items-center gap-1.5 shadow-sm transition cursor-pointer"
                 title="কমান্ড প্যালেট খুলুন (Ctrl+K)"
               >
                 <Terminal size={14} />
-                <span className="hidden sm:inline">কমান্ড</span>
+                <span>কমান্ড</span>
               </button>
 
               <button
@@ -2061,7 +2240,6 @@ export default function App() {
               onAddExpense={handleAddExpense}
               onDeleteExpense={handleDeleteExpense}
               onOpenPrintModal={() => setShowPrintReport(true)}
-              onOpenBkashModal={() => setShowBkashModal(true)}
               onEditMemberDeposit={(m) => setEditingMember(m)}
             />
           )}
@@ -2358,7 +2536,7 @@ export default function App() {
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => handleSelectTab(item.id)}
               className={`flex-1 flex flex-col items-center py-1 rounded-2xl transition duration-200 cursor-pointer relative ${
                 isActive ? 'text-teal-800 font-extrabold' : 'text-slate-500 hover:text-slate-800'
               }`}
@@ -2739,11 +2917,6 @@ export default function App() {
       )}
 
       {/* SUPERPOWER MODALS */}
-      <AITourGuideModal
-        isOpen={showAIGuideModal}
-        onClose={() => setShowAIGuideModal(false)}
-      />
-
       <FamilySafetyHub
         isOpen={showSafetyHubModal}
         onClose={() => setShowSafetyHubModal(false)}
@@ -2753,14 +2926,6 @@ export default function App() {
         onShareLocation={handleShareLocation}
       />
 
-      <BkashDepositModal
-        isOpen={showBkashModal}
-        onClose={() => setShowBkashModal(false)}
-        currentUser={currentUser}
-        currentProfile={currentProfile}
-        onAddDepositTransaction={handleAddDepositTransaction}
-      />
-
       <TourQuizModal
         isOpen={showQuizModal}
         onClose={() => setShowQuizModal(false)}
@@ -2768,23 +2933,6 @@ export default function App() {
         currentProfile={currentProfile}
       />
 
-      {/* FLOATING ACTION SPEED DIAL / QUICK ACCESS */}
-      <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2.5">
-        <button
-          onClick={() => setShowSafetyHubModal(true)}
-          className="w-11 h-11 rounded-full bg-rose-600 hover:bg-rose-700 text-white shadow-lg flex items-center justify-center transition hover:scale-105 active:scale-95 cursor-pointer border-2 border-white ring-2 ring-rose-300/40"
-          title="জরুরি SOS ও বিচ কম্পাস"
-        >
-          <ShieldCheck size={20} />
-        </button>
-        <button
-          onClick={() => setShowAIGuideModal(true)}
-          className="w-13 h-13 rounded-full bg-gradient-to-tr from-indigo-600 via-purple-600 to-amber-500 text-white shadow-xl flex items-center justify-center transition hover:scale-105 active:scale-95 cursor-pointer border-2 border-white ring-4 ring-indigo-300/50"
-          title="AI ট্যুর গাইড ও বিচ অ্যাসিস্ট্যান্ট"
-        >
-          <Sparkles size={24} className="text-amber-200 animate-pulse" />
-        </button>
-      </div>
     </div>
   );
 }

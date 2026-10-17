@@ -23,5 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
-# Android APK binary
-public/Tour2026.apk
+# Android APK binaries
+public/*.apk
+*.apk
+dist.tar
+

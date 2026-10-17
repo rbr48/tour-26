@@ -50,24 +50,22 @@ ssh banglaqr-vps "cd /opt/tour2026 && tar -xf dist.tar && docker cp dist/. tour2
 
 ---
 
-## 3. Superpower Modules (Option C)
+## 3. Superpower Modules & Native Android Architecture
 
-- **AI Tour Copilot & Beach Guide (`src/components/AITourGuideModal.jsx`)**:
-  - Interactive expert on Cox's Bazar, Marine Drive, Himchari, Inani, and local delicacies.
-  - Speech synthesis (Bengali TTS) and automated Bengali photo caption generator.
 - **Family Safety & Beach Compass (`src/components/FamilySafetyHub.jsx`)**:
-  - Real-time GPS location sharing across the family dashboard.
+  - Real-time GPS location sharing across the family dashboard using native `@capacitor/geolocation`.
   - Rotating compass needle calculating dynamic bearing & distance towards Hotel Sea Moon & Evergreen Bus.
-  - Web Audio synthesized emergency siren and quick dialer for Tour Lead (Sohag Rana: `01749-064887`) and Tourist Police (`01320-163599` / `999`).
-- **Smart Fund & bKash / Nagad Instant Deposit (`src/components/BkashDepositModal.jsx`)**:
-  - 1-click account copy and TrxID submission.
-  - Submissions automatically update Splitwise member balances and financial audit reports.
+  - Web Audio synthesized emergency siren and quick dialer for Tour Coordinator (Sohag Rana: `01737-910040` / `01737910040`) and Tourist Police (`01320-163599` / `999`).
 - **Family Travel Trivia Quiz (`src/components/TourQuizModal.jsx`)**:
   - 8-round interactive tour quiz with explanations, celebratory audio, and digital champion certificates.
+- **Native Android APK Architecture (`public/Tour2026-v2.apk`)**:
+  - 7 Native Capacitor Plugins (`@capacitor-firebase/authentication`, `@capacitor/app`, `@capacitor/geolocation`, `@capacitor/haptics`, `@capacitor/network`, `@capacitor/splash-screen`, `@capacitor/status-bar`).
+  - Native Google Sign-In with registered debug SHA-1 (`C4:C4:EA:A1:B2:62:7A:A9:19:AC:78:15:8B:9B:8B:E9:41:C7:F4:F4`), SHA-256, and OAuth 2.0 Web Client ID (`26498265392-seil3pfcqcj6ie5049askpblsnvuq7nn.apps.googleusercontent.com`).
+  - Branded Android adaptive icon with amber gold ring on deep teal background across all mipmap densities (mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi).
+  - Native hardware back-button handler (modals -> drawer -> dashboard -> app exit).
+  - Native status bar matching deep teal `#134e4a` and light icons.
 - **PWA Offline Service Worker (`public/sw.js`)**:
-  - Cache-first strategy for beach usage with low or zero network connectivity.
-- **Android APK Package (`public/Tour2026.apk`)**:
-  - Standalone compiled APK bundle directly downloadable from the web app header.
+  - Cache-first strategy for beach usage with low or zero network connectivity, strictly bypassing APK downloads.
 
 ---
 
