@@ -5,12 +5,41 @@ import {
 import { FUND_LABEL, computeLedger } from '../utils/ledger';
 import { localISODate, localTimeHHMM } from '../utils/date';
 
-const CATEGORIES = {
-  'পরিবহন': { color: 'bg-blue-500', bgLight: 'bg-blue-50 text-blue-700 border-blue-200' },
-  'হোটেল': { color: 'bg-purple-500', bgLight: 'bg-purple-50 text-purple-700 border-purple-200' },
-  'লোকাল ট্রান্সপোর্ট': { color: 'bg-amber-500', bgLight: 'bg-amber-50 text-amber-700 border-amber-200' },
+export const DEFAULT_CATEGORIES = {
   'খাবার': { color: 'bg-emerald-500', bgLight: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  'নাস্তা ও স্ন্যাক্স': { color: 'bg-lime-500', bgLight: 'bg-lime-50 text-lime-700 border-lime-200' },
+  'হোটেল': { color: 'bg-purple-500', bgLight: 'bg-purple-50 text-purple-700 border-purple-200' },
+  'পরিবহন': { color: 'bg-blue-500', bgLight: 'bg-blue-50 text-blue-700 border-blue-200' },
+  'লোকাল ট্রান্সপোর্ট': { color: 'bg-amber-500', bgLight: 'bg-amber-50 text-amber-700 border-amber-200' },
+  'দর্শনীয় স্থান ও টিকিট': { color: 'bg-pink-500', bgLight: 'bg-pink-50 text-pink-700 border-pink-200' },
+  'কেনাকাটা ও উপহার': { color: 'bg-indigo-500', bgLight: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  'জরুরি ও চিকিৎসা': { color: 'bg-rose-500', bgLight: 'bg-rose-50 text-rose-700 border-rose-200' },
+  'টোল ও সার্ভিস চার্জ': { color: 'bg-teal-500', bgLight: 'bg-teal-50 text-teal-700 border-teal-200' },
   'অন্যান্য': { color: 'bg-slate-500', bgLight: 'bg-slate-50 text-slate-700 border-slate-200' },
+};
+
+const COLOR_PALETTES = [
+  { color: 'bg-blue-500', bgLight: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { color: 'bg-purple-500', bgLight: 'bg-purple-50 text-purple-700 border-purple-200' },
+  { color: 'bg-emerald-500', bgLight: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { color: 'bg-amber-500', bgLight: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { color: 'bg-rose-500', bgLight: 'bg-rose-50 text-rose-700 border-rose-200' },
+  { color: 'bg-indigo-500', bgLight: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { color: 'bg-pink-500', bgLight: 'bg-pink-50 text-pink-700 border-pink-200' },
+  { color: 'bg-cyan-500', bgLight: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+  { color: 'bg-lime-500', bgLight: 'bg-lime-50 text-lime-700 border-lime-200' },
+  { color: 'bg-teal-500', bgLight: 'bg-teal-50 text-teal-700 border-teal-200' },
+];
+
+export const getCategoryMeta = (cat) => {
+  if (!cat) return DEFAULT_CATEGORIES['অন্যান্য'];
+  if (DEFAULT_CATEGORIES[cat]) return DEFAULT_CATEGORIES[cat];
+  let hash = 0;
+  for (let i = 0; i < cat.length; i++) {
+    hash = (hash << 5) - hash + cat.charCodeAt(i);
+    hash |= 0;
+  }
+  return COLOR_PALETTES[Math.abs(hash) % COLOR_PALETTES.length];
 };
 
 const money = (value) => Number(value || 0).toLocaleString();
@@ -44,16 +73,37 @@ export default function SplitwiseManager({
 }) {
   const [newExpense, setNewExpense] = useState(blankExpense);
   const [filterCategory, setFilterCategory] = useState('all');
+  const [customCategories, setCustomCategories] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tour_custom_expense_categories');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isCustomCategoryMode, setIsCustomCategoryMode] = useState(false);
+  const [customCategoryInput, setCustomCategoryInput] = useState('');
 
   const ledger = useMemo(() => computeLedger({ members, expenses }), [members, expenses]);
 
-  const categoryRows = Object.keys(CATEGORIES).map((category) => {
-    const total = expenses
-      .filter((expense) => expense.category === category)
-      .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-    const pct = ledger.totalExpense > 0 ? Math.round((total / ledger.totalExpense) * 100) : 0;
-    return { category, total, pct, ...CATEGORIES[category] };
-  });
+  const allCategoryKeys = useMemo(() => {
+    const set = new Set(Object.keys(DEFAULT_CATEGORIES));
+    customCategories.forEach((c) => set.add(c));
+    expenses.forEach((e) => {
+      if (e.category) set.add(e.category);
+    });
+    return Array.from(set);
+  }, [customCategories, expenses]);
+
+  const categoryRows = allCategoryKeys
+    .map((category) => {
+      const total = expenses
+        .filter((expense) => expense.category === category)
+        .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+      const pct = ledger.totalExpense > 0 ? Math.round((total / ledger.totalExpense) * 100) : 0;
+      return { category, total, pct, ...getCategoryMeta(category) };
+    })
+    .filter((row) => row.total > 0 || Object.keys(DEFAULT_CATEGORIES).slice(0, 6).includes(row.category));
 
   const displayedExpenses = filterCategory === 'all'
     ? expenses
@@ -62,15 +112,30 @@ export default function SplitwiseManager({
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!newExpense.title || !newExpense.amount) return;
+
+    let finalCategory = newExpense.category;
+    if (isCustomCategoryMode && customCategoryInput.trim()) {
+      finalCategory = customCategoryInput.trim();
+      if (!allCategoryKeys.includes(finalCategory)) {
+        const updated = [...customCategories, finalCategory];
+        setCustomCategories(updated);
+        try {
+          localStorage.setItem('tour_custom_expense_categories', JSON.stringify(updated));
+        } catch {}
+      }
+    }
+
     onAddExpense({
       title: newExpense.title,
-      category: newExpense.category,
+      category: finalCategory || 'অন্যান্য',
       amount: Number(newExpense.amount),
       paidById: newExpense.paidById === '' ? null : Number(newExpense.paidById),
       date: newExpense.date || localISODate(),
       time: newExpense.time || localTimeHHMM(),
     });
     setNewExpense(blankExpense());
+    setIsCustomCategoryMode(false);
+    setCustomCategoryInput('');
   };
 
   const fundPositive = ledger.fundBalance >= 0;
@@ -263,17 +328,63 @@ export default function SplitwiseManager({
           </div>
 
           <div>
-            <label htmlFor="expense-category" className="text-[11px] font-bold text-slate-600 block mb-1">ক্যাটাগরি</label>
-            <select
-              id="expense-category"
-              value={newExpense.category}
-              onChange={(event) => setNewExpense({ ...newExpense, category: event.target.value })}
-              className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-            >
-              {Object.keys(CATEGORIES).map((category) => (
-                <option key={category} value={category}>{category}</option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between mb-1">
+              <label htmlFor="expense-category" className="text-[11px] font-bold text-slate-600 block">ক্যাটাগরি / খাত</label>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isCustomCategoryMode;
+                  setIsCustomCategoryMode(next);
+                  if (next) setCustomCategoryInput(newExpense.category);
+                }}
+                className="text-[10px] text-teal-700 hover:text-teal-900 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+              >
+                {isCustomCategoryMode ? '⤺ তালিকা দেখুন' : '✍️ কাস্টম খাত লিখুন'}
+              </button>
+            </div>
+
+            {!isCustomCategoryMode ? (
+              <select
+                id="expense-category"
+                value={newExpense.category}
+                onChange={(event) => {
+                  if (event.target.value === '__add_custom__') {
+                    setIsCustomCategoryMode(true);
+                    setCustomCategoryInput('');
+                  } else {
+                    setNewExpense({ ...newExpense, category: event.target.value });
+                  }
+                }}
+                className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white cursor-pointer"
+              >
+                <optgroup label="প্রস্তাবিত খরচের খাতসমূহ">
+                  {Object.keys(DEFAULT_CATEGORIES).map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </optgroup>
+                {customCategories.length > 0 && (
+                  <optgroup label="আমার কাস্টম যোগ করা খাত">
+                    {customCategories.map((category) => (
+                      <option key={`c-${category}`} value={category}>⭐ {category}</option>
+                    ))}
+                  </optgroup>
+                )}
+                <option value="__add_custom__" className="text-teal-700 font-bold bg-teal-50">
+                  ✍️ + ম্যানুয়ালি নতুন খাত লিখুন...
+                </option>
+              </select>
+            ) : (
+              <div className="space-y-1">
+                <input
+                  type="text"
+                  placeholder="যেমন: বারবিকিউ নাইট, ফটোগ্রাফি..."
+                  value={customCategoryInput}
+                  onChange={(e) => setCustomCategoryInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-xs border-2 border-teal-500 rounded-xl focus:outline-none focus:border-teal-700 bg-white"
+                  autoFocus
+                />
+              </div>
+            )}
           </div>
 
           <div>
@@ -361,24 +472,26 @@ export default function SplitwiseManager({
             >
               সব ({expenses.length})
             </button>
-            {Object.keys(CATEGORIES).map((category) => (
-              <button
-                type="button"
-                key={category}
-                onClick={() => setFilterCategory(category)}
-                className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer whitespace-nowrap ${
-                  filterCategory === category ? 'bg-teal-700 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {category}
-              </button>
-            ))}
+            {allCategoryKeys
+              .filter((category) => expenses.some((e) => e.category === category) || Object.keys(DEFAULT_CATEGORIES).slice(0, 6).includes(category))
+              .map((category) => (
+                <button
+                  type="button"
+                  key={category}
+                  onClick={() => setFilterCategory(category)}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer whitespace-nowrap ${
+                    filterCategory === category ? 'bg-teal-700 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {category}
+                </button>
+              ))}
           </div>
         </div>
 
         <div className="divide-y divide-slate-100">
           {displayedExpenses.map((item) => {
-            const categoryInfo = CATEGORIES[item.category] || CATEGORIES['অন্যান্য'];
+            const categoryInfo = getCategoryMeta(item.category);
             return (
               <div key={item.id} className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50 transition">
                 <div className="min-w-0">

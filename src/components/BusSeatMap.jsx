@@ -1,11 +1,40 @@
 import React, { useState } from 'react';
-import { Bus, PhoneCall, Armchair, Info, X } from 'lucide-react';
+import { Bus, PhoneCall, Armchair, Info, X, Edit3, Check } from 'lucide-react';
 
 import { phoneForMember } from '../utils/members';
 
-export default function BusSeatMap({ members = [] }) {
+export default function BusSeatMap({ members = [], onUpdateMember }) {
   const [selectedSeat, setSelectedSeat] = useState(null);
   const [activeDeck, setActiveDeck] = useState('both'); // 'upper', 'lower', 'both'
+  const [customAssignments, setCustomAssignments] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tour_seat_assignments');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const [isEditingSeat, setIsEditingSeat] = useState(false);
+  const [editMemberId, setEditMemberId] = useState('');
+  const [customNameInput, setCustomNameInput] = useState('');
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
+
+  // Dynamically resolve seat occupant from custom overrides, members list, or preset
+  const getSeatOccupant = (s) => {
+    if (!s) return '';
+    if (customAssignments[s.id]) {
+      return customAssignments[s.id];
+    }
+    const matched = members.find((m) => {
+      if (!m.seat) return false;
+      const clean = m.seat.toUpperCase();
+      const id = s.id.toUpperCase();
+      return clean.includes(id);
+    });
+    if (matched) return matched.name;
+    return s.member;
+  };
 
   // Evergreen AC Bus seat configuration
   const UPPER_DECK_SLEEPERS = [
@@ -147,12 +176,17 @@ export default function BusSeatMap({ members = [] }) {
             {/* Sleeper Layout Grid */}
             <div className="grid grid-cols-2 gap-3.5 pt-2">
               {UPPER_DECK_SLEEPERS.map(s => {
-                const colorClass = getFamilyColor(s.member);
+                const occupant = getSeatOccupant(s);
+                const colorClass = getFamilyColor(occupant);
                 const isSelected = selectedSeat?.id === s.id;
                 return (
                   <div
                     key={s.id}
-                   role="button" tabIndex={0} aria-label={`${s.label}, ${s.member}`} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}  onClick={() => setSelectedSeat(s)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${s.label}, ${occupant}`}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
+                    onClick={() => { setSelectedSeat(s); setIsEditingSeat(false); setSaveSuccessMsg(''); }}
                     className={`p-3.5 rounded-2xl border-2 transition transform hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between min-h-[90px] shadow-2xs ${colorClass} ${
                       isSelected ? 'ring-2 ring-teal-600 scale-[1.02]' : ''
                     }`}
@@ -164,7 +198,7 @@ export default function BusSeatMap({ members = [] }) {
                       <span className="text-[10px] text-slate-500 font-medium">স্লিপার</span>
                     </div>
                     <div>
-                      <h5 className="font-bold text-xs leading-tight line-clamp-1">{s.member}</h5>
+                      <h5 className="font-bold text-xs leading-tight line-clamp-1">{occupant}</h5>
                       <p className="text-[10px] opacity-75">{s.desc.split('•')[1] || ''}</p>
                     </div>
                   </div>
@@ -197,12 +231,17 @@ export default function BusSeatMap({ members = [] }) {
             {/* Business Layout Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
               {LOWER_DECK_BUSINESS.map(s => {
-                const colorClass = getFamilyColor(s.member);
+                const occupant = getSeatOccupant(s);
+                const colorClass = getFamilyColor(occupant);
                 const isSelected = selectedSeat?.id === s.id;
                 return (
                   <div
                     key={s.id}
-                   role="button" tabIndex={0} aria-label={`${s.label}, ${s.member}`} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}  onClick={() => setSelectedSeat(s)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${s.label}, ${occupant}`}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
+                    onClick={() => { setSelectedSeat(s); setIsEditingSeat(false); setSaveSuccessMsg(''); }}
                     className={`p-3 rounded-2xl border-2 transition transform hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between min-h-[85px] shadow-2xs ${colorClass} ${
                       isSelected ? 'ring-2 ring-teal-600 scale-[1.02]' : ''
                     }`}
@@ -214,7 +253,7 @@ export default function BusSeatMap({ members = [] }) {
                       <Armchair size={14} className="opacity-60" />
                     </div>
                     <div>
-                      <h5 className="font-bold text-xs leading-tight line-clamp-1">{s.member}</h5>
+                      <h5 className="font-bold text-xs leading-tight line-clamp-1">{occupant}</h5>
                       <p className="text-[10px] opacity-75">{s.label}</p>
                     </div>
                   </div>
@@ -229,11 +268,12 @@ export default function BusSeatMap({ members = [] }) {
       {selectedSeat && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150 cursor-pointer"
-         role="presentation"
- onClick={() => setSelectedSeat(null)}
-onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
+          role="presentation"
+          onClick={() => setSelectedSeat(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
             className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150 cursor-auto space-y-4"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -247,6 +287,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedSeat(null)}
                 className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer"
               >
@@ -256,9 +297,116 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
 
             <div className="space-y-3">
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                <p className="text-[11px] text-slate-400 font-medium">বরাদ্দকৃত সদস্য / পরিবার:</p>
-                <h5 className="font-bold text-base text-slate-900">{selectedSeat.member}</h5>
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] text-slate-400 font-medium">বরাদ্দকৃত সদস্য / পরিবার:</p>
+                  {!isEditingSeat && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingSeat(true);
+                        const cur = getSeatOccupant(selectedSeat);
+                        const matchedM = members.find((m) => m.name === cur);
+                        setEditMemberId(matchedM ? String(matchedM.id) : (cur ? '__custom__' : ''));
+                        setCustomNameInput(matchedM ? '' : cur);
+                      }}
+                      className="text-[11px] text-teal-700 hover:text-teal-900 font-bold flex items-center gap-1 cursor-pointer hover:underline"
+                    >
+                      <Edit3 size={12} /> পরিবর্তন করুন
+                    </button>
+                  )}
+                </div>
+                <h5 className="font-bold text-base text-slate-900">{getSeatOccupant(selectedSeat)}</h5>
               </div>
+
+              {/* Seat reassignment editor */}
+              {isEditingSeat && (
+                <div className="p-3 bg-teal-50/80 border border-teal-200 rounded-2xl space-y-2 animate-in fade-in duration-150">
+                  <p className="text-xs font-bold text-teal-950 flex items-center gap-1">
+                    <Edit3 size={13} className="text-teal-700" /> এই সিটের যাত্রী পরিবর্তন করুন ({selectedSeat.id})
+                  </p>
+                  <select
+                    value={editMemberId}
+                    onChange={(e) => setEditMemberId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-teal-300 rounded-xl bg-white text-slate-800 font-medium cursor-pointer"
+                  >
+                    <option value="">-- সদস্য তালিকা থেকে নির্বাচন করুন --</option>
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} {m.seat ? `(${m.seat})` : ''}
+                      </option>
+                    ))}
+                    <option value="__custom__" className="text-teal-700 font-bold bg-teal-50">
+                      ✍️ + নতুন কাস্টম নাম লিখুন...
+                    </option>
+                  </select>
+
+                  {editMemberId === '__custom__' && (
+                    <input
+                      type="text"
+                      placeholder="যাত্রী বা পরিবারের নাম লিখুন..."
+                      value={customNameInput}
+                      onChange={(e) => setCustomNameInput(e.target.value)}
+                      className="w-full px-3 py-2 text-xs border border-teal-300 rounded-xl bg-white text-slate-800"
+                      autoFocus
+                    />
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingSeat(false)}
+                      className="flex-1 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                    >
+                      বাতিল
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        let newName = '';
+                        if (editMemberId === '__custom__') {
+                          newName = customNameInput.trim();
+                        } else if (editMemberId) {
+                          const m = members.find((mem) => String(mem.id) === String(editMemberId));
+                          if (m) {
+                            newName = m.name;
+                            if (onUpdateMember) {
+                              const existingSeats = m.seat ? m.seat.split(/[,+]/).map(s => s.trim()).filter(Boolean) : [];
+                              if (!existingSeats.some(s => s.toUpperCase().includes(selectedSeat.id.toUpperCase()))) {
+                                existingSeats.push(selectedSeat.id);
+                              }
+                              onUpdateMember({
+                                ...m,
+                                seat: existingSeats.join(', '),
+                              });
+                            }
+                          }
+                        }
+
+                        if (newName) {
+                          const updated = { ...customAssignments, [selectedSeat.id]: newName };
+                          setCustomAssignments(updated);
+                          try {
+                            localStorage.setItem('tour_seat_assignments', JSON.stringify(updated));
+                          } catch {}
+                          setSaveSuccessMsg(`সিট ${selectedSeat.id} সফলভাবে "${newName}" এর নামে বরাদ্দ হয়েছে!`);
+                          setTimeout(() => setSaveSuccessMsg(''), 3000);
+                        }
+                        setIsEditingSeat(false);
+                      }}
+                      disabled={!editMemberId || (editMemberId === '__custom__' && !customNameInput.trim())}
+                      className="flex-1 py-1.5 bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-xs"
+                    >
+                      সংরক্ষণ করুন
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {saveSuccessMsg && (
+                <div className="p-2 bg-emerald-50 text-emerald-800 text-[11px] font-semibold rounded-xl border border-emerald-200 flex items-center gap-1.5">
+                  <Check size={14} className="text-emerald-600" /> {saveSuccessMsg}
+                </div>
+              )}
 
               <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200/80 text-xs text-amber-950 space-y-1 leading-relaxed">
                 <div className="flex items-center gap-1.5 font-bold text-amber-900">
@@ -268,9 +416,9 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 <p>• বাসে এসির কারণে হালকা চাদর ও ঘাড়ের বালিশ সাথে রাখবেন।</p>
               </div>
 
-              {phoneForMember(members, selectedSeat.memberName ?? selectedSeat.member) && (
+              {phoneForMember(members, selectedSeat.memberName ?? getSeatOccupant(selectedSeat)) && (
                 <a
-                  href={`tel:${phoneForMember(members, selectedSeat.memberName ?? selectedSeat.member)}`}
+                  href={`tel:${phoneForMember(members, selectedSeat.memberName ?? getSeatOccupant(selectedSeat))}`}
                   className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs transition"
                 >
                   <PhoneCall size={14} /> সদস্যকে সরাসরি কল করুন

@@ -2002,7 +2002,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               </div>
 
               {seatRoomSubTab === 'bus' && (
-                <BusSeatMap members={data.members || []} />
+                <BusSeatMap members={data.members || []} onUpdateMember={handleUpdateMember} />
               )}
 
               {seatRoomSubTab === 'hotel' && (
