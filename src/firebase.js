@@ -5,8 +5,6 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   signInWithCredential,
   signOut,
 } from 'firebase/auth';
@@ -37,14 +35,13 @@ export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
-// Lets the photo fallback upload to Drive with the user's own token when the
-// shared upload endpoint is unavailable.
-googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
 
-export const isMobileBrowser = () => {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-};
+// Dedicated provider for optional Google Drive connection in InstagramFeed
+export const driveProvider = new GoogleAuthProvider();
+driveProvider.setCustomParameters({
+  prompt: 'select_account',
+});
+driveProvider.addScope('https://www.googleapis.com/auth/drive.file');
 
 function createFirestore(firebaseApp) {
   // Persist the cache in IndexedDB so offline edits survive a reload. Fall back to
@@ -62,24 +59,6 @@ function createFirestore(firebaseApp) {
 }
 
 export const db = createFirestore(app);
-
-export const checkRedirectResult = async () => {
-  if (Capacitor.isNativePlatform()) return null;
-  try {
-    const result = await getRedirectResult(auth);
-    if (result?.user) {
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        setDriveAccessToken(credential.accessToken);
-      }
-      return result.user;
-    }
-    return null;
-  } catch (error) {
-    console.error('Redirect Sign-In Result Error:', error);
-    throw error;
-  }
-};
 
 export const signInWithGoogle = async () => {
   try {
@@ -118,43 +97,19 @@ export const signInWithGoogle = async () => {
       throw new Error('গুগল অ্যাকাউন্ট থেকে কোনো ক্রেডেনশিয়াল পাওয়া যায়নি');
     }
 
-    // On mobile web browsers (Chrome/Safari), popups open in separate tabs without
-    // opener context, causing hangs on __/auth/handler. signInWithRedirect performs a clean full-page flow.
-    if (isMobileBrowser()) {
-      await signInWithRedirect(auth, googleProvider);
-      return null;
-    }
-
-    // Desktop browsers support standard popups
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        setDriveAccessToken(credential.accessToken);
-      }
-      return result.user;
-    } catch (popupErr) {
-      if (popupErr.code === 'auth/popup-blocked' || popupErr.code === 'auth/cancelled-popup-request') {
-        console.warn('Popup blocked, falling back to signInWithRedirect:', popupErr);
-        await signInWithRedirect(auth, googleProvider);
-        return null;
-      }
-      throw popupErr;
-    }
+    // Web platform: standard popup sign-in without sensitive scopes
+    const result = await signInWithPopup(auth, googleProvider);
+    return result.user;
   } catch (error) {
     console.error('Google Sign-In Error:', error);
     throw error;
   }
 };
 
-// Re-authorize or connect Google Drive explicitly.
+// Re-authorize or connect Google Drive explicitly in InstagramFeed when uploading.
 export const connectGoogleDrive = async () => {
   try {
-    if (isMobileBrowser() && !Capacitor.isNativePlatform()) {
-      await signInWithRedirect(auth, googleProvider);
-      return { success: true, redirecting: true };
-    }
-    const result = await signInWithPopup(auth, googleProvider);
+    const result = await signInWithPopup(auth, driveProvider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (credential?.accessToken) {
       setDriveAccessToken(credential.accessToken);
