@@ -28,6 +28,7 @@ import {
   Edit3,
   Eye,
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import VideoTrimmerModal from './VideoTrimmerModal';
 import ReelsPlayerModal from './ReelsPlayerModal';
 import { formatDuration } from '../utils/videoHelper';
@@ -627,7 +628,10 @@ export default function InstagramFeed({
 
           // 2. Upload to server storage so all family members can view it
           try {
-            const uploadRes = await fetch('/api/upload', {
+            const uploadApiUrl = Capacitor.isNativePlatform()
+              ? 'https://tour2026.izhaanintellect.fun/api/upload'
+              : '/api/upload';
+            const uploadRes = await fetch(uploadApiUrl, {
               method: 'POST',
               headers: {
                 'X-File-Name': encodeURIComponent(fileToUpload.name || `reel_${postId}.mp4`),

@@ -17,7 +17,7 @@ import {
   Music,
   Eye,
 } from 'lucide-react';
-import { formatDuration, toBnNum } from '../utils/videoHelper';
+import { formatDuration, toBnNum, resolveMediaUrl, getDriveEmbedUrl } from '../utils/videoHelper';
 import { getLocalVideoUrl } from '../utils/localVideoCache';
 
 const COMMENT_REACTIONS = ['❤️', '👍', '😂', '🔥', '👏'];
@@ -87,11 +87,9 @@ export default function ReelsPlayerModal({
 
   // Video source resolution: prioritize local device cache, then server/cloud URL
   const rawVideoSource = currentReel?.videoUrl || currentReel?.video || currentReel?.driveViewUrl || null;
-  const videoSource = localVideoUrl || rawVideoSource;
-  const isGoogleDriveEmbed = videoSource && videoSource.includes('drive.google.com/file/d/') && !videoSource.includes('preview');
-  const embedUrl = isGoogleDriveEmbed
-    ? videoSource.replace('/view', '/preview')
-    : (currentReel?.driveFileId ? `https://drive.google.com/file/d/${currentReel.driveFileId}/preview` : null);
+  const resolvedRemoteSource = rawVideoSource ? resolveMediaUrl(rawVideoSource, currentReel?.driveFileId) : (currentReel?.driveFileId ? resolveMediaUrl(null, currentReel.driveFileId) : null);
+  const videoSource = localVideoUrl || resolvedRemoteSource;
+  const embedUrl = getDriveEmbedUrl(rawVideoSource, currentReel?.driveFileId);
 
   const startTime = Number(currentReel?.startTime) || 0;
   const endTime = Number(currentReel?.endTime) || (Number(currentReel?.duration) || 0);
@@ -326,13 +324,23 @@ export default function ReelsPlayerModal({
               ref={videoRef}
               src={videoSource}
               poster={currentReel.thumb || undefined}
+              preload="auto"
               playsInline
+              webkit-playsinline="true"
               loop={endTime <= startTime}
               onTimeUpdate={handleTimeUpdate}
-              onError={() => {
+              onError={(e) => {
+                console.warn('Reel video failed to load, trying fallback:', e?.target?.error, videoSource);
                 setVideoLoadError(true);
               }}
               className="w-full h-full object-cover sm:object-contain"
+            />
+          ) : embedUrl ? (
+            <iframe
+              src={embedUrl}
+              title={currentReel.caption || 'ট্যুর রিলস'}
+              allow="autoplay; fullscreen"
+              className="w-full h-full border-0"
             />
           ) : (
             <div className="text-center p-6 text-white/80 max-w-sm flex flex-col items-center select-none">

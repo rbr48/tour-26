@@ -4,7 +4,72 @@
  * formatting, and trimming segment calculations (up to 3 minutes / 180s).
  */
 
+import { Capacitor } from '@capacitor/core';
+
 export const MAX_REEL_DURATION = 180; // 3 minutes in seconds
+export const PRODUCTION_ORIGIN = 'https://tour2026.izhaanintellect.fun';
+
+/**
+ * Resolves a video or media URL for both Web and native Capacitor Android.
+ * In native Capacitor, relative URLs like '/uploads/xyz.mp4' must be resolved
+ * against the production host, otherwise the WebView attempts to look up 'https://localhost/uploads/xyz.mp4'
+ * which does not exist in bundled assets.
+ */
+export function resolveMediaUrl(url, driveFileId = null) {
+  if (!url) {
+    if (driveFileId) {
+      return `https://drive.google.com/uc?export=download&id=${driveFileId}`;
+    }
+    return null;
+  }
+  if (typeof url !== 'string') return url;
+
+  // Blob and Data URLs are ready for instant local playback
+  if (url.startsWith('blob:') || url.startsWith('data:')) {
+    return url;
+  }
+
+  // Google Drive link with /view -> convert to direct stream or fallback
+  if (url.includes('drive.google.com/file/d/') && !url.includes('preview')) {
+    const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://drive.google.com/uc?export=download&id=${match[1]}`;
+    }
+  }
+
+  // Already an absolute HTTP/HTTPS URL
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
+  // Relative path (e.g. /uploads/reel_123.mp4)
+  if (url.startsWith('/')) {
+    if (Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port !== '3000')) {
+      return `${PRODUCTION_ORIGIN}${url}`;
+    }
+    return url;
+  }
+
+  return url;
+}
+
+/**
+ * Returns a Google Drive preview/embed URL if available
+ */
+export function getDriveEmbedUrl(url, driveFileId = null) {
+  if (driveFileId) {
+    return `https://drive.google.com/file/d/${driveFileId}/preview`;
+  }
+  if (typeof url === 'string') {
+    if (url.includes('drive.google.com/file/d/')) {
+      const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        return `https://drive.google.com/file/d/${match[1]}/preview`;
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * Format seconds into Bengali numerals MM:SS (e.g. 02:15 -> ০২:১৫)

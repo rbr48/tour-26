@@ -43,7 +43,7 @@ export function createApp({ config, verifyToken, store, pushService }) {
     });
   const backup = store || createBackupStore(config.dataDir);
   const push = pushService || createPushService({ dataDir: config.dataDir });
-  const serveStatic = createStaticHandler(config.distDir);
+  const serveStatic = createStaticHandler(config.distDir, path.join(config.dataDir, 'uploads'));
   const allowedOrigins = new Set(config.allowedOrigins);
 
   async function handleApi(req, res) {
@@ -221,7 +221,7 @@ export function createApp({ config, verifyToken, store, pushService }) {
     }
 
     try {
-      const uploadsDir = path.join(config.distDir, 'uploads');
+      const uploadsDir = path.join(config.dataDir, 'uploads');
       if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
       }

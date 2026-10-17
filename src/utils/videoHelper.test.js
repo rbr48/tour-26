@@ -4,6 +4,9 @@ import {
   toBnNum,
   clampSegmentBounds,
   MAX_REEL_DURATION,
+  resolveMediaUrl,
+  getDriveEmbedUrl,
+  PRODUCTION_ORIGIN,
 } from './videoHelper';
 
 describe('videoHelper', () => {
@@ -72,6 +75,45 @@ describe('videoHelper', () => {
       expect(result.startTime).toBe(100);
       expect(result.endTime).toBe(280);
       expect(result.duration).toBe(180);
+    });
+  });
+
+  describe('resolveMediaUrl', () => {
+    it('returns null for empty or falsy url when no driveId is provided', () => {
+      expect(resolveMediaUrl(null)).toBeNull();
+      expect(resolveMediaUrl('')).toBeNull();
+    });
+
+    it('returns direct stream url if url is missing but driveFileId is provided', () => {
+      expect(resolveMediaUrl(null, 'file123')).toBe('https://drive.google.com/uc?export=download&id=file123');
+    });
+
+    it('preserves blob and data URLs', () => {
+      expect(resolveMediaUrl('blob:http://localhost/123')).toBe('blob:http://localhost/123');
+      expect(resolveMediaUrl('data:image/jpeg;base64,...')).toBe('data:image/jpeg;base64,...');
+    });
+
+    it('converts google drive /view urls to direct stream download urls', () => {
+      expect(resolveMediaUrl('https://drive.google.com/file/d/test123abc/view')).toBe('https://drive.google.com/uc?export=download&id=test123abc');
+    });
+
+    it('preserves absolute external URLs', () => {
+      expect(resolveMediaUrl('https://example.com/video.mp4')).toBe('https://example.com/video.mp4');
+    });
+  });
+
+  describe('getDriveEmbedUrl', () => {
+    it('generates preview embed url from driveFileId', () => {
+      expect(getDriveEmbedUrl(null, 'file999')).toBe('https://drive.google.com/file/d/file999/preview');
+    });
+
+    it('extracts drive file id from URL string and returns preview url', () => {
+      expect(getDriveEmbedUrl('https://drive.google.com/file/d/abcXYZ-123/view')).toBe('https://drive.google.com/file/d/abcXYZ-123/preview');
+    });
+
+    it('returns null if not a drive url and no driveFileId provided', () => {
+      expect(getDriveEmbedUrl('/uploads/reel.mp4')).toBeNull();
+      expect(getDriveEmbedUrl(null)).toBeNull();
     });
   });
 });

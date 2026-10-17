@@ -26,6 +26,13 @@ const SECURITY_HEADERS = {
   'Permissions-Policy': 'geolocation=(self), camera=(), microphone=()',
 };
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+  'Access-Control-Allow-Headers': 'Range, Content-Type, Accept-Encoding, X-File-Name',
+  'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
+};
+
 // Files that must always be revalidated so deploys reach users immediately.
 const REVALIDATE_FILES = new Set(['index.html', 'sw.js', 'manifest.json']);
 
@@ -40,6 +47,7 @@ function sendNotFound(res, method) {
   res.writeHead(404, {
     'Content-Type': 'text/plain; charset=utf-8',
     'Cache-Control': 'no-cache',
+    ...CORS_HEADERS,
     ...SECURITY_HEADERS,
   });
   res.end(method === 'HEAD' ? undefined : 'Not Found');
@@ -50,8 +58,9 @@ function sendNotFound(res, method) {
  * file extension get a 404, so a missing download such as an APK can never come
  * back as index.html. Other unknown paths fall back to index.html for the SPA.
  */
-export function createStaticHandler(distDir) {
+export function createStaticHandler(distDir, uploadsDir) {
   const root = path.resolve(distDir);
+  const uploadsRoot = uploadsDir ? path.resolve(uploadsDir) : null;
   const indexFile = path.join(root, 'index.html');
 
   function resolveRequestPath(pathname) {
@@ -62,6 +71,16 @@ export function createStaticHandler(distDir) {
       return null;
     }
     if (decoded.includes('\0')) return null;
+
+    // First check persistent uploads directory if requested
+    if (uploadsRoot && (decoded.startsWith('/uploads/') || decoded.startsWith('uploads/'))) {
+      const relName = decoded.replace(/^\/?uploads\//, '');
+      const candidateUpload = path.resolve(uploadsRoot, relName);
+      if (candidateUpload.startsWith(uploadsRoot + path.sep) && isRegularFile(candidateUpload)) {
+        return candidateUpload;
+      }
+    }
+
     const candidate = path.resolve(root, `.${path.posix.normalize(`/${decoded}`)}`);
     if (candidate !== root && !candidate.startsWith(root + path.sep)) return null;
     return candidate;
@@ -76,8 +95,14 @@ export function createStaticHandler(distDir) {
   }
 
   return function serveStatic(req, res, pathname) {
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, { ...CORS_HEADERS, ...SECURITY_HEADERS });
+      res.end();
+      return;
+    }
+
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      res.writeHead(405, { Allow: 'GET, HEAD', ...SECURITY_HEADERS });
+      res.writeHead(405, { Allow: 'GET, HEAD, OPTIONS', ...CORS_HEADERS, ...SECURITY_HEADERS });
       res.end();
       return;
     }
@@ -121,6 +146,7 @@ export function createStaticHandler(distDir) {
           'Accept-Ranges': 'bytes',
           'Content-Length': chunkSize,
           'Content-Type': mimeType,
+          ...CORS_HEADERS,
           ...SECURITY_HEADERS,
         });
 
@@ -136,6 +162,7 @@ export function createStaticHandler(distDir) {
       'Content-Length': stat.size,
       'Accept-Ranges': 'bytes',
       'Cache-Control': cacheControlFor(relativePath),
+      ...CORS_HEADERS,
       ...SECURITY_HEADERS,
     });
 

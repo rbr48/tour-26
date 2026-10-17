@@ -39,6 +39,15 @@ public class MainActivity extends BridgeActivity {
             settings.setUseWideViewPort(true);
             settings.setLoadWithOverviewMode(true);
             settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+
+            // Essential for Reels and HTML5 video playback in native Android
+            settings.setMediaPlaybackRequiresUserGesture(false);
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            settings.setAllowFileAccess(true);
+            settings.setAllowContentAccess(true);
+
+            // Hardware acceleration for smooth 60fps video playback
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         }
     }
 }
