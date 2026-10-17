@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 
 import { phoneForMember } from '../utils/members';
+import { useBackHandler } from '../utils/backNavigation';
 
 export const DEFAULT_BUS_SEATS = [
   // Upper Deck: 10 Sleepers
@@ -72,6 +73,10 @@ export default function BusSeatMap({
   const [selectedSeat, setSelectedSeat] = useState(null);
   const [activeDeck, setActiveDeck] = useState('both'); // 'upper', 'lower', 'both'
   const [notification, setNotification] = useState('');
+
+  // Phone back button handlers
+  useBackHandler(Boolean(selectedSeat), () => setSelectedSeat(null), 15);
+  useBackHandler(isAddModalOpen, () => setIsAddModalOpen(false), 20);
 
   const [seats, setSeats] = useState(() => {
     if (Array.isArray(externalSeats) && externalSeats.length > 0) {

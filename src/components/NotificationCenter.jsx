@@ -22,6 +22,7 @@ import {
   sendPushNotification,
   playNotificationSound,
 } from '../services/notificationService';
+import { useBackHandler } from '../utils/backNavigation';
 
 export default function NotificationCenter({
   activities = [],
@@ -34,6 +35,7 @@ export default function NotificationCenter({
   onClearAllActivities,
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  useBackHandler(isOpen, () => setIsOpen(false), 20);
   const [permission, setPermission] = useState(() => getNotificationPermission());
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [feedback, setFeedback] = useState(null);

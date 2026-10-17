@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { compressImageFile } from '../utils/imageCompressor';
 import { findLinkedMember } from '../utils/members';
+import { useBackHandler } from '../utils/backNavigation';
 
 const AVATAR_OPTIONS = [
   { id: 'leader', label: 'ট্যুর লিডার', emoji: '👑', bg: 'bg-amber-100 text-amber-800 border-amber-300' },
@@ -39,6 +40,7 @@ export default function UserProfileModal({
   members = [],
   onSaveProfile
 }) {
+  useBackHandler(isOpen, onClose, 20);
   const fileInputRef = useRef(null);
 
   const [profile, setProfile] = useState(() => {

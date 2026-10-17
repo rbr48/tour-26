@@ -16,6 +16,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import TideWeatherWidget from './components/TideWeatherWidget';
 import NotificationCenter from './components/NotificationCenter';
 import ConfirmDialog from './components/ConfirmDialog';
+import { useBackHandler, dispatchBackAction } from './utils/backNavigation';
 import {
   sendPushNotification,
   sendBroadcastPush,
@@ -173,6 +174,8 @@ export default function App() {
 
   // Mobile Drawer State
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [tabHistory, setTabHistory] = useState(() => [activeTab]);
+  const lastBackPressRef = useRef(0);
 
   // Sign-in and sync state
   const [currentUser, setCurrentUser] = useState(null);
@@ -344,72 +347,100 @@ export default function App() {
     };
   }, []);
 
-  // Native Android Hardware Back Button: Modals -> Drawer -> Dashboard -> Exit
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return undefined;
+  // App-level modal back handlers registered with priority
+  useBackHandler(Boolean(confirmRequest), closeConfirm, 100);
+  useBackHandler(Boolean(previewImage), () => setPreviewImage(null), 50);
+  useBackHandler(showSafetyHubModal, () => setShowSafetyHubModal(false), 20);
+  useBackHandler(showQuizModal, () => setShowQuizModal(false), 20);
+  useBackHandler(showProfileModal, () => setShowProfileModal(false), 20);
+  useBackHandler(showPrintReport, () => setShowPrintReport(false), 20);
+  useBackHandler(isCommandOpen, () => setIsCommandOpen(false), 20);
+  useBackHandler(isMobileSidebarOpen, () => setIsMobileSidebarOpen(false), 15);
 
-    const backListenerPromise = CapApp.addListener('backButton', () => {
-      if (confirmRequest) {
-        closeConfirm();
+  // Universal Back Button Handler for Native Android and Mobile Web
+  useEffect(() => {
+    const handleBackButton = () => {
+      // 1. If any modal, drawer, or lightbox is open on the stack, close it!
+      if (dispatchBackAction()) {
         return;
       }
-      if (previewImage) {
-        setPreviewImage(null);
+
+      // 2. If tab history has previous tabs, navigate back to previous tab
+      if (tabHistory.length > 1) {
+        setTabHistory((prev) => {
+          if (prev.length <= 1) return prev;
+          const next = [...prev];
+          next.pop(); // remove current tab
+          const prevTab = next[next.length - 1] || 'dashboard';
+          setActiveTab(prevTab);
+          return next;
+        });
         return;
       }
-      if (showSafetyHubModal) {
-        setShowSafetyHubModal(false);
-        return;
-      }
-      if (showQuizModal) {
-        setShowQuizModal(false);
-        return;
-      }
-      if (showProfileModal) {
-        setShowProfileModal(false);
-        return;
-      }
-      if (showPrintReport) {
-        setShowPrintReport(false);
-        return;
-      }
-      if (isCommandOpen) {
-        setIsCommandOpen(false);
-        return;
-      }
-      if (isMobileSidebarOpen) {
-        setIsMobileSidebarOpen(false);
-        return;
-      }
+
+      // 3. If activeTab is not dashboard, return to dashboard
       if (activeTab !== 'dashboard') {
         setActiveTab('dashboard');
+        setTabHistory(['dashboard']);
         return;
       }
-      CapApp.exitApp();
-    });
+
+      // 4. On root dashboard with no overlays: require double-back confirmation to exit
+      const now = Date.now();
+      if (now - lastBackPressRef.current < 2000) {
+        if (Capacitor.isNativePlatform()) {
+          CapApp.exitApp();
+        }
+      } else {
+        lastBackPressRef.current = now;
+        if (!Capacitor.isNativePlatform()) {
+          try {
+            window.history.pushState({ tourRoot: true }, '');
+          } catch {}
+        }
+        setActiveToast({
+          id: newId(),
+          type: 'info',
+          title: 'অ্যাপ বন্ধ করতে আবার ব্যাক চাপুন',
+        });
+      }
+    };
+
+    let capListenerHandle = null;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener('backButton', handleBackButton).then((handle) => {
+        capListenerHandle = handle;
+      }).catch(() => {});
+    }
+
+    const handlePopState = () => {
+      handleBackButton();
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    if (!Capacitor.isNativePlatform()) {
+      try {
+        window.history.replaceState({ tourRoot: true }, '');
+      } catch {}
+    }
 
     return () => {
-      backListenerPromise.then((handler) => handler.remove()).catch(() => {});
+      if (capListenerHandle) {
+        capListenerHandle.remove();
+      }
+      window.removeEventListener('popstate', handlePopState);
     };
-  }, [
-    confirmRequest,
-    closeConfirm,
-    previewImage,
-    showSafetyHubModal,
-    showQuizModal,
-    showProfileModal,
-    showPrintReport,
-    isCommandOpen,
-    isMobileSidebarOpen,
-    activeTab,
-  ]);
+  }, [tabHistory, activeTab]);
 
-  // Haptic Feedback Tab Navigation
+  // Haptic Feedback Tab Navigation with history stack tracking
   const handleSelectTab = (tabId) => {
     if (Capacitor.isNativePlatform()) {
       Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
     }
-    setActiveTab(tabId);
+    if (tabId !== activeTab) {
+      setTabHistory((prev) => [...prev.filter((t) => t !== tabId), tabId]);
+      setActiveTab(tabId);
+    }
   };
 
   // 1. Firebase Auth state. Only Google accounts on the family list can use the app.

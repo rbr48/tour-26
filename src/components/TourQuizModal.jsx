@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Trophy, Award, CheckCircle2, XCircle, RotateCcw, X, Star, ArrowRight } from 'lucide-react';
+import { useBackHandler } from '../utils/backNavigation';
 
 const QUIZ_QUESTIONS = [
   {
@@ -66,6 +67,8 @@ export default function TourQuizModal({
   currentUser = null,
   currentProfile = {},
 }) {
+  useBackHandler(isOpen, onClose, 20);
+
   const [currentIdx, setCurrentIdx] = useState(0);
   const [selectedOpt, setSelectedOpt] = useState(null);
   const [isAnswered, setIsAnswered] = useState(false);

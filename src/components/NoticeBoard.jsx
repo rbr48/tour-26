@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Megaphone, MapPin, AlertOctagon, Plus, Trash2, ShieldCheck, Navigation, X } from 'lucide-react';
+import { useBackHandler } from '../utils/backNavigation';
 
 export default function NoticeBoard({
   notices = [],
@@ -12,6 +13,10 @@ export default function NoticeBoard({
   const [showAddModal, setShowAddModal] = useState(false);
   const [newNotice, setNewNotice] = useState({ title: '', content: '', author: '', urgent: false });
   const [isEditingMeeting, setIsEditingMeeting] = useState(false);
+
+  // Phone back button handlers
+  useBackHandler(showAddModal, () => setShowAddModal(false), 20);
+  useBackHandler(isEditingMeeting, () => setIsEditingMeeting(false), 20);
   const [meetingForm, setMeetingForm] = useState({
     title: meetingPoint?.title || 'হোটেল সি মুন লবি (কলাতলী)',
     note: meetingPoint?.note || 'আউটডোর ইভেন্টের আগে ও পরে সবাই এখানে একত্র হব।',

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { newId } from '../services/tourStore';
+import { useBackHandler } from '../utils/backNavigation';
 import {
   Hash,
   MessageSquare,
@@ -74,6 +75,10 @@ export default function DiscordDiscussion({
 
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [showQuickPrompts, setShowQuickPrompts] = useState(false);
+
+  // Phone back button handlers
+  useBackHandler(isMobileDrawerOpen, () => setIsMobileDrawerOpen(false), 20);
+  useBackHandler(showQuickPrompts, () => setShowQuickPrompts(false), 20);
 
   const messagesEndRef = useRef(null);
 

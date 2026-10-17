@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
+import { useBackHandler } from '../utils/backNavigation';
 
 // Preset Critical Tour Landmarks
 const TOUR_LANDMARKS = [
@@ -108,6 +109,7 @@ export default function FamilySafetyHub({
   onShareLocation,
   onClearLocation
 }) {
+  useBackHandler(isOpen, onClose, 20);
   const [userLocation, setUserLocation] = useState(null);
   const [locationError, setLocationError] = useState('');
   const [isLocating, setIsLocating] = useState(false);

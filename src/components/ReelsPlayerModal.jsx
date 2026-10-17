@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { formatDuration, toBnNum, resolveMediaUrl, getDriveEmbedUrl } from '../utils/videoHelper';
 import { getLocalVideoUrl } from '../utils/localVideoCache';
+import { useBackHandler } from '../utils/backNavigation';
 
 const COMMENT_REACTIONS = ['❤️', '👍', '😂', '🔥', '👏'];
 
@@ -52,6 +53,10 @@ export default function ReelsPlayerModal({
   useEffect(() => {
     setCurrentIndex(initialIndex);
   }, [initialIndex, isOpen]);
+
+  // Handle phone back button: comments first (priority 25), then modal itself (priority 20)
+  useBackHandler(isOpen && showComments, () => setShowComments(false), 25);
+  useBackHandler(isOpen && !showComments, onClose, 20);
 
   const currentReel = reels[currentIndex] || null;
 

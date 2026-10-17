@@ -20,6 +20,7 @@ import {
   clampSegmentBounds,
   captureVideoFrame,
 } from '../utils/videoHelper';
+import { useBackHandler } from '../utils/backNavigation';
 
 export default function VideoTrimmerModal({
   videoSource, // File, Blob, or URL string
@@ -27,6 +28,7 @@ export default function VideoTrimmerModal({
   onClose,
   onConfirm,
 }) {
+  useBackHandler(isOpen, onClose, 20);
   const videoRef = useRef(null);
   const [totalDuration, setTotalDuration] = useState(0);
   const [startTime, setStartTime] = useState(0);
