@@ -149,8 +149,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState(() => {
     // 1. Check URL hash first (e.g. #expenses, #feed, #discussions, etc.)
     const hash = window.location.hash.replace('#', '').trim();
-    if (hash && VALID_TABS.includes(hash)) {
-      return hash;
+    const tab = hash.split('?')[0];
+    if (tab && VALID_TABS.includes(tab)) {
+      return tab;
     }
     // 2. Check localStorage
     try {
@@ -303,7 +304,8 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem('tour_active_tab', activeTab);
-      if (window.location.hash !== `#${activeTab}`) {
+      const currentTabInHash = window.location.hash.replace('#', '').split('?')[0];
+      if (currentTabInHash !== activeTab) {
         window.history.replaceState(null, '', `#${activeTab}`);
       }
     } catch {
@@ -324,8 +326,9 @@ export default function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '').trim();
-      if (hash && VALID_TABS.includes(hash)) {
-        setActiveTab(hash);
+      const tab = hash.split('?')[0];
+      if (tab && VALID_TABS.includes(tab)) {
+        setActiveTab(tab);
       }
     };
     window.addEventListener('hashchange', handleHashChange);
@@ -1368,7 +1371,7 @@ export default function App() {
             </button>
 
             <a
-              href="/Tour2026.apk?v=20261018a"
+              href="/Tour2026.apk?v=20261018b"
               download="Tour2026.apk"
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-950 hover:bg-emerald-900 text-emerald-200 hover:text-white transition cursor-pointer border border-emerald-500/50 shadow-xs"
             >
@@ -1582,7 +1585,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </button>
 
                 <a
-                  href="/Tour2026.apk?v=20261018a"
+                  href="/Tour2026.apk?v=20261018b"
                   download="Tour2026.apk"
                   className="w-full py-2 px-3 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 rounded-xl text-xs font-semibold flex items-center justify-between border border-emerald-600/60 transition cursor-pointer"
                 >

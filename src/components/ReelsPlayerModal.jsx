@@ -18,7 +18,7 @@ import {
   Eye,
   RotateCcw,
 } from 'lucide-react';
-import { formatDuration, toBnNum, resolveMediaUrl, getDriveEmbedUrl } from '../utils/videoHelper';
+import { formatDuration, toBnNum, resolveMediaUrl, getDriveEmbedUrl, PRODUCTION_ORIGIN } from '../utils/videoHelper';
 import { getLocalVideoUrl } from '../utils/localVideoCache';
 import { useBackHandler } from '../utils/backNavigation';
 import UserAvatar from './UserAvatar';
@@ -273,10 +273,11 @@ export default function ReelsPlayerModal({
 
   const handleShare = async () => {
     if (!currentReel) return;
+    const shareUrl = `${PRODUCTION_ORIGIN}/#feed?reel=${currentReel.id}`;
     const shareData = {
       title: 'কক্সবাজার ফ্যামিলি ট্যুর ২০২৬ - রিলস',
       text: `${currentReel.author || 'সদস্য'} এর রিলস: "${currentReel.caption || 'আনন্দঘন মুহূর্ত'}" 🏖️`,
-      url: window.location.href,
+      url: shareUrl,
     };
 
     if (navigator.share) {

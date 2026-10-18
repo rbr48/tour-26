@@ -33,7 +33,7 @@ import { useBackHandler } from '../utils/backNavigation';
 import VideoTrimmerModal from './VideoTrimmerModal';
 import ReelsPlayerModal from './ReelsPlayerModal';
 import UserAvatar from './UserAvatar';
-import { formatDuration } from '../utils/videoHelper';
+import { formatDuration, PRODUCTION_ORIGIN } from '../utils/videoHelper';
 import { saveLocalVideo } from '../utils/localVideoCache';
 import { compressImageFile } from '../utils/imageCompressor';
 import {
@@ -531,6 +531,7 @@ export default function InstagramFeed({
 
     try {
       const file = await getFileFromPhoto(src, post);
+      const shareUrl = `${PRODUCTION_ORIGIN}/#feed`;
       const shareText = post.caption ? `${post.author}: ${post.caption}` : 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬';
 
       if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -538,6 +539,7 @@ export default function InstagramFeed({
           files: [file],
           title: 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
           text: shareText,
+          url: shareUrl,
         });
         return;
       }
@@ -547,6 +549,7 @@ export default function InstagramFeed({
         await navigator.share({
           title: 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
           text: `${shareText}\n(ছবিটি ডিভাইসে ডাউনলোড করা হয়েছে)`,
+          url: shareUrl,
         });
       }
     } catch (err) {
@@ -795,6 +798,54 @@ export default function InstagramFeed({
 
   const filteredReelPosts = filteredPosts.filter(isPostReel);
   const filteredPhotoPosts = filteredPosts.filter((p) => !isPostReel(p));
+
+  // Auto-open Reel if URL has ?reel=<id> (from deep-link or shared reel)
+  useEffect(() => {
+    if (!allReelPosts || allReelPosts.length === 0) return;
+
+    const getReelIdFromUrl = () => {
+      try {
+        // 1. Check URL query params: ?reel=...
+        const searchParams = new URLSearchParams(window.location.search);
+        if (searchParams.get('reel')) return searchParams.get('reel');
+
+        // 2. Check hash query params: #feed?reel=... or #reel=...
+        const hash = window.location.hash || '';
+        const qIdx = hash.indexOf('?');
+        if (qIdx !== -1) {
+          const hashParams = new URLSearchParams(hash.slice(qIdx));
+          if (hashParams.get('reel')) return hashParams.get('reel');
+        }
+      } catch (err) {
+        console.warn('Error reading reel ID from URL:', err);
+      }
+      return null;
+    };
+
+    const targetReelId = getReelIdFromUrl();
+    if (!targetReelId) return;
+
+    const rIdx = allReelPosts.findIndex((r) => String(r.id) === String(targetReelId));
+    if (rIdx !== -1) {
+      setReelsPlayer({ isOpen: true, initialIndex: rIdx });
+    }
+  }, [allReelPosts]);
+
+  const handleCloseReelsPlayer = () => {
+    setReelsPlayer({ isOpen: false, initialIndex: 0 });
+    try {
+      const hash = window.location.hash || '';
+      if (hash.includes('reel=')) {
+        const cleanHash = hash.split('?')[0] || '#feed';
+        window.history.replaceState(null, '', cleanHash);
+      }
+      if (window.location.search.includes('reel=')) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('reel');
+        window.history.replaceState(null, '', url.pathname + (window.location.hash || ''));
+      }
+    } catch {}
+  };
 
   // Auto-record post view when post card is visible in viewport
   useEffect(() => {
@@ -2133,7 +2184,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         isOpen={reelsPlayer.isOpen}
         currentUser={currentUser}
         currentProfile={currentProfile}
-        onClose={() => setReelsPlayer({ isOpen: false, initialIndex: 0 })}
+        onClose={handleCloseReelsPlayer}
         onLikePost={onLikePost}
         onAddComment={onAddComment}
         onViewPost={recordPostView}
