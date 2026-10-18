@@ -10,6 +10,8 @@ import {
   getLegalMoves,
   hasLegalMoves,
   executeMove,
+  serializeBoard,
+  deserializeBoard,
 } from './chessLogic';
 
 describe('chessLogic', () => {
@@ -124,5 +126,19 @@ describe('chessLogic', () => {
     expect(mateResult.inCheck).toBe(true);
     expect(mateResult.isCheckmate).toBe(true);
     expect(hasLegalMoves(mateResult.board, 'w')).toBe(false);
+  });
+
+  it('correctly serializes 2D board to 1D flat array and deserializes back (Firestore safe)', () => {
+    const flat = serializeBoard(INITIAL_CHESS_BOARD);
+    expect(flat.length).toBe(64);
+    // Ensure it is 1D (no nested arrays!)
+    expect(Array.isArray(flat[0])).toBe(false);
+    expect(flat[0]).toBe('bR');
+    expect(flat[16]).toBe('--'); // null represented as '--'
+
+    const deserialized = deserializeBoard(flat);
+    expect(deserialized.length).toBe(8);
+    expect(deserialized[0].length).toBe(8);
+    expect(deserialized).toEqual(INITIAL_CHESS_BOARD);
   });
 });

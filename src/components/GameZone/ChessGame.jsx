@@ -2,6 +2,9 @@ import React, { useState, useMemo } from 'react';
 import ChessPieceSvg from './ChessPieceSvg';
 import {
   INITIAL_CHESS_BOARD,
+  INITIAL_CHESS_FLAT,
+  serializeBoard,
+  deserializeBoard,
   getColor,
   getType,
   getLegalMoves,
@@ -48,8 +51,10 @@ export default function ChessGame({
   const isBlack = blackPlayer && (blackPlayer.email || '').toLowerCase() === myEmail;
   const myColor = isWhite ? 'w' : isBlack ? 'b' : null;
 
-  // Board state from Firestore or default to initial
-  const board = room?.state?.board || INITIAL_CHESS_BOARD;
+  // Board state from Firestore or default to initial (deserialized from 1D flat array)
+  const board = useMemo(() => {
+    return deserializeBoard(room?.state?.board);
+  }, [room?.state?.board]);
   const turn = room?.state?.turn || 'w'; // 'w' starts
   const status = room?.state?.status || 'waiting'; // 'waiting', 'active', 'checkmate', 'stalemate', 'resigned'
   const winner = room?.state?.winner || null; // 'w', 'b', 'draw'
@@ -136,7 +141,7 @@ export default function ChessGame({
           status: newStatus,
           state: {
             ...room.state,
-            board: moveResult.board,
+            board: serializeBoard(moveResult.board),
             turn: nextTurn,
             status: newStatus,
             winner: newWinner,
@@ -179,7 +184,7 @@ export default function ChessGame({
     await updateGameRoom(room.id, {
       status: 'active',
       state: {
-        board: INITIAL_CHESS_BOARD,
+        board: INITIAL_CHESS_FLAT,
         turn: 'w',
         status: 'active',
         winner: null,

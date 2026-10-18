@@ -3,7 +3,7 @@ import TeenPattiGame from './TeenPattiGame';
 import Card29Game from './Card29Game';
 import LudoGame from './LudoGame';
 import ChessGame from './ChessGame';
-import { INITIAL_CHESS_BOARD } from './chessLogic';
+import { INITIAL_CHESS_FLAT } from './chessLogic';
 import {
   createGameRoom,
   subscribeGameRoom,
@@ -177,7 +177,7 @@ export default function GameZoneHub({
         color: 'w',
       };
       initialState = {
-        board: INITIAL_CHESS_BOARD,
+        board: INITIAL_CHESS_FLAT,
         turn: 'w',
         status: 'waiting',
         winner: null,

@@ -25,6 +25,51 @@ export const INITIAL_CHESS_BOARD = [
 export const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 export const RANKS = ['8', '7', '6', '5', '4', '3', '2', '1'];
 
+/**
+ * Serializes an 8x8 2D board array into a 64-element 1D array of strings.
+ * This guarantees full compatibility with Firestore which disallows nested arrays!
+ */
+export function serializeBoard(board) {
+  if (!board || !Array.isArray(board)) return [];
+  if (board.length === 64 && !Array.isArray(board[0])) {
+    return board;
+  }
+  const flat = [];
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      flat.push(board[r]?.[c] || '--');
+    }
+  }
+  return flat;
+}
+
+export const INITIAL_CHESS_FLAT = serializeBoard(INITIAL_CHESS_BOARD);
+
+/**
+ * Deserializes a 64-element 1D array of strings from Firestore back into an 8x8 2D array.
+ */
+export function deserializeBoard(flat) {
+  if (!flat || !Array.isArray(flat)) {
+    return cloneBoard(INITIAL_CHESS_BOARD);
+  }
+  if (flat.length === 8 && Array.isArray(flat[0])) {
+    return flat;
+  }
+  if (flat.length !== 64) {
+    return cloneBoard(INITIAL_CHESS_BOARD);
+  }
+  const board = [];
+  for (let r = 0; r < 8; r++) {
+    const row = [];
+    for (let c = 0; c < 8; c++) {
+      const p = flat[r * 8 + c];
+      row.push(p === '--' || !p ? null : p);
+    }
+    board.push(row);
+  }
+  return board;
+}
+
 export function isInside(r, c) {
   return r >= 0 && r < 8 && c >= 0 && c < 8;
 }
