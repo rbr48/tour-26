@@ -172,9 +172,9 @@ export default function DiscordDiscussion({
   };
 
   return (
-    <div className="space-y-2.5 sm:space-y-4">
+    <div className="flex flex-col h-full min-h-0 gap-2 sm:gap-2.5">
       {/* 1. SLIM TOP BAR */}
-      <div className="bg-gradient-to-r from-teal-900 via-indigo-900 to-slate-900 text-white px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-2xl shadow-xs border border-teal-700/60 flex items-center justify-between gap-2">
+      <div className="shrink-0 bg-gradient-to-r from-teal-900 via-indigo-900 to-slate-900 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl sm:rounded-2xl shadow-xs border border-teal-700/60 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-400 text-teal-950 rounded-full shrink-0">
             💬 ডিসকর্ড
@@ -190,7 +190,7 @@ export default function DiscordDiscussion({
       </div>
 
       {/* 2. COMPACT CHANNEL SELECTOR */}
-      <div className="grid grid-cols-2 min-[520px]:grid-cols-4 gap-1.5 sm:gap-2">
+      <div className="shrink-0 grid grid-cols-2 min-[520px]:grid-cols-4 gap-1.5 sm:gap-2">
         {CHANNELS.map((ch) => {
           const Icon = ch.icon;
           const isActive = activeChannelId === ch.id;
@@ -224,10 +224,10 @@ export default function DiscordDiscussion({
         })}
       </div>
 
-      {/* 3. DISCUSSION STREAM & COMPOSER CARD */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+      {/* 3. DISCUSSION STREAM & COMPOSER (SINGLE UNIFIED CARD - ZERO GAP!) */}
+      <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
         {/* Active Channel Header */}
-        <div className="px-3.5 py-2 sm:px-4 sm:py-2.5 bg-slate-50/90 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100">
+        <div className="shrink-0 px-3 py-1.5 sm:px-4 sm:py-2 bg-slate-50/90 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
               <Hash size={13} />
@@ -247,10 +247,10 @@ export default function DiscordDiscussion({
           </span>
         </div>
 
-        {/* Messages Feed (Contained Scroll Container - Never Scrolls the Window) */}
+        {/* Messages Feed */}
         <div
           ref={messagesContainerRef}
-          className="p-3.5 sm:p-5 space-y-3.5 sm:space-y-4 h-[calc(100dvh-310px)] min-h-[350px] md:h-auto md:max-h-[520px] overflow-y-auto bg-slate-50/40 scroll-smooth pb-16 md:pb-4"
+          className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-3.5 bg-slate-50/40 overscroll-contain"
         >
           {channelMessages.length > 0 ? (
             channelMessages.map((msg) => {
@@ -353,9 +353,9 @@ export default function DiscordDiscussion({
           )}
         </div>
 
-        {/* Message Input & Quick Shortcuts (Fixed above Mobile Navigation, Docked on Desktop) */}
-        <div className="fixed md:static bottom-[calc(3.25rem+max(0.5rem,env(safe-area-inset-bottom)))] md:bottom-auto left-0 right-0 md:left-auto md:right-auto z-30 bg-white/95 md:bg-white backdrop-blur-md border-t border-slate-200/90 p-2 sm:p-3.5 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] md:shadow-none">
-          <div className="max-w-5xl mx-auto space-y-1.5">
+        {/* Message Input & Quick Shortcuts (Seamlessly docked at the card's bottom - ZERO GAP!) */}
+        <div className="shrink-0 bg-white border-t border-slate-200 p-2 sm:p-2.5">
+          <div className="space-y-1.5">
             {/* Quick Prompts Bar */}
             {showQuickPrompts && (
               <div className="flex items-center gap-1.5 overflow-x-auto text-xs pb-1 animate-in fade-in duration-150">
@@ -410,9 +410,6 @@ export default function DiscordDiscussion({
             </form>
           </div>
         </div>
-
-        {/* Mobile Spacer to ensure background content flows above fixed bar */}
-        <div className="h-12 md:hidden" aria-hidden="true" />
       </div>
     </div>
   );
