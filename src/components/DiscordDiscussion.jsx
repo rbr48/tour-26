@@ -172,34 +172,25 @@ export default function DiscordDiscussion({
   };
 
   return (
-    <div className="space-y-4 sm:space-y-5">
-      {/* 1. TOP BANNER: Discussion & Chat Hub */}
-      <div className="bg-gradient-to-r from-teal-900 via-indigo-900 to-slate-900 text-white p-4 sm:p-5 rounded-3xl shadow-md border border-teal-700/60 flex flex-wrap items-center justify-between gap-3">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold px-2.5 py-0.5 bg-amber-400 text-teal-950 rounded-full inline-block">
-              💬 ফ্যামিলি ডিসকর্ড
-            </span>
-            <span className="text-[10px] bg-white/15 px-2 py-0.5 rounded-full text-teal-100">
-              রংপুর ➔ কক্সবাজার ২০২৬
-            </span>
-          </div>
-          <h3 className="text-lg sm:text-xl font-bold flex items-center gap-2">
-            ট্যুর আলোচনা ও কমিউনিকেশন হাব
+    <div className="space-y-2.5 sm:space-y-4">
+      {/* 1. SLIM TOP BAR */}
+      <div className="bg-gradient-to-r from-teal-900 via-indigo-900 to-slate-900 text-white px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-2xl shadow-xs border border-teal-700/60 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-400 text-teal-950 rounded-full shrink-0">
+            💬 ডিসকর্ড
+          </span>
+          <h3 className="text-xs sm:text-sm font-bold truncate">
+            ট্যুর আলোচনা হাব
           </h3>
-          <p className="text-xs text-teal-100/90">
-            ৪টি নির্দিষ্ট চ্যানেলে পরিবার ও ট্যুর সদস্যদের তাৎক্ষণিক বার্তা, আপডেট ও আড্ডা
-          </p>
         </div>
-
-        <div className="flex items-center gap-2 bg-black/25 px-3 py-1.5 rounded-2xl border border-white/10 text-xs text-teal-200">
-          <Users size={14} className="text-amber-300" />
-          <span className="font-semibold">{toBnNum(members.length)} জন সদস্য</span>
+        <div className="flex items-center gap-1.5 bg-black/25 px-2.5 py-0.5 rounded-xl border border-white/10 text-[10px] sm:text-xs text-teal-200 shrink-0">
+          <Users size={12} className="text-amber-300" />
+          <span>{toBnNum(members.length)} জন</span>
         </div>
       </div>
 
-      {/* 2. IN-PAGE CHANNEL SELECTOR GRID */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+      {/* 2. COMPACT CHANNEL SELECTOR */}
+      <div className="grid grid-cols-2 min-[520px]:grid-cols-4 gap-1.5 sm:gap-2">
         {CHANNELS.map((ch) => {
           const Icon = ch.icon;
           const isActive = activeChannelId === ch.id;
@@ -210,36 +201,24 @@ export default function DiscordDiscussion({
               key={ch.id}
               type="button"
               onClick={() => setActiveChannelId(ch.id)}
-              className={`p-3 sm:p-3.5 rounded-2xl sm:rounded-3xl text-left transition-all cursor-pointer flex flex-col justify-between gap-2 border ${
+              title={ch.desc}
+              className={`px-2.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-between gap-1.5 border ${
                 isActive
-                  ? 'bg-gradient-to-br from-indigo-700 to-teal-800 text-white shadow-md border-indigo-400/50 ring-2 ring-indigo-400/30'
+                  ? 'bg-gradient-to-r from-teal-800 to-indigo-800 text-white shadow-xs border-teal-500 ring-1 ring-teal-400/40'
                   : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200/90 shadow-2xs hover:border-indigo-300'
               }`}
             >
-              <div className="flex items-center justify-between w-full">
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                    isActive ? 'bg-white/20 text-amber-300' : 'bg-indigo-50 text-indigo-700'
-                  }`}
-                >
-                  <Icon size={16} />
-                </div>
-                <span
-                  className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold ${
-                    isActive ? 'bg-black/30 text-amber-200' : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  {toBnNum(count)}
-                </span>
+              <div className="flex items-center gap-1.5 min-w-0 truncate">
+                <Icon size={14} className={isActive ? 'text-amber-300 shrink-0' : 'text-slate-500 shrink-0'} />
+                <span className="truncate text-[11px] sm:text-xs">{ch.title}</span>
               </div>
-              <div>
-                <h4 className={`font-bold text-xs sm:text-sm truncate ${isActive ? 'text-white' : 'text-slate-800'}`}>
-                  {ch.title}
-                </h4>
-                <p className={`text-[10px] line-clamp-1 mt-0.5 ${isActive ? 'text-teal-100/80' : 'text-slate-400'}`}>
-                  {ch.desc}
-                </p>
-              </div>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono font-semibold shrink-0 ${
+                  isActive ? 'bg-black/30 text-amber-200' : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {toBnNum(count)}
+              </span>
             </button>
           );
         })}
@@ -248,35 +227,30 @@ export default function DiscordDiscussion({
       {/* 3. DISCUSSION STREAM & COMPOSER CARD */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
         {/* Active Channel Header */}
-        <div className="p-3.5 sm:p-4 bg-slate-50/90 flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-              <Hash size={16} />
+        <div className="px-3.5 py-2 sm:px-4 sm:py-2.5 bg-slate-50/90 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+              <Hash size={13} />
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h4 className="font-extrabold text-sm sm:text-base text-slate-900 truncate">
-                  #{activeChannel.name}
-                </h4>
-                <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full border border-indigo-200">
-                  {activeChannel.badge}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 truncate">{activeChannel.desc}</p>
+            <div className="min-w-0 flex items-center gap-1.5">
+              <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 truncate">
+                #{activeChannel.name}
+              </h4>
+              <span className="text-[9px] sm:text-[10px] font-semibold bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded-full border border-indigo-200 shrink-0">
+                {activeChannel.badge}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-[11px] font-semibold text-slate-600 bg-white px-2.5 py-1 rounded-xl border border-slate-200">
-              মোট {toBnNum(channelMessages.length)}টি বার্তা
-            </span>
-          </div>
+          <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 bg-white px-2 py-0.5 rounded-lg border border-slate-200 shrink-0">
+            {toBnNum(channelMessages.length)} বার্তা
+          </span>
         </div>
 
         {/* Messages Feed (Contained Scroll Container - Never Scrolls the Window) */}
         <div
           ref={messagesContainerRef}
-          className="p-4 sm:p-5 space-y-4 max-h-[460px] md:max-h-[500px] overflow-y-auto bg-slate-50/40 scroll-smooth"
+          className="p-3.5 sm:p-5 space-y-3.5 sm:space-y-4 h-[calc(100dvh-310px)] min-h-[350px] md:h-auto md:max-h-[520px] overflow-y-auto bg-slate-50/40 scroll-smooth pb-16 md:pb-4"
         >
           {channelMessages.length > 0 ? (
             channelMessages.map((msg) => {
@@ -379,60 +353,66 @@ export default function DiscordDiscussion({
           )}
         </div>
 
-        {/* Message Input & Quick Shortcuts (Clean In-Page Section) */}
-        <div className="p-3.5 sm:p-4 bg-white border-t border-slate-100 space-y-2.5">
-          {/* Quick Prompts Bar */}
-          {showQuickPrompts && (
-            <div className="flex items-center gap-1.5 overflow-x-auto text-xs pb-1 animate-in fade-in duration-150">
-              <span className="text-[10px] text-slate-400 font-semibold shrink-0">দ্রুত বার্তা:</span>
-              {QUICK_PROMPTS.map((shortcut, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => {
-                    setInputText(shortcut);
-                    setShowQuickPrompts(false);
-                  }}
-                  className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-[11px] rounded-lg shrink-0 border border-slate-200 transition cursor-pointer"
-                >
-                  {shortcut}
-                </button>
-              ))}
-            </div>
-          )}
+        {/* Message Input & Quick Shortcuts (Fixed above Mobile Navigation, Docked on Desktop) */}
+        <div className="fixed md:static bottom-[calc(3.25rem+max(0.5rem,env(safe-area-inset-bottom)))] md:bottom-auto left-0 right-0 md:left-auto md:right-auto z-30 bg-white/95 md:bg-white backdrop-blur-md border-t border-slate-200/90 p-2 sm:p-3.5 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] md:shadow-none">
+          <div className="max-w-5xl mx-auto space-y-1.5">
+            {/* Quick Prompts Bar */}
+            {showQuickPrompts && (
+              <div className="flex items-center gap-1.5 overflow-x-auto text-xs pb-1 animate-in fade-in duration-150">
+                <span className="text-[10px] text-slate-400 font-semibold shrink-0">দ্রুত বার্তা:</span>
+                {QUICK_PROMPTS.map((shortcut, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setInputText(shortcut);
+                      setShowQuickPrompts(false);
+                    }}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-[11px] rounded-lg shrink-0 border border-slate-200 transition cursor-pointer"
+                  >
+                    {shortcut}
+                  </button>
+                ))}
+              </div>
+            )}
 
-          <form onSubmit={handleSend} className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowQuickPrompts(!showQuickPrompts)}
-              className={`p-2.5 rounded-2xl transition cursor-pointer shrink-0 border ${
-                showQuickPrompts
-                  ? 'bg-amber-100 text-amber-800 border-amber-300'
-                  : 'bg-slate-100 text-slate-600 hover:text-slate-900 border-slate-200 hover:bg-slate-200'
-              }`}
-              title="দ্রুত বার্তা নির্বাচন করুন"
-            >
-              <Zap size={16} className={showQuickPrompts ? 'fill-amber-400' : ''} />
-            </button>
+            <form onSubmit={handleSend} className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowQuickPrompts(!showQuickPrompts)}
+                className={`p-2 rounded-xl transition cursor-pointer shrink-0 border ${
+                  showQuickPrompts
+                    ? 'bg-amber-100 text-amber-800 border-amber-300'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border-slate-200 hover:bg-slate-200'
+                }`}
+                title="দ্রুত বার্তা নির্বাচন করুন"
+                aria-label="দ্রুত শর্টকাট বার্তা"
+              >
+                <Zap size={16} className={showQuickPrompts ? 'fill-amber-400' : ''} />
+              </button>
 
-            <input
-              type="text"
-              placeholder={`#${activeChannel.name} চ্যানেলে বার্তা লিখুন...`}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              className="flex-1 px-4 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-indigo-600 focus:bg-white text-slate-800 placeholder-slate-400 transition"
-            />
+              <input
+                type="text"
+                placeholder={`#${activeChannel.name} চ্যানেলে বার্তা লিখুন...`}
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                className="flex-1 px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl focus:outline-none focus:border-teal-600 focus:bg-white text-slate-800 placeholder-slate-400 transition"
+              />
 
-            <button
-              type="submit"
-              disabled={!inputText.trim()}
-              className="px-4 py-2.5 bg-gradient-to-r from-teal-700 to-teal-800 hover:from-teal-800 hover:to-teal-900 disabled:opacity-40 text-white font-bold text-xs sm:text-sm rounded-2xl flex items-center gap-1.5 transition cursor-pointer shadow-sm shrink-0 active:scale-95"
-            >
-              <Send size={15} />
-              <span className="hidden sm:inline">পাঠান</span>
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={!inputText.trim()}
+                className="px-3.5 sm:px-4 py-2 bg-gradient-to-r from-teal-700 to-teal-800 hover:from-teal-800 hover:to-teal-900 disabled:opacity-40 text-white font-bold text-xs sm:text-sm rounded-xl sm:rounded-2xl flex items-center gap-1.5 transition cursor-pointer shadow-sm shrink-0 active:scale-95"
+              >
+                <Send size={15} />
+                <span className="hidden sm:inline">পাঠান</span>
+              </button>
+            </form>
+          </div>
         </div>
+
+        {/* Mobile Spacer to ensure background content flows above fixed bar */}
+        <div className="h-12 md:hidden" aria-hidden="true" />
       </div>
     </div>
   );
