@@ -444,13 +444,13 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
           return;
         }
         let versionData = {
-          versionCode: 8,
-          versionName: '2.6',
+          versionCode: 9,
+          versionName: '2.7',
           minVersionCode: 1,
-          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v8.apk',
-          apkSize: '8.1 MB',
-          releaseNotes: 'নতুন আপডেট v2.6: ফ্যামিলি অনলাইন গেমিং জোন! বাসে ও হোটেলে পরিবারের সবাই মিলে অনলাইনে খেলুন ৩ পাত্তি (Teen Patti) ও ২৯ কার্ড গেম (29 Cards), সাথে রিয়েল-টাইম টেবিল ও ভার্চুয়াল চিপস।',
-          releasedAt: '2026-10-18T17:15:00Z',
+          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v9.apk',
+          apkSize: '8.2 MB',
+          releaseNotes: 'নতুন আপডেট v2.7: গেমিং জোনে যুক্ত হলো ক্লাসিক \'লুডো\' (Ludo) ও বুদ্ধির লড়াই \'দাবা\' (Chess)! সাথে রয়েছে ৩ পাত্তি ও ২৯ কার্ড গেম, লাইভ মাল্টিপ্লেয়ার ও ভার্চুয়াল চিপস।',
+          releasedAt: '2026-10-18T17:40:00Z',
           forceUpdate: false,
         };
         const versionFilePath = path.join(config.distDir, 'version.json');

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import TeenPattiGame from './TeenPattiGame';
 import Card29Game from './Card29Game';
+import LudoGame from './LudoGame';
+import ChessGame from './ChessGame';
+import { INITIAL_CHESS_BOARD } from './chessLogic';
 import {
   createGameRoom,
   subscribeGameRoom,
@@ -46,6 +49,28 @@ const GAME_TYPES = [
     maxPlayers: 4,
     minPlayers: 4,
     gradient: 'from-indigo-700 to-purple-900',
+  },
+  {
+    id: 'ludo',
+    name: 'লুডো ক্লাব (Ludo Classic)',
+    desc: '২ থেকে ৪ জন খেলোয়াড় • ১৫x১৫ বোর্ড • ছক্কা ও কাটাকাটি • হোম স্ট্রাইক',
+    icon: '🎲',
+    badge: 'পারিবারিক আনন্দ',
+    badgeColor: 'bg-emerald-400 text-emerald-950',
+    maxPlayers: 4,
+    minPlayers: 2,
+    gradient: 'from-emerald-600 to-teal-900',
+  },
+  {
+    id: 'chess',
+    name: 'দাবা (Chess Masters)',
+    desc: '২ জন খেলোয়াড় (সাদা বনাম কালো) • রাজা, রানি ও ঘোড়া • চেকমেট যুদ্ধ',
+    icon: '♟️',
+    badge: 'বুদ্ধির লড়াই',
+    badgeColor: 'bg-amber-500 text-slate-950',
+    maxPlayers: 2,
+    minPlayers: 2,
+    gradient: 'from-slate-700 to-slate-950',
   },
 ];
 
@@ -98,11 +123,18 @@ export default function GameZoneHub({
   const handleCreateRoom = async (e) => {
     e.preventDefault();
     const config = GAME_TYPES.find((g) => g.id === selectedGameType) || GAME_TYPES[0];
-    const prefix = selectedGameType === 'teen_patti' ? 'TP' : '29';
+    const prefix =
+      selectedGameType === 'teen_patti'
+        ? 'TP'
+        : selectedGameType === 'card_29'
+          ? '29'
+          : selectedGameType === 'ludo'
+            ? 'LD'
+            : 'CH';
     const randomCode = Math.floor(1000 + Math.random() * 9000);
     const newRoomId = `${prefix}-${randomCode}`;
 
-    const initialPlayer = {
+    let initialPlayer = {
       email: myEmail,
       name: myName,
       photoURL: currentUser?.photoURL || currentProfile?.customPhotoURL || null,
@@ -113,6 +145,49 @@ export default function GameZoneHub({
       folded: false,
     };
 
+    let initialState = {
+      pot: 0,
+      dealerIndex: 0,
+      turnIndex: 0,
+      lastAction: 'রুম তৈরি হয়েছে। অন্য খেলোয়াড়দের যোগদানের জন্য অপেক্ষা করুন।',
+    };
+
+    if (selectedGameType === 'ludo') {
+      initialPlayer = {
+        ...initialPlayer,
+        color: 'red',
+        colorIndex: 0,
+      };
+      initialState = {
+        tokens: {
+          red: [-1, -1, -1, -1],
+          green: [-1, -1, -1, -1],
+          yellow: [-1, -1, -1, -1],
+          blue: [-1, -1, -1, -1],
+        },
+        turnIndex: 0,
+        diceValue: null,
+        hasRolled: false,
+        status: 'waiting',
+        lastAction: 'লুডো টেবিল তৈরি হয়েছে। অন্য খেলোয়াড়দের জন্য অপেক্ষা করুন।',
+      };
+    } else if (selectedGameType === 'chess') {
+      initialPlayer = {
+        ...initialPlayer,
+        color: 'w',
+      };
+      initialState = {
+        board: INITIAL_CHESS_BOARD,
+        turn: 'w',
+        status: 'waiting',
+        winner: null,
+        lastMove: null,
+        history: [],
+        captured: { w: [], b: [] },
+        lastAction: 'দাবা রুম তৈরি হয়েছে। প্রতিপক্ষের জন্য অপেক্ষা করুন।',
+      };
+    }
+
     const newRoom = {
       id: newRoomId,
       gameType: selectedGameType,
@@ -122,12 +197,7 @@ export default function GameZoneHub({
       status: 'waiting',
       maxPlayers: config.maxPlayers,
       players: [initialPlayer],
-      state: {
-        pot: 0,
-        dealerIndex: 0,
-        turnIndex: 0,
-        lastAction: 'রুম তৈরি হয়েছে। অন্য খেলোয়াড়দের যোগদানের জন্য অপেক্ষা করুন।',
-      },
+      state: initialState,
     };
 
     await createGameRoom(newRoom);
@@ -156,7 +226,7 @@ export default function GameZoneHub({
     if (!alreadyJoined && activeRoomData.status === 'waiting') {
       const max = activeRoomData.maxPlayers || 6;
       if ((activeRoomData.players || []).length < max) {
-        const newPlayer = {
+        let newPlayer = {
           email: myEmail,
           name: myName,
           photoURL: currentUser?.photoURL || currentProfile?.customPhotoURL || null,
@@ -166,6 +236,23 @@ export default function GameZoneHub({
           seen: false,
           folded: false,
         };
+
+        if (activeRoomData.gameType === 'ludo') {
+          const ludoColors = ['red', 'green', 'yellow', 'blue'];
+          const colorIndex = (activeRoomData.players || []).length;
+          newPlayer = {
+            ...newPlayer,
+            color: ludoColors[colorIndex] || 'red',
+            colorIndex,
+          };
+        } else if (activeRoomData.gameType === 'chess') {
+          const color = (activeRoomData.players || []).length === 0 ? 'w' : 'b';
+          newPlayer = {
+            ...newPlayer,
+            color,
+          };
+        }
+
         const updatedPlayers = [...(activeRoomData.players || []), newPlayer];
         updateGameRoom(activeRoomId, {
           players: updatedPlayers,
@@ -218,6 +305,26 @@ export default function GameZoneHub({
     if (activeRoomData.gameType === 'card_29') {
       return (
         <Card29Game
+          room={activeRoomData}
+          currentUser={currentUser}
+          currentProfile={currentProfile}
+          onLeave={handleLeaveRoom}
+        />
+      );
+    }
+    if (activeRoomData.gameType === 'ludo') {
+      return (
+        <LudoGame
+          room={activeRoomData}
+          currentUser={currentUser}
+          currentProfile={currentProfile}
+          onLeave={handleLeaveRoom}
+        />
+      );
+    }
+    if (activeRoomData.gameType === 'chess') {
+      return (
+        <ChessGame
           room={activeRoomData}
           currentUser={currentUser}
           currentProfile={currentProfile}
@@ -361,7 +468,13 @@ export default function GameZoneHub({
                       <span>হোস্ট: {r.hostName}</span>
                       <span>•</span>
                       <span className="capitalize">
-                        {r.gameType === 'teen_patti' ? '৩ পাত্তি' : '২৯ কার্ড'}
+                        {r.gameType === 'teen_patti'
+                          ? '৩ পাত্তি'
+                          : r.gameType === 'card_29'
+                            ? '২৯ কার্ড'
+                            : r.gameType === 'ludo'
+                              ? 'লুডো'
+                              : 'দাবা'}
                       </span>
                     </div>
                   </div>
