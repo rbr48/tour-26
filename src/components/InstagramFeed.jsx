@@ -32,7 +32,11 @@ import { Capacitor } from '@capacitor/core';
 import { useBackHandler } from '../utils/backNavigation';
 import VideoTrimmerModal from './VideoTrimmerModal';
 import ReelsPlayerModal from './ReelsPlayerModal';
+import StoryViewerModal from './StoryViewerModal';
+import InstagramCommentSheet from './InstagramCommentSheet';
+import InstagramPostCard from './InstagramPostCard';
 import UserAvatar from './UserAvatar';
+import { triggerHaptic } from '../utils/haptics';
 import { formatDuration, PRODUCTION_ORIGIN } from '../utils/videoHelper';
 import { saveLocalVideo } from '../utils/localVideoCache';
 import { uploadReelVideo } from '../utils/reelUploader';
@@ -209,7 +213,31 @@ export default function InstagramFeed({
   const [editCaption, setEditCaption] = useState('');
   const [editLocation, setEditLocation] = useState('');
 
+  // Instagram Native Modals: Comments Bottom Sheet & Story Viewer
+  const [activeCommentPost, setActiveCommentPost] = useState(null);
+  const [storyViewer, setStoryViewer] = useState({ isOpen: false, memberIndex: 0 });
+
+  // Group posts by author to construct genuine Instagram Stories
+  const membersWithStories = React.useMemo(() => {
+    const memberMap = new Map();
+    posts.forEach((p) => {
+      const author = p.author?.trim();
+      if (!author) return;
+      if (!memberMap.has(author)) {
+        memberMap.set(author, {
+          memberName: author,
+          authorPhoto: p.authorPhoto,
+          posts: [],
+        });
+      }
+      memberMap.get(author).posts.push(p);
+    });
+    return Array.from(memberMap.values());
+  }, [posts]);
+
   // Phone Back Button Handlers for modals inside InstagramFeed
+  useBackHandler(storyViewer.isOpen, () => setStoryViewer({ isOpen: false, memberIndex: 0 }), 28);
+  useBackHandler(Boolean(activeCommentPost), () => setActiveCommentPost(null), 26);
   useBackHandler(Boolean(previewMedia), () => setPreviewMedia(null), 25);
   useBackHandler(Boolean(editingPost), () => setEditingPost(null), 20);
   useBackHandler(showCreateModal, () => setShowCreateModal(false), 15);
@@ -1150,411 +1178,132 @@ export default function InstagramFeed({
       ) : (
         /* REGULAR PHOTO FEED MODE */
         <>
-          {/* Stories / Member Filters Bar */}
-          <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center gap-3 overflow-x-auto">
+          {/* Authentic Instagram Stories Tray */}
+          <div className="bg-white py-3 px-2 border-b border-slate-200/80 flex items-center gap-3 overflow-x-auto scrollbar-none select-none">
+            {/* 1. Your Story Button */}
+            <div
+              onClick={() => {
+                triggerHaptic('light');
+                const myName = currentProfile?.displayName || currentUser?.displayName;
+                const myIdx = membersWithStories.findIndex((m) => m.memberName === myName);
+                if (myIdx >= 0) {
+                  setStoryViewer({ isOpen: true, memberIndex: myIdx });
+                } else {
+                  setCreatePostMode('photos');
+                  setShowCreateModal(true);
+                }
+              }}
+              className="flex flex-col items-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <div className="relative">
+                <div className="p-0.5 rounded-full bg-slate-200">
+                  <UserAvatar
+                    photoUrl={currentUser?.photoURL || currentProfile?.photoURL}
+                    name={currentUser?.displayName || currentProfile?.displayName || 'আমি'}
+                    size="w-14 h-14"
+                  />
+                </div>
+                <div className="absolute bottom-0 right-0 w-4.5 h-4.5 rounded-full bg-blue-500 border-2 border-white text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                  <Plus size={11} strokeWidth={3} />
+                </div>
+              </div>
+              <span className="text-[11px] font-medium text-slate-700">আপনার স্টোরি</span>
+            </div>
+
+            {/* 2. All Members Filter Option */}
             <button
-              onClick={() => setActiveStoryFilter('all')}
-              className={`flex flex-col items-center gap-1 cursor-pointer shrink-0 ${
-                activeStoryFilter === 'all' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setActiveStoryFilter('all');
+              }}
+              className={`flex flex-col items-center gap-1.5 cursor-pointer shrink-0 ${
+                activeStoryFilter === 'all' ? 'opacity-100' : 'opacity-65 hover:opacity-100'
               }`}
             >
-              <div className={`w-13 h-13 rounded-full p-0.5 flex items-center justify-center ${
-                activeStoryFilter === 'all'
-                  ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-amber-400 to-pink-600'
-                  : 'border border-slate-200 bg-slate-50'
-              }`}>
+              <div
+                className={`w-14 h-14 rounded-full p-0.5 flex items-center justify-center ${
+                  activeStoryFilter === 'all'
+                    ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-amber-400 to-pink-600'
+                    : 'border border-slate-300 bg-slate-100'
+                }`}
+              >
                 <div className="w-full h-full rounded-full bg-white flex items-center justify-center font-bold text-xs text-slate-800">
                   সবাই
                 </div>
               </div>
-              <span className="text-[10px] font-medium text-slate-700">সকল ফটো</span>
+              <span className="text-[11px] font-medium text-slate-700">সকল ফটো</span>
             </button>
 
-            {members.map(m => {
-              const isSelected = activeStoryFilter === m.name;
+            {/* 3. Family Members Stories with Instagram Gradient Rings */}
+            {membersWithStories.map((m, idx) => {
+              const isSelected = activeStoryFilter === m.memberName;
               return (
-                <button
-                  key={m.id}
-                  onClick={() => setActiveStoryFilter(isSelected ? 'all' : m.name)}
-                  className="flex flex-col items-center gap-1 cursor-pointer shrink-0"
+                <div
+                  key={m.memberName}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setStoryViewer({ isOpen: true, memberIndex: idx });
+                  }}
+                  className="flex flex-col items-center gap-1.5 cursor-pointer shrink-0 group"
                 >
-                  <div className={`w-13 h-13 rounded-full p-0.5 flex items-center justify-center ${
+                  <div className={`p-0.5 rounded-full transition-transform duration-200 group-hover:scale-105 shadow-xs ${
                     isSelected
-                      ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-amber-400 to-pink-600'
-                      : 'bg-gradient-to-tr from-slate-200 to-teal-200 hover:from-amber-300 hover:to-pink-500'
+                      ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888]'
+                      : 'bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888]'
                   }`}>
-                    <div className="w-full h-full rounded-full bg-teal-800 text-white flex items-center justify-center font-bold text-xs">
-                      {m.name.slice(0, 2)}
+                    <div className="p-0.5 bg-white rounded-full">
+                      <UserAvatar
+                        photoUrl={m.authorPhoto}
+                        name={m.memberName}
+                        size="w-14 h-14"
+                      />
                     </div>
                   </div>
-                  <span className="text-[10px] font-medium text-slate-700 max-w-[60px] truncate">
-                    {m.name.split(' ')[0]}
+                  <span className="text-[11px] font-medium text-slate-700 max-w-[66px] truncate text-center">
+                    {m.memberName.split(' ')[0]}
                   </span>
-                </button>
+                </div>
               );
             })}
           </div>
 
           {/* Instagram-style Posts Feed */}
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {filteredPosts.length > 0 ? (
-              filteredPosts.map(post => {
-                const isLiked = post.likes?.includes(currentUser?.displayName || 'user') || post.likes?.includes('রাজু ভাই');
-                const likeCount = (post.likes || []).length;
-                const isSharing = sharingPostId === post.id;
-                const postImages = getPostImages(post);
-                const totalImages = postImages.length;
-                const currentIdx = Math.min(postActiveIndices[post.id] || 0, Math.max(0, totalImages - 1));
-                const currentMediaSrc = postImages[currentIdx] || photoSource(post);
-                const postIsReel = isPostReel(post);
-
+              filteredPosts.map((post) => {
+                const postHasStory = membersWithStories.some((m) => m.memberName === post.author);
                 return (
-                  <div
+                  <InstagramPostCard
                     key={post.id}
-                    data-post-id={post.id}
-                    className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
-                  >
-                    {/* Post Header */}
-                    <div className="p-3.5 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <UserAvatar
-                          photoUrl={post.authorPhoto}
-                          name={post.author}
-                          size="w-9 h-9"
-                          ring="ring-2 ring-pink-400"
-                        />
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <h4 className="font-bold text-xs text-slate-900">{post.author}</h4>
-                            {postIsReel && (
-                              <span className="text-[9px] bg-pink-100 text-pink-700 font-bold px-1.5 py-0.2 rounded-full border border-pink-200">
-                                🎬 রিলস
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-teal-700 flex items-center gap-1 font-medium">
-                            <MapPin size={10} /> {post.location}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-slate-400">
-                        <span className="text-[10px] text-slate-400">{post.createdAt}</span>
-                        {Boolean(
-                          (currentUser?.email && post.authorEmail && post.authorEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
-                          (!post.authorEmail && (currentProfile?.displayName || currentUser?.displayName) && post.author === (currentProfile?.displayName || currentUser?.displayName))
-                        ) && (
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleStartEditPost(post)}
-                              className="text-slate-400 hover:text-teal-600 p-1 transition cursor-pointer"
-                              title="ক্যাপশন ও স্থান পরিবর্তন করুন"
-                            >
-                              <Edit3 size={13} />
-                            </button>
-                            {onDeletePost && (
-                              <button
-                                type="button"
-                                onClick={() => onDeletePost(post.id)}
-                                className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
-                                title="নিজের পোস্ট মুছুন"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Media Image / Carousel or Reel */}
-                    <div
-                      className="relative bg-slate-900 cursor-pointer overflow-hidden max-h-[500px] min-h-[220px] flex items-center justify-center select-none group"
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          recordPostView(post.id);
-                          if (postIsReel) {
-                            const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
-                            setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
-                          } else {
-                            setPreviewMedia({ images: postImages, index: currentIdx, post });
-                          }
-                        } else if (e.key === 'ArrowLeft' && currentIdx > 0) {
-                          setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx - 1 }));
-                        } else if (e.key === 'ArrowRight' && currentIdx < totalImages - 1) {
-                          setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx + 1 }));
-                        }
-                      }}
-                      onClick={() => {
-                        recordPostView(post.id);
-                        if (postIsReel) {
-                          const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
-                          setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
-                        } else {
-                          setPreviewMedia({ images: postImages, index: currentIdx, post });
-                        }
-                      }}
-                      onTouchStart={(e) => handleTouchStart(post.id, e)}
-                      onTouchMove={(e) => handleTouchMove(post.id, e)}
-                      onTouchEnd={() => handleTouchEnd(post.id, totalImages)}
-                    >
-                      <img
-                        src={currentMediaSrc}
-                        alt={post.caption}
-                        className="w-full object-contain max-h-[500px] hover:scale-101 transition duration-300"
-                        loading="lazy"
-                      />
-
-                      {/* If Reel, show Play Overlay & Duration Badge */}
-                      {postIsReel && (
-                        <>
-                          <div className="absolute top-2.5 right-2.5 bg-gradient-to-r from-pink-600 to-purple-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md pointer-events-none z-10">
-                            <Film size={13} />
-                            <span>রিলস {formatDuration(post.duration || 0, { bengali: true })}</span>
-                          </div>
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/35 transition pointer-events-none z-10">
-                            <div className="w-14 h-14 rounded-full bg-pink-600/90 text-white flex items-center justify-center shadow-2xl backdrop-blur-xs group-hover:scale-110 transition duration-300 border border-white/20">
-                              <Play size={24} className="ml-1 fill-white" />
-                            </div>
-                          </div>
-                        </>
-                      )}
-
-                      {/* Multi-photo Counter Badge */}
-                      {!postIsReel && totalImages > 1 && (
-                        <div className="absolute top-2.5 right-2.5 bg-black/60 backdrop-blur-md text-white text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md border border-white/20 pointer-events-none z-10">
-                          <Images size={13} className="text-pink-300" />
-                          <span>{toBnNum(currentIdx + 1)}/{toBnNum(totalImages)}</span>
-                        </div>
-                      )}
-
-                  {/* Left Carousel Arrow */}
-                  {totalImages > 1 && currentIdx > 0 && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx - 1 }));
-                      }}
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/55 hover:bg-black/80 text-white flex items-center justify-center transition shadow-lg z-10 cursor-pointer backdrop-blur-xs active:scale-90"
-                      title="পূর্ববর্তী ছবি"
-                      aria-label="Previous photo"
-                    >
-                      <ChevronLeft size={20} />
-                    </button>
-                  )}
-
-                  {/* Right Carousel Arrow */}
-                  {totalImages > 1 && currentIdx < totalImages - 1 && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx + 1 }));
-                      }}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/55 hover:bg-black/80 text-white flex items-center justify-center transition shadow-lg z-10 cursor-pointer backdrop-blur-xs active:scale-90"
-                      title="পরবর্তী ছবি"
-                      aria-label="Next photo"
-                    >
-                      <ChevronRight size={20} />
-                    </button>
-                  )}
-
-                  {/* Bottom Dots Indicator */}
-                  {totalImages > 1 && (
-                    <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 backdrop-blur-xs z-10">
-                      {postImages.map((_, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPostActiveIndices((prev) => ({ ...prev, [post.id]: idx }));
-                          }}
-                          className={`transition-all duration-300 cursor-pointer rounded-full ${
-                            idx === currentIdx
-                              ? 'w-4 h-1.5 bg-white shadow-xs'
-                              : 'w-1.5 h-1.5 bg-white/50 hover:bg-white/80'
-                          }`}
-                          title={`ছবি ${toBnNum(idx + 1)}`}
-                          aria-label={`Jump to photo ${idx + 1}`}
-                        />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Drive Backup Status Pill */}
-                  {post.driveBackedUp ? (
-                    <a
-                      href={post.driveViewUrl || GOOGLE_DRIVE_FOLDER_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="absolute top-2.5 left-2.5 bg-emerald-950/80 hover:bg-emerald-900 backdrop-blur-xs text-emerald-300 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 transition shadow-xs border border-emerald-500/30 z-10"
-                      title="গুগল ড্রাইভ ফোল্ডারে ছবিটি দেখুন"
-                    >
-                      <HardDrive size={10} className="text-emerald-400" /> ✓ ড্রাইভে সংরক্ষিত
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleManualDriveBackup(post);
-                      }}
-                      disabled={manualDriveUploadId === post.id}
-                      className="absolute top-2.5 left-2.5 bg-black/60 hover:bg-slate-900 backdrop-blur-xs text-white hover:text-emerald-300 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 transition cursor-pointer border border-white/20 z-10"
-                      title="গুগল ড্রাইভ ফোল্ডারে ব্যাকআপ পাঠান"
-                    >
-                      {manualDriveUploadId === post.id ? (
-                        <Loader2 size={10} className="animate-spin text-emerald-400" />
-                      ) : (
-                        <HardDrive size={10} className="text-amber-300" />
-                      )}
-                      <span>ড্রাইভে পাঠান</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* Post Actions Bar */}
-                <div className="p-3.5 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      {/* Like Button */}
-                      <button
-                        onClick={() => onLikePost(post.id, currentUser?.displayName || 'user')}
-                        className={`flex items-center gap-1.5 transition cursor-pointer ${
-                          isLiked ? 'text-rose-600 scale-110' : 'text-slate-700 hover:text-rose-500'
-                        }`}
-                      >
-                        <Heart size={22} fill={isLiked ? 'currentColor' : 'none'} />
-                        <span className="text-xs font-bold font-mono">{toBnNum(likeCount)}</span>
-                      </button>
-
-                      {/* Comment Count */}
-                      <button className="flex items-center gap-1.5 text-slate-700 hover:text-teal-600 transition cursor-pointer">
-                        <MessageCircle size={21} />
-                        <span className="text-xs font-bold font-mono">{toBnNum((post.comments || []).length)}</span>
-                      </button>
-
-                      {/* Views Count */}
-                      <div
-                        className="flex items-center gap-1.5 text-slate-500 select-none"
-                        title="মোট ভিউ সংখ্যা"
-                      >
-                        <Eye size={20} className="text-slate-400" />
-                        <span className="text-xs font-semibold text-slate-600 font-mono">
-                          {toBnNum(post.views || 0)}
-                        </span>
-                      </div>
-
-                      {/* Share Original Media Button */}
-                      <button
-                        onClick={() => handleShareMedia(post, currentMediaSrc)}
-                        disabled={isSharing}
-                        className="flex items-center gap-1 text-slate-700 hover:text-teal-600 transition cursor-pointer disabled:opacity-50"
-                        title="সরাসরি এই ছবিটি শেয়ার করুন"
-                      >
-                        {isSharing ? (
-                          <Loader2 size={20} className="animate-spin text-teal-600" />
-                        ) : (
-                          <Share2 size={20} />
-                        )}
-                        <span className="text-[11px] font-medium hidden xs:inline">শেয়ার</span>
-                      </button>
-                    </div>
-
-                    <a
-                      href={currentMediaSrc}
-                      download={`CoxsBazar_Tour2026_${post.id}_${currentIdx + 1}.jpg`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-slate-400 hover:text-slate-800 transition p-1"
-                      title="ছবি ডাউনলোড করুন"
-                    >
-                      <Download size={18} />
-                    </a>
-                  </div>
-
-                  {/* Caption */}
-                  <div className="text-xs text-slate-800 leading-relaxed pt-1">
-                    <span className="font-bold mr-1.5">{post.author}</span>
-                    <span>{post.caption}</span>
-                  </div>
-
-                  {/* Comments Preview */}
-                  {(post.comments || []).length > 0 && (
-                    <div className="space-y-2 pt-2 border-t border-slate-100">
-                      {post.comments.slice(-4).map((c, idx) => {
-                        const commentId = c.id !== undefined && c.id !== null ? c.id : idx;
-                        const myIdentifier = (currentUser?.email || currentProfile?.displayName || currentUser?.displayName || 'user').toLowerCase();
-                        return (
-                          <div key={c.id || idx} className="text-xs text-slate-700 bg-slate-50/80 p-2 rounded-xl border border-slate-100 space-y-1">
-                            <div className="flex items-start justify-between gap-1">
-                              <div className="leading-relaxed">
-                                <strong className="font-bold text-slate-900 mr-1.5">{c.user}:</strong>
-                                <span>{c.text}</span>
-                              </div>
-                              <span className="text-[10px] text-slate-400 shrink-0">{c.time || 'এইমাত্র'}</span>
-                            </div>
-
-                            {/* Comment Emoji Reactions */}
-                            <div className="flex items-center flex-wrap gap-1 pt-1 border-t border-slate-200/50">
-                              {COMMENT_REACTIONS.map((emoji) => {
-                                const voters = Array.isArray(c.reactions?.[emoji]) ? c.reactions[emoji] : [];
-                                const count = voters.length;
-                                const hasVoted = voters.some((v) => String(v).toLowerCase() === myIdentifier);
-                                return (
-                                  <button
-                                    key={emoji}
-                                    type="button"
-                                    onClick={() => onCommentReaction?.(post.id, commentId, emoji)}
-                                    className={`px-1.5 py-0.5 rounded-full text-[10px] flex items-center gap-0.5 transition cursor-pointer select-none ${
-                                      hasVoted
-                                        ? 'bg-rose-100 text-rose-700 border border-rose-300 font-bold scale-105'
-                                        : count > 0
-                                        ? 'bg-white text-slate-700 border border-slate-200 shadow-2xs'
-                                        : 'bg-white/40 hover:bg-white text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 opacity-60 hover:opacity-100'
-                                    }`}
-                                    title={`${emoji} রিঅ্যাক্ট করুন`}
-                                  >
-                                    <span>{emoji}</span>
-                                    {count > 0 && <span className="text-[10px] font-mono">{toBnNum(count)}</span>}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* Add Comment Input */}
-                  <div className="pt-2 flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="একটি মন্তব্য লিখুন..."
-                      value={commentInputs[post.id] || ''}
-                      onChange={e => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })}
-                      onKeyDown={e => e.key === 'Enter' && handleCommentSubmit(post.id)}
-                      className="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600"
-                    />
-                    <button
-                      onClick={() => handleCommentSubmit(post.id)}
-                      className="p-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl transition cursor-pointer"
-                    >
-                      <Send size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })
+                    post={post}
+                    currentUser={currentUser}
+                    currentProfile={currentProfile}
+                    onLikePost={onLikePost}
+                    onOpenComments={(p) => {
+                      triggerHaptic('light');
+                      setActiveCommentPost(p);
+                    }}
+                    onShareMedia={handleShareMedia}
+                    onManualDriveBackup={handleManualDriveBackup}
+                    onStartEditPost={handleStartEditPost}
+                    onDeletePost={onDeletePost}
+                    onOpenReel={(p) => {
+                      const rIdx = allReelPosts.findIndex((r) => r.id === p.id);
+                      setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                    }}
+                    onOpenFullscreenImage={(media) => setPreviewMedia(media)}
+                    manualDriveUploadId={manualDriveUploadId}
+                    hasStory={postHasStory}
+                    onOpenStory={(author) => {
+                      const mIdx = membersWithStories.findIndex((m) => m.memberName === author);
+                      if (mIdx >= 0) {
+                        setStoryViewer({ isOpen: true, memberIndex: mIdx });
+                      }
+                    }}
+                  />
+                );
+              })
         ) : (
           <div className="p-8 bg-white rounded-3xl border border-slate-200 text-center space-y-3">
             <div className="w-12 h-12 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center mx-auto text-xl">
@@ -2345,6 +2094,29 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
           setTrimmedReelData(data);
           setShowTrimmerModal(false);
         }}
+      />
+
+      {/* INSTAGRAM SLIDING BOTTOM SHEET FOR COMMENTS */}
+      <InstagramCommentSheet
+        isOpen={Boolean(activeCommentPost)}
+        post={posts.find((p) => p.id === activeCommentPost?.id) || activeCommentPost}
+        currentUser={currentUser}
+        currentProfile={currentProfile}
+        onClose={() => setActiveCommentPost(null)}
+        onAddComment={onAddComment}
+        onCommentReaction={onCommentReaction}
+      />
+
+      {/* FULLSCREEN INSTAGRAM STORY VIEWER MODAL */}
+      <StoryViewerModal
+        isOpen={storyViewer.isOpen}
+        membersWithStories={membersWithStories}
+        initialMemberIndex={storyViewer.memberIndex}
+        onClose={() => setStoryViewer({ isOpen: false, memberIndex: 0 })}
+        onLikePost={onLikePost}
+        onAddComment={onAddComment}
+        currentUser={currentUser}
+        currentProfile={currentProfile}
       />
     </div>
   );

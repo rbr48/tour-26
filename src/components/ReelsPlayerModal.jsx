@@ -25,6 +25,7 @@ import { formatDuration, toBnNum, resolveMediaUrl, getDriveEmbedUrl, PRODUCTION_
 import { getLocalVideo, getLocalVideoUrl } from '../utils/localVideoCache';
 import { uploadReelVideo } from '../utils/reelUploader';
 import { useBackHandler } from '../utils/backNavigation';
+import { triggerHaptic } from '../utils/haptics';
 import UserAvatar from './UserAvatar';
 
 const COMMENT_REACTIONS = ['❤️', '👍', '😂', '🔥', '👏'];
@@ -267,9 +268,10 @@ export default function ReelsPlayerModal({
     const DOUBLE_TAP_DELAY = 300;
     if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
       // Double tap!
+      triggerHaptic('medium');
       handleLike();
       setShowHeartAnim(true);
-      setTimeout(() => setShowHeartAnim(false), 900);
+      setTimeout(() => setShowHeartAnim(false), 850);
     } else {
       togglePlay();
     }
@@ -490,8 +492,8 @@ export default function ReelsPlayerModal({
 
           {/* Animated Heart pop on double tap */}
           {showHeartAnim && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30 animate-ping">
-              <Heart size={100} className="fill-rose-500 text-rose-500 drop-shadow-2xl" />
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+              <Heart size={100} className="fill-white text-white drop-shadow-2xl animate-ig-heart" />
             </div>
           )}
 

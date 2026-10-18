@@ -29,11 +29,12 @@ if (!replacedAuthCode) {
   process.exit(1);
 }
 
-// 2. Ensure Activity context is used in credentialManager.getCredentialAsync
 const contextTargetLf = 'credentialManager.getCredentialAsync(\n                pluginImplementation.getPlugin().getContext(),';
 const contextTargetCrlf = 'credentialManager.getCredentialAsync(\r\n                pluginImplementation.getPlugin().getContext(),';
 const contextPatchedLf = 'credentialManager.getCredentialAsync(\n                pluginImplementation.getPlugin().getActivity(),';
 const contextPatchedCrlf = 'credentialManager.getCredentialAsync(\r\n                pluginImplementation.getPlugin().getActivity(),';
+const contextActivityLf = 'credentialManager.getCredentialAsync(\n                activity,';
+const contextActivityCrlf = 'credentialManager.getCredentialAsync(\r\n                activity,';
 
 let replacedContext = false;
 if (content.includes(contextTargetLf)) {
@@ -42,8 +43,13 @@ if (content.includes(contextTargetLf)) {
 } else if (content.includes(contextTargetCrlf)) {
   content = content.replace(contextTargetCrlf, contextPatchedCrlf);
   replacedContext = true;
-} else if (content.includes(contextPatchedLf) || content.includes(contextPatchedCrlf)) {
-  // Already patched
+} else if (
+  content.includes(contextPatchedLf) ||
+  content.includes(contextPatchedCrlf) ||
+  content.includes(contextActivityLf) ||
+  content.includes(contextActivityCrlf)
+) {
+  // Already using Activity context
   replacedContext = true;
 }
 
