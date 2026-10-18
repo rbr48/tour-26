@@ -1190,7 +1190,7 @@ export default function App() {
           <img
             src="/logo.png"
             alt="App Logo"
-            className="w-24 h-24 rounded-3xl object-cover ring-4 ring-amber-400 shadow-2xl animate-pulse"
+            className="w-24 h-24 rounded-3xl object-contain bg-white p-1 ring-4 ring-amber-400 shadow-2xl animate-pulse"
           />
           <span className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 border-2 border-teal-900 rounded-full"></span>
         </div>
@@ -1217,7 +1217,7 @@ export default function App() {
               <img
                 src="/logo.png"
                 alt="Tour 2026 Logo"
-                className="w-20 h-20 rounded-2xl object-cover ring-4 ring-amber-400 shadow-lg mx-auto"
+                className="w-20 h-20 rounded-2xl object-contain bg-white p-1 ring-4 ring-amber-400 shadow-lg mx-auto"
               />
               <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 border-2 border-teal-800 rounded-full"></span>
             </div>
@@ -1315,7 +1315,7 @@ export default function App() {
               <img
                 src="/logo.png"
                 alt="App Logo"
-                className="w-13 h-13 rounded-2xl object-cover ring-2 ring-amber-400 shadow-md"
+                className="w-13 h-13 rounded-2xl object-contain bg-white p-0.5 ring-2 ring-amber-400 shadow-md"
               />
               <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-teal-900 rounded-full"></span>
             </div>
@@ -1491,7 +1491,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   <img
                     src="/logo.png"
                     alt="App Logo"
-                    className="w-10 h-10 rounded-2xl object-cover ring-2 ring-amber-400 shadow-md"
+                    className="w-10 h-10 rounded-2xl object-contain bg-white p-0.5 ring-2 ring-amber-400 shadow-md"
                   />
                   <div>
                     <h3 className="font-extrabold text-sm text-white leading-tight">ফ্যামিলি ট্যুর ২০২৬</h3>
@@ -1721,7 +1721,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               <img
                 src="/logo.png"
                 alt="App Logo"
-                className="w-9 h-9 md:w-11 md:h-11 rounded-xl object-cover ring-2 ring-amber-400 shadow-md md:hidden"
+                className="w-9 h-9 md:w-11 md:h-11 rounded-xl object-contain bg-white p-0.5 ring-2 ring-amber-400 shadow-md md:hidden"
               />
 
               <div className="min-w-0">

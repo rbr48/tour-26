@@ -1,10 +1,10 @@
 {
-  "versionCode": 3,
-  "versionName": "2.1",
+  "versionCode": 4,
+  "versionName": "2.2",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026.apk?v=3",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026.apk?v=4",
   "apkSize": "95.6 MB",
-  "releaseNotes": "নতুন ইন-অ্যাপ ওটিএ (OTA) অটো-আপডেট সিস্টেম, ক্যামেরা ও স্টোরেজ পারমিশন এবং দ্রুত চাঙ্কড রিলস ভিডিও আপলোড।",
-  "releasedAt": "2026-10-18T08:35:00Z",
+  "releaseNotes": "নতুন অফিসিয়াল কক্সবাজার ট্যুর ২০২৬ লোগো, অ্যাপ আইকন ও লাঞ্চার আইকন আপডেট।",
+  "releasedAt": "2026-10-18T12:15:00Z",
   "forceUpdate": false
 }
