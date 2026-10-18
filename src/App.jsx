@@ -1870,7 +1870,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         {/* Content Body */}
         <main className={`flex-1 max-w-5xl w-full mx-auto ${
           activeTab === 'discussions'
-            ? 'p-2 sm:p-3 md:p-4 flex flex-col min-h-0 overflow-hidden pb-[calc(4.35rem+max(0.5rem,env(safe-area-inset-bottom)))] md:pb-4'
+            ? 'p-2 sm:p-3 md:p-4 flex flex-col min-h-0 overflow-hidden pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))] md:pb-4'
             : 'p-3.5 md:p-6 space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:pb-6'
         }`}>
           {/* TAB 1: DASHBOARD */}

@@ -173,8 +173,8 @@ export default function DiscordDiscussion({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-1.5 sm:gap-2">
-      {/* 1. SLIM TOP BAR (Desktop / Tablet only to preserve vertical space on mobile) */}
-      <div className="hidden sm:flex shrink-0 bg-gradient-to-r from-teal-900 via-indigo-900 to-slate-900 text-white px-3.5 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl shadow-xs border border-teal-700/60 items-center justify-between gap-2">
+      {/* 1. SLIM TOP BAR (Desktop only to preserve vertical space on mobile) */}
+      <div className="hidden md:flex shrink-0 bg-gradient-to-r from-teal-900 via-indigo-900 to-slate-900 text-white px-3.5 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl shadow-xs border border-teal-700/60 items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-400 text-teal-950 rounded-full shrink-0">
             💬 ডিসকর্ড
