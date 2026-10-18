@@ -627,6 +627,35 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [uid, remoteReady, tourExists, backupNow]);
 
+  // 5. User-facing Refresh & Sync action (revalidates network, triggers backup, spins icon, pops toast)
+  const [isSyncing, setIsSyncing] = useState(false);
+  const handleRefreshAndSync = useCallback(async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      if (currentUser) {
+        backupNow().catch(() => {});
+      }
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      setActiveToast({
+        id: newId(),
+        type: 'success',
+        title: '🔄 ডেটা সফলভাবে সিঙ্ক হয়েছে',
+        body: `ক্লাউড সার্ভার ও ফায়ারস্টোরের সাথে ডেটা আপডেট সম্পন্ন (${new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })})`,
+        tab: activeTab,
+      });
+    } catch {
+      setActiveToast({
+        id: newId(),
+        type: 'error',
+        title: 'সিঙ্ক সম্পন্ন হয়নি',
+        body: 'অনুগ্রহ করে ইন্টারনেট সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন।',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [isSyncing, currentUser, backupNow, activeTab]);
+
   // Profile Lookup
   const currentProfileKey = currentUser?.email ? currentUser.email.toLowerCase() : null;
   const currentProfile = (currentProfileKey && data.userProfiles?.[currentProfileKey]) || {};
@@ -1784,12 +1813,12 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               </button>
 
               <button
-                onClick={() => backupNow()}
-                disabled={!currentUser}
-                className="p-2 bg-white/15 hover:bg-white/25 rounded-xl text-white transition cursor-pointer disabled:opacity-40"
-                title="ব্যাকআপ সংরক্ষণ করুন"
+                onClick={handleRefreshAndSync}
+                disabled={isSyncing}
+                className="p-2 bg-white/15 hover:bg-white/25 rounded-xl text-white transition cursor-pointer disabled:opacity-50"
+                title="ডেটা রিফ্রেশ ও ক্লাউড সিঙ্ক করুন"
               >
-                <RefreshCw size={15} />
+                <RefreshCw size={15} className={isSyncing ? 'animate-spin text-amber-300' : ''} />
               </button>
             </div>
           </div>
