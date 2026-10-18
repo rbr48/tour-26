@@ -1363,7 +1363,7 @@ export default function App() {
   // 3. Authenticated User View
   return (
     <Suspense fallback={<LoadingFallback />}>
-    <div className={`min-h-screen bg-slate-50 text-slate-800 flex flex-col md:flex-row font-sans ${activeTab === 'discussions' ? 'h-dvh max-h-dvh overflow-hidden' : ''}`}>
+    <div className={`bg-slate-50 text-slate-800 flex flex-col md:flex-row font-sans ${activeTab === 'discussions' ? 'h-dvh max-h-dvh overflow-hidden' : 'min-h-screen'}`}>
       {upgradeNotice && (
         <output aria-live="polite" className="fixed bottom-20 left-3 right-3 z-40 block rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 shadow-lg md:left-auto md:right-6 md:bottom-6 md:max-w-sm">
           {upgradeNotice}
@@ -1778,7 +1778,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       {/* =========================================================================
           MAIN CONTENT AREA
       ========================================================================= */}
-      <div className={`flex-1 flex flex-col min-w-0 ${activeTab === 'discussions' ? 'h-full min-h-0 overflow-hidden' : ''}`}>
+      <div className={`flex-1 flex flex-col min-w-0 min-h-0 ${activeTab === 'discussions' ? 'overflow-hidden' : ''}`}>
         {/* Top Header with Mobile Hamburger Menu */}
         <header className="shrink-0 sticky top-0 z-30 bg-gradient-to-r from-teal-900/95 via-teal-800/95 to-cyan-900/95 backdrop-blur-md text-white px-3 py-3 md:px-8 md:py-4 shadow-md border-b border-teal-700/50 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
