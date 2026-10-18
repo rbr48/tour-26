@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ShieldAlert,
   Compass,
@@ -209,20 +209,26 @@ export default function FamilySafetyHub({
     setTimeout(() => setShareSuccess(false), 3000);
   };
 
+  const stopSiren = useCallback(() => {
+    if (sirenIntervalRef.current) {
+      clearInterval(sirenIntervalRef.current);
+      sirenIntervalRef.current = null;
+    }
+    if (oscillatorRef.current) {
+      try { oscillatorRef.current.stop(); } catch {}
+      oscillatorRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      try { audioCtxRef.current.close(); } catch {}
+      audioCtxRef.current = null;
+    }
+    setIsSirenPlaying(false);
+  }, []);
+
   // Web Audio Dual-Tone Police/Emergency Siren
   const toggleSiren = () => {
     if (isSirenPlaying) {
-      // Stop siren
-      if (oscillatorRef.current) {
-        try { oscillatorRef.current.stop(); } catch {}
-      }
-      if (sirenIntervalRef.current) {
-        clearInterval(sirenIntervalRef.current);
-      }
-      if (audioCtxRef.current) {
-        try { audioCtxRef.current.close(); } catch {}
-      }
-      setIsSirenPlaying(false);
+      stopSiren();
     } else {
       // Start siren
       try {
@@ -259,18 +265,15 @@ export default function FamilySafetyHub({
     }
   };
 
-  // Clean up audio on unmount
+  // Stop siren whenever modal closes or component unmounts
   useEffect(() => {
+    if (!isOpen) {
+      stopSiren();
+    }
     return () => {
-      if (sirenIntervalRef.current) clearInterval(sirenIntervalRef.current);
-      if (oscillatorRef.current) {
-        try { oscillatorRef.current.stop(); } catch {}
-      }
-      if (audioCtxRef.current) {
-        try { audioCtxRef.current.close(); } catch {}
-      }
+      stopSiren();
     };
-  }, []);
+  }, [isOpen, stopSiren]);
 
   if (!isOpen) return null;
 

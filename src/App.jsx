@@ -208,8 +208,9 @@ export default function App() {
   const [appUpdateInfo, setAppUpdateInfo] = useState(null);
   const [showAppUpdateModal, setShowAppUpdateModal] = useState(false);
 
-  // Check for in-app OTA updates on launch
+  // Check for in-app OTA updates on launch (Native Android APK only)
   useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
     let active = true;
     const timer = setTimeout(() => {
       checkForAppUpdate().then((info) => {
@@ -1794,23 +1795,23 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         </header>
 
         {/* Content Body */}
-        <main className="flex-1 max-w-5xl w-full mx-auto p-3.5 md:p-6 space-y-6">
+        <main className="flex-1 max-w-5xl w-full mx-auto p-3.5 md:p-6 space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:pb-6">
           {/* TAB 1: DASHBOARD */}
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
               {/* Financial Quick Cards */}
-              <div className="grid grid-cols-3 gap-3 bg-gradient-to-r from-teal-950 via-teal-900 to-slate-900 text-white p-4 sm:p-5 rounded-3xl shadow-md border border-teal-800/80">
-                <div>
-                  <p className="text-[11px] sm:text-xs text-teal-200">মোট জমা ফান্ড</p>
-                  <p className="text-base sm:text-2xl font-bold mt-0.5">৳ {totalDeposit.toLocaleString()}</p>
+              <div className="grid grid-cols-3 gap-2 min-[380px]:gap-3 bg-gradient-to-r from-teal-950 via-teal-900 to-slate-900 text-white p-3.5 min-[380px]:p-4 sm:p-5 rounded-3xl shadow-md border border-teal-800/80">
+                <div className="min-w-0">
+                  <p className="text-[10px] min-[380px]:text-[11px] sm:text-xs text-teal-200 truncate">মোট জমা ফান্ড</p>
+                  <p className="text-sm min-[380px]:text-base sm:text-2xl font-bold mt-0.5 truncate">৳ {totalDeposit.toLocaleString()}</p>
                 </div>
-                <div>
-                  <p className="text-[11px] sm:text-xs text-teal-200">মোট খরচ</p>
-                  <p className="text-base sm:text-2xl font-bold text-amber-300 mt-0.5">৳ {totalExpense.toLocaleString()}</p>
+                <div className="min-w-0">
+                  <p className="text-[10px] min-[380px]:text-[11px] sm:text-xs text-teal-200 truncate">মোট খরচ</p>
+                  <p className="text-sm min-[380px]:text-base sm:text-2xl font-bold text-amber-300 mt-0.5 truncate">৳ {totalExpense.toLocaleString()}</p>
                 </div>
-                <div>
-                  <p className="text-[11px] sm:text-xs text-teal-200">অবশিষ্ট ব্যালেন্স</p>
-                  <p className="text-base sm:text-2xl font-bold text-emerald-300 mt-0.5">৳ {remainingBalance.toLocaleString()}</p>
+                <div className="min-w-0">
+                  <p className="text-[10px] min-[380px]:text-[11px] sm:text-xs text-teal-200 truncate">অবশিষ্ট ব্যালেন্স</p>
+                  <p className="text-sm min-[380px]:text-base sm:text-2xl font-bold text-emerald-300 mt-0.5 truncate">৳ {remainingBalance.toLocaleString()}</p>
                 </div>
               </div>
 

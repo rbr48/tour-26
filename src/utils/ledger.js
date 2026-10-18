@@ -8,9 +8,16 @@
 // flows back from the fund to members, and any shortfall flows from members to the fund.
 
 export const FUND_LABEL = 'ট্যুর ফান্ড';
+export const MAX_SAFE_AMOUNT_TAKA = 10_000_000;
 
-const toPaisa = (taka) => Math.round(Number(taka || 0) * 100);
-const toTaka = (paisa) => paisa / 100;
+export const toPaisa = (taka) => {
+  const num = Number(taka || 0);
+  if (!Number.isFinite(num) || isNaN(num)) return 0;
+  const clamped = Math.max(0, Math.min(MAX_SAFE_AMOUNT_TAKA, num));
+  return Math.round(clamped * 100);
+};
+
+export const toTaka = (paisa) => paisa / 100;
 
 /**
  * Splits `total` into whole parts proportional to `weights`. The parts always add up to
@@ -50,6 +57,17 @@ export function payerIdFor(expense, members) {
 
 /** Minimal set of payments that clears every balance. Parties are {name, netPaisa}. */
 export function settle(parties) {
+  for (const party of parties) {
+    if (!Number.isFinite(party.netPaisa)) {
+      throw new Error(`Invalid non-finite net balance for party "${party.name}": ${party.netPaisa}`);
+    }
+  }
+
+  const balanceSum = parties.reduce((sum, party) => sum + party.netPaisa, 0);
+  if (Math.abs(balanceSum) > 1) {
+    throw new Error(`Ledger balances do not sum to zero: total net is ${balanceSum} paisa`);
+  }
+
   const debtors = parties
     .filter((party) => party.netPaisa < 0)
     .map((party) => ({ ...party, owesPaisa: -party.netPaisa }))
@@ -62,8 +80,13 @@ export function settle(parties) {
   const payments = [];
   let d = 0;
   let c = 0;
-  while (d < debtors.length && c < creditors.length) {
+  const maxIterations = (debtors.length + creditors.length) * 2;
+  let iterations = 0;
+
+  while (d < debtors.length && c < creditors.length && iterations < maxIterations) {
+    iterations += 1;
     const amount = Math.min(debtors[d].owesPaisa, creditors[c].isOwedPaisa);
+    if (amount <= 0) break;
     payments.push({
       from: debtors[d].name,
       to: creditors[c].name,
@@ -76,6 +99,13 @@ export function settle(parties) {
     if (debtors[d].owesPaisa === 0) d += 1;
     if (creditors[c].isOwedPaisa === 0) c += 1;
   }
+
+  const remainingDebtor = debtors.find((debtor) => debtor.owesPaisa > 0);
+  const remainingCreditor = creditors.find((creditor) => creditor.isOwedPaisa > 0);
+  if (remainingDebtor || remainingCreditor) {
+    throw new Error('Settlement could not fully clear balances');
+  }
+
   return payments;
 }
 

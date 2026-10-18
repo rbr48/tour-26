@@ -1,9 +1,131 @@
 rules_version = '2';
 
+// Tour 2026 Firestore Security Rules
+// Protects database from unauthenticated access, enforces field constraints,
+// and ensures numerical sanity for ledger and tour records.
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function fits(maxFields) {
+      return request.resource.data.keys().size() <= maxFields;
+    }
+
+    function textWithin(field, maxLength) {
+      return !(field in request.resource.data)
+        || (request.resource.data[field] is string && request.resource.data[field].size() <= maxLength);
+    }
+
+    function isPositiveBoundedNumber(field, maxNum) {
+      return !(field in request.resource.data)
+        || (request.resource.data[field] is number && request.resource.data[field] >= 0 && request.resource.data[field] <= maxNum);
+    }
+
+    // Config access document (if present)
+    match /config/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    match /tours/{tourId} {
+      allow read: if isAuthenticated();
+      // Allow updates to tour info from authenticated family users, reject legacy array injection
+      allow create, update: if isAuthenticated()
+        && fits(20)
+        && !('expenses' in request.resource.data)
+        && !('discussions' in request.resource.data)
+        && !('userProfiles' in request.resource.data);
+      allow delete: if false;
+
+      match /itinerary/{itemId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated() && fits(25) && textWithin('notes', 2000);
+        allow delete: if isAuthenticated();
+      }
+
+      match /members/{memberId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated()
+          && fits(25)
+          && isPositiveBoundedNumber('deposit', 10000000);
+        allow delete: if isAuthenticated();
+      }
+
+      match /expenses/{expenseId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated()
+          && fits(25)
+          && isPositiveBoundedNumber('amount', 10000000)
+          && textWithin('title', 300);
+        allow update: if isAuthenticated()
+          && fits(25)
+          && isPositiveBoundedNumber('amount', 10000000)
+          && textWithin('title', 300);
+        allow delete: if isAuthenticated();
+      }
+
+      match /checklist/{itemId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated() && fits(15) && textWithin('text', 500);
+        allow delete: if isAuthenticated();
+      }
+
+      match /notices/{noticeId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated() && fits(20) && textWithin('content', 4000);
+        allow delete: if isAuthenticated();
+      }
+
+      match /posts/{postId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated()
+          && fits(35)
+          && textWithin('thumb', 200000)
+          && textWithin('caption', 1000);
+        allow update: if isAuthenticated()
+          && fits(35)
+          && textWithin('thumb', 200000);
+        allow delete: if isAuthenticated();
+      }
+
+      match /channels/{channelId}/messages/{messageId} {
+        allow read: if isAuthenticated() && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans'];
+        allow create: if isAuthenticated()
+          && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans']
+          && fits(20)
+          && textWithin('text', 4000);
+        allow update: if isAuthenticated()
+          && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans']
+          && fits(20);
+        allow delete: if isAuthenticated();
+      }
+
+      match /locations/{email} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated() && fits(20);
+        allow delete: if isAuthenticated();
+      }
+
+      match /meta/{docId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+      }
+
+      match /profiles/{email} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated()
+          && fits(25)
+          && textWithin('customPhotoURL', 200000);
+        allow delete: if isAuthenticated();
+      }
+    }
+
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

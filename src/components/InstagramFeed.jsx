@@ -57,10 +57,21 @@ import { connectGoogleDrive } from '../firebase';
 export const toBnNum = (n) => String(n).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[d]);
 
 // Extract all images from a post (carousel or single)
+export function isSafeMediaUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (trimmed.startsWith('data:image/')) return true;
+  if (trimmed.startsWith('blob:')) return true;
+  if (trimmed.startsWith('https://') || trimmed.startsWith('http://') || trimmed.startsWith('/')) {
+    return true;
+  }
+  return false;
+}
+
 export const getPostImages = (post) => {
   if (!post) return [];
   if (Array.isArray(post.images) && post.images.length > 0) {
-    return post.images.filter((img) => typeof img === 'string' && img.trim().length > 0);
+    return post.images.filter((img) => typeof img === 'string' && isSafeMediaUrl(img));
   }
   const single = photoSource(post);
   return single ? [single] : [];
@@ -68,18 +79,25 @@ export const getPostImages = (post) => {
 
 export const photoSource = (post) => {
   if (!post) return null;
+  let raw = null;
   if (Array.isArray(post.images) && post.images.length > 0 && typeof post.images[0] === 'string') {
-    return post.images[0];
-  }
-  if (post.thumb && typeof post.thumb === 'string') return post.thumb;
-  if (post.image && typeof post.image === 'string' && !post.image.includes('drive.google.com/file/d/')) return post.image;
-  if (post.photo && typeof post.photo === 'string') return post.photo;
-  if (post.url && typeof post.url === 'string') return post.url;
-  if (post.imageUrl && typeof post.imageUrl === 'string') return post.imageUrl;
-  if (post.driveFileId) {
+    raw = post.images[0];
+  } else if (post.thumb && typeof post.thumb === 'string') {
+    raw = post.thumb;
+  } else if (post.image && typeof post.image === 'string' && !post.image.includes('drive.google.com/file/d/')) {
+    raw = post.image;
+  } else if (post.photo && typeof post.photo === 'string') {
+    raw = post.photo;
+  } else if (post.url && typeof post.url === 'string') {
+    raw = post.url;
+  } else if (post.imageUrl && typeof post.imageUrl === 'string') {
+    raw = post.imageUrl;
+  } else if (post.driveFileId) {
     return `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1000`;
+  } else {
+    raw = post.image || post.thumb || null;
   }
-  return post.image || post.thumb || null;
+  return isSafeMediaUrl(raw) ? raw : null;
 };
 
 // Preset Default Locations for Tour

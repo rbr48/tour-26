@@ -148,6 +148,43 @@ describe('settle', () => {
       { from: 'ক', to: 'গ', fromFund: false, toFund: false, amount: 20 },
     ]);
   });
+
+  it('rejects unbalanced parties where balances do not sum to zero', () => {
+    expect(() => {
+      settle([
+        { name: 'ক', netPaisa: -5000 },
+        { name: 'খ', netPaisa: 3000 },
+      ]);
+    }).toThrow(/Ledger balances do not sum to zero/);
+  });
+
+  it('rejects non-finite balances such as NaN or Infinity', () => {
+    expect(() => {
+      settle([
+        { name: 'ক', netPaisa: NaN },
+        { name: 'খ', netPaisa: 0 },
+      ]);
+    }).toThrow(/Invalid non-finite net balance/);
+
+    expect(() => {
+      settle([
+        { name: 'ক', netPaisa: Infinity },
+        { name: 'খ', netPaisa: -Infinity },
+      ]);
+    }).toThrow(/Invalid non-finite net balance/);
+  });
+});
+
+describe('toPaisa bounds and safety', () => {
+  it('safely handles non-finite and negative values without crashing', () => {
+    const ledger = computeLedger({
+      members: [member(1, NaN), member(2, Infinity)],
+      expenses: [{ amount: -500, paidById: null }, { amount: 'invalid', paidById: 1 }],
+    });
+    expect(Number.isFinite(ledger.totalDeposits)).toBe(true);
+    expect(Number.isFinite(ledger.totalExpense)).toBe(true);
+    expect(Array.isArray(ledger.settlements)).toBe(true);
+  });
 });
 
 describe('categoryTotals', () => {

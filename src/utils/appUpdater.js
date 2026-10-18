@@ -4,8 +4,8 @@ import { App } from '@capacitor/app';
 // Register custom native Android AppUpdate plugin
 const NativeAppUpdate = registerPlugin('AppUpdate');
 
-export const CURRENT_WEB_VERSION = '2.1';
-export const CURRENT_WEB_BUILD = 3;
+export const CURRENT_WEB_VERSION = '2.3';
+export const CURRENT_WEB_BUILD = 5;
 
 /**
  * Returns the version metadata API endpoint URL.
@@ -18,6 +18,7 @@ export function getVersionApiUrl() {
 
 /**
  * Checks if a newer version of the app is available on the server.
+ * Only applies to native Android APKs; web visitors update via service worker.
  *
  * @returns {Promise<{
  *   hasUpdate: boolean,
@@ -32,21 +33,27 @@ export function getVersionApiUrl() {
  * } | null>}
  */
 export async function checkForAppUpdate() {
+  if (!Capacitor.isNativePlatform()) {
+    return {
+      hasUpdate: false,
+      currentVersion: CURRENT_WEB_VERSION,
+      currentBuild: CURRENT_WEB_BUILD,
+    };
+  }
+
   try {
     let currentVersion = CURRENT_WEB_VERSION;
     let currentBuild = CURRENT_WEB_BUILD;
 
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const info = await App.getInfo();
-        if (info?.version) currentVersion = info.version;
-        if (info?.build) {
-          const parsedBuild = parseInt(info.build, 10);
-          if (!isNaN(parsedBuild)) currentBuild = parsedBuild;
-        }
-      } catch (err) {
-        console.warn('Could not read native app info:', err);
+    try {
+      const info = await App.getInfo();
+      if (info?.version) currentVersion = info.version;
+      if (info?.build) {
+        const parsedBuild = parseInt(info.build, 10);
+        if (!isNaN(parsedBuild)) currentBuild = parsedBuild;
       }
+    } catch (err) {
+      console.warn('Could not read native app info:', err);
     }
 
     const res = await fetch(getVersionApiUrl(), {

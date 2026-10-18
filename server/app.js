@@ -228,6 +228,19 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
       return;
     }
 
+    let user;
+    try {
+      user = await verify(bearerToken(req.headers.authorization));
+    } catch (err) {
+      if (err instanceof AuthError) {
+        sendJson(res, err.status, { error: err.message }, headers);
+        return;
+      }
+      console.error('token verification failed unexpectedly:', err);
+      sendJson(res, 503, { error: 'authentication is unavailable' }, headers);
+      return;
+    }
+
     try {
       const uploadsDir = path.join(config.dataDir, 'uploads');
       if (!fs.existsSync(uploadsDir)) {
@@ -385,6 +398,16 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
           res.end();
           return;
         }
+        try {
+          await verify(bearerToken(req.headers.authorization));
+        } catch (err) {
+          if (err instanceof AuthError) {
+            sendJson(res, err.status, { error: err.message }, headers);
+            return;
+          }
+          sendJson(res, 503, { error: 'authentication is unavailable' }, headers);
+          return;
+        }
         sendJson(res, 200, registry.getAll(), headers);
         return;
       }
@@ -393,6 +416,16 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
         if (req.method === 'OPTIONS') {
           res.writeHead(204, headers);
           res.end();
+          return;
+        }
+        try {
+          await verify(bearerToken(req.headers.authorization));
+        } catch (err) {
+          if (err instanceof AuthError) {
+            sendJson(res, err.status, { error: err.message }, headers);
+            return;
+          }
+          sendJson(res, 503, { error: 'authentication is unavailable' }, headers);
           return;
         }
         const result = await archiver.archiveExpiredReels();
@@ -411,13 +444,13 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
           return;
         }
         let versionData = {
-          versionCode: 4,
-          versionName: '2.2',
+          versionCode: 5,
+          versionName: '2.3',
           minVersionCode: 1,
-          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026.apk?v=4',
-          apkSize: '95.6 MB',
-          releaseNotes: 'নতুন অফিসিয়াল কক্সবাজার ট্যুর ২০২৬ লোগো, অ্যাপ আইকন ও লাঞ্চার আইকন আপডেট।',
-          releasedAt: '2026-10-18T12:15:00Z',
+          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v5.apk',
+          apkSize: '8.1 MB',
+          releaseNotes: 'নিরাপত্তা ও লেআউট আপডেট: ফায়ারস্টোর ও সার্ভার এন্ডপয়েন্ট প্রটেকশন, সাইরেন ফিক্স, রিয়েলমি ও নচ ডিসপ্লে অপটিমাইজেশন, দ্রুত লোডিং এবং সাইজ অপটিমাইজেশন।',
+          releasedAt: '2026-10-18T13:30:00Z',
           forceUpdate: false,
         };
         const versionFilePath = path.join(config.distDir, 'version.json');

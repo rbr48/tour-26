@@ -352,7 +352,7 @@ export default function ReelsPlayerModal({
       <div className="relative w-full h-full max-w-md max-h-[100dvh] sm:max-h-[92vh] sm:rounded-3xl overflow-hidden bg-black flex flex-col justify-between shadow-2xl border border-white/10 shrink-0">
         
         {/* Top Header Bar */}
-        <div className="absolute top-0 inset-x-0 z-30 p-4 flex items-center justify-between bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-auto">
+        <div className="absolute top-0 inset-x-0 z-30 p-4 pt-[calc(1rem+env(safe-area-inset-top,0px))] flex items-center justify-between bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-auto">
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
@@ -506,16 +506,16 @@ export default function ReelsPlayerModal({
         </div>
 
         {/* Right Floating Actions (Instagram Style) */}
-        <div className="absolute right-3 bottom-20 z-20 flex flex-col items-center gap-4 text-white pointer-events-auto">
+        <div className="absolute right-2 sm:right-3 bottom-20 z-20 flex flex-col items-center gap-3 sm:gap-4 text-white pointer-events-auto">
           {/* Like Button */}
           <button
             onClick={handleLike}
             className="flex flex-col items-center gap-1 group cursor-pointer"
           >
-            <div className={`p-3 rounded-full backdrop-blur-md transition transform active:scale-75 ${
+            <div className={`p-2.5 sm:p-3 rounded-full backdrop-blur-md transition transform active:scale-75 ${
               isLiked ? 'bg-rose-500/30 text-rose-500' : 'bg-black/50 text-white hover:bg-black/70'
             }`}>
-              <Heart size={26} className={isLiked ? 'fill-rose-500' : ''} />
+              <Heart size={24} className={isLiked ? 'fill-rose-500' : ''} />
             </div>
             <span className="text-[11px] font-bold font-mono drop-shadow">
               {toBnNum(likesCount)}
@@ -527,8 +527,8 @@ export default function ReelsPlayerModal({
             onClick={() => setShowComments(true)}
             className="flex flex-col items-center gap-1 cursor-pointer"
           >
-            <div className="p-3 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-md transition transform active:scale-75">
-              <MessageCircle size={26} />
+            <div className="p-2.5 sm:p-3 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-md transition transform active:scale-75">
+              <MessageCircle size={24} />
             </div>
             <span className="text-[11px] font-bold font-mono drop-shadow">
               {toBnNum(commentsList.length)}
@@ -540,8 +540,8 @@ export default function ReelsPlayerModal({
             onClick={handleShare}
             className="flex flex-col items-center gap-1 cursor-pointer"
           >
-            <div className="p-3 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-md transition transform active:scale-75">
-              <Share2 size={24} />
+            <div className="p-2.5 sm:p-3 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-md transition transform active:scale-75">
+              <Share2 size={22} />
             </div>
             <span className="text-[10px] font-semibold drop-shadow">শেয়ার</span>
           </button>
@@ -551,8 +551,8 @@ export default function ReelsPlayerModal({
             className="flex flex-col items-center gap-1 cursor-default select-none"
             title="মোট ভিউ সংখ্যা"
           >
-            <div className="p-2.5 rounded-full bg-black/50 text-teal-300 backdrop-blur-md">
-              <Eye size={22} />
+            <div className="p-2 rounded-full bg-black/50 text-teal-300 backdrop-blur-md">
+              <Eye size={20} />
             </div>
             <span className="text-[11px] font-bold font-mono drop-shadow text-white/95">
               {toBnNum(currentReel.views || 0)}
@@ -568,8 +568,8 @@ export default function ReelsPlayerModal({
               rel="noreferrer"
               className="flex flex-col items-center gap-1 cursor-pointer"
             >
-              <div className="p-3 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-md transition transform active:scale-75">
-                <Download size={22} />
+              <div className="p-2.5 sm:p-3 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-md transition transform active:scale-75">
+                <Download size={20} />
               </div>
               <span className="text-[10px] font-semibold drop-shadow">সেভ</span>
             </a>
@@ -577,7 +577,7 @@ export default function ReelsPlayerModal({
         </div>
 
         {/* Bottom Details Overlay (Left side) */}
-        <div className="absolute bottom-3 inset-x-0 z-20 p-4 pr-16 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-auto">
+        <div className="absolute bottom-3 inset-x-0 z-20 p-4 pr-20 sm:pr-24 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-auto">
           {/* Author Badge */}
           <div className="flex items-center gap-2.5 mb-2">
             <UserAvatar

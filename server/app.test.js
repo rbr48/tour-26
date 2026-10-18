@@ -332,3 +332,35 @@ describe('push API', () => {
   });
 });
 
+describe('upload and reels endpoints security', () => {
+  it('rejects unauthenticated requests to /api/upload', async () => {
+    const base = await startApp();
+    const res = await fetch(`${base}/api/upload`, {
+      method: 'POST',
+      body: 'fake video content',
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects unauthenticated requests to /api/reels/registry', async () => {
+    const base = await startApp();
+    const res = await fetch(`${base}/api/reels/registry`);
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects unauthenticated requests to /api/reels/archive-check', async () => {
+    const base = await startApp();
+    const res = await fetch(`${base}/api/reels/archive-check`, { method: 'POST' });
+    expect(res.status).toBe(401);
+  });
+
+  it('serves version 5 metadata at /api/app-version', async () => {
+    const base = await startApp();
+    const res = await fetch(`${base}/api/app-version`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.versionCode).toBe(5);
+    expect(data.versionName).toBe('2.3');
+  });
+});
+

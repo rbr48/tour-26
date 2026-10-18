@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { auth } from '../firebase';
 
 export const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB chunks (well below Cloudflare 100MB body limit)
 
@@ -28,6 +29,9 @@ export async function uploadReelVideo(file, { postId, fileName, onProgress, chun
   const resolvedFileName = fileName || file.name || `reel_${postId || Date.now()}.mp4`;
   const uploadApiUrl = getUploadApiUrl();
 
+  const user = auth?.currentUser;
+  const token = user ? await user.getIdToken().catch(() => null) : null;
+
   // If file is 5MB or less, upload in 1 request without chunking overhead
   if (totalSize <= 5 * 1024 * 1024) {
     onProgress?.({ percent: 5, stage: 'uploading', loadedBytes: 0, totalBytes: totalSize, chunkIndex: 1, totalChunks: 1 });
@@ -35,6 +39,7 @@ export async function uploadReelVideo(file, { postId, fileName, onProgress, chun
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', uploadApiUrl);
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       xhr.setRequestHeader('X-File-Name', encodeURIComponent(resolvedFileName));
       if (postId) xhr.setRequestHeader('X-Post-Id', encodeURIComponent(postId));
 
@@ -93,6 +98,7 @@ export async function uploadReelVideo(file, { postId, fileName, onProgress, chun
         const chunkResult = await new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open('POST', uploadApiUrl);
+          if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
           xhr.setRequestHeader('X-Upload-Id', encodeURIComponent(uploadId));
           xhr.setRequestHeader('X-Chunk-Index', String(chunkIndex));
           xhr.setRequestHeader('X-Total-Chunks', String(totalChunks));
