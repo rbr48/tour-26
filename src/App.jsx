@@ -636,6 +636,9 @@ export default function App() {
       if (currentUser) {
         backupNow().catch(() => {});
       }
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistration().then((reg) => reg?.update().catch(() => {}));
+      }
       await new Promise((resolve) => setTimeout(resolve, 800));
       setActiveToast({
         id: newId(),

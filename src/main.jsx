@@ -17,6 +17,14 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     navigator.serviceWorker
       .register('/sw.js')
       .then((reg) => {
+        // Automatically check for service worker updates periodically and on focus
+        setInterval(() => {
+          reg.update().catch(() => {});
+        }, 20000);
+        window.addEventListener('focus', () => {
+          reg.update().catch(() => {});
+        });
+
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           if (newWorker) {
