@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { newId } from '../services/tourStore';
 import { useBackHandler } from '../utils/backNavigation';
+import UserAvatar from './UserAvatar';
 import {
   Hash,
   MessageSquare,
@@ -9,8 +10,6 @@ import {
   ShieldAlert,
   Utensils,
   Compass,
-  Menu,
-  X,
   Zap,
 } from 'lucide-react';
 
@@ -18,27 +17,31 @@ const CHANNELS = [
   {
     id: 'general',
     name: 'সাধারণ-আড্ডা',
+    title: 'সাধারণ আড্ডা',
     icon: MessageSquare,
-    desc: 'ট্যুর সম্পর্কিত মুক্ত আড্ডা, কুশল বিনিময় ও আপডেট',
+    desc: 'ট্যুর সম্পর্কিত মুক্ত আড্ডা, কুশল বিনিময় ও খোশগল্প',
     badge: 'আড্ডা'
   },
   {
     id: 'sightseeing',
     name: 'দর্শনীয়-স্থান-ও-প্ল্যান',
+    title: 'দর্শনীয় স্থান',
     icon: Compass,
-    desc: 'প্রতিদিনের স্পট ভিজিট, দর্শনীয় স্থান ও আলোচনা',
-    badge: 'দর্শনীয় স্থান'
+    desc: 'প্রতিদিনের স্পট ভিজিট, ভ্রমণ পরিকল্পনা ও রুটিন',
+    badge: 'প্ল্যান'
   },
   {
     id: 'food',
     name: 'খাবার-দাবার-রেস্টুরেন্ট',
+    title: 'খাবার মেনু',
     icon: Utensils,
-    desc: 'সি-ফুড, বারবিকিউ, রূপচাঁদা ও রেস্টুরেন্ট পছন্দ',
+    desc: 'সি-ফুড, রূপচাঁদা ফ্রাই, বারবিকিউ ও রেস্টুরেন্ট পছন্দ',
     badge: 'খাবার'
   },
   {
     id: 'emergency',
-    name: 'জরুরি-হেল্প-ও-লোকেশন',
+    name: 'জরুরি-হেল্প-ও-লোケーション',
+    title: 'জরুরি হেল্প',
     icon: ShieldAlert,
     desc: 'মিটিং পয়েন্ট, লস্ট অ্যান্ড ফাউন্ড ও তাৎক্ষণিক সহায়তা',
     badge: 'জরুরি'
@@ -46,6 +49,16 @@ const CHANNELS = [
 ];
 
 const EMOJI_REACTIONS = ['👍', '❤️', '🔥', '🏖️', '🍤', '🚌'];
+const toBnNum = (n) => String(n ?? 0).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[d]);
+
+const QUICK_PROMPTS = [
+  'সবাই কি রেডি? 🏖️',
+  'আমরা এখন লবিতে আছি 📍',
+  'লাঞ্চ করতে যাচ্ছি 🍤',
+  'ছবিগুলো দারুণ হয়েছে! 📸',
+  'বাস ছাড়তে কতক্ষণ? 🚌',
+  'বিচে নামার সময় হয়েছে 🌊'
+];
 
 export default function DiscordDiscussion({
   discussions = {},
@@ -73,20 +86,17 @@ export default function DiscordDiscussion({
     }
   });
 
-  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [showQuickPrompts, setShowQuickPrompts] = useState(false);
 
   // Phone back button handlers
-  useBackHandler(isMobileDrawerOpen, () => setIsMobileDrawerOpen(false), 20);
   useBackHandler(showQuickPrompts, () => setShowQuickPrompts(false), 20);
 
   const messagesEndRef = useRef(null);
 
-  // Close drawer and quick prompts on Escape key
+  // Close quick prompts on Escape key
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        setIsMobileDrawerOpen(false);
         setShowQuickPrompts(false);
       }
     };
@@ -111,10 +121,10 @@ export default function DiscordDiscussion({
     } catch {}
   }, [inputText]);
 
-  const activeChannel = CHANNELS.find(c => c.id === activeChannelId) || CHANNELS[0];
+  const activeChannel = CHANNELS.find((c) => c.id === activeChannelId) || CHANNELS[0];
   const channelMessages = discussions[activeChannelId] || [];
 
-  // Scroll to bottom on new message
+  // Scroll to bottom on channel switch or when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [channelMessages.length, activeChannelId]);
@@ -131,7 +141,7 @@ export default function DiscordDiscussion({
       id: newId(),
       author: authorName,
       authorEmail: currentUser?.email?.toLowerCase() ?? null,
-      authorPhoto: currentUser?.photoURL || null,
+      authorPhoto: currentUser?.photoURL || currentProfile?.customPhotoURL || null,
       authorRole: authorRole,
       authorEmoji: authorAvatar,
       text: inputText.trim(),
@@ -147,261 +157,187 @@ export default function DiscordDiscussion({
   };
 
   return (
-    <div className="bg-slate-900 text-white rounded-3xl shadow-xl overflow-hidden border border-slate-800 flex h-[78vh] min-h-[500px] max-h-[850px] relative">
-      {/* Mobile Drawer Backdrop & Drawer */}
-      {isMobileDrawerOpen && (
-        <div
-          className="md:hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex animate-in fade-in duration-150"
-          role="presentation"
-          onClick={() => setIsMobileDrawerOpen(false)}
-        >
-          <div
-            className="w-[82%] max-w-xs h-full bg-slate-950 p-4 border-r border-slate-800 flex flex-col justify-between shadow-2xl animate-in slide-in-from-left duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div>
-              {/* Drawer Header */}
-              <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                    DC
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-sm text-white leading-tight">ফ্যামিলি ডিসকর্ড</h3>
-                    <p className="text-[10px] text-indigo-400">রংপুর ➔ কক্সবাজার ২০২৬</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsMobileDrawerOpen(false)}
-                  className="p-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
-                  title="বন্ধ করুন"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              {/* Channel List in Mobile Drawer */}
-              <div className="mt-4 space-y-1.5">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 mb-1.5">
-                  চ্যাট চ্যানেলসমূহ
-                </p>
-                {CHANNELS.map(ch => {
-                  const Icon = ch.icon;
-                  const isActive = activeChannelId === ch.id;
-                  const count = (discussions[ch.id] || []).length;
-
-                  return (
-                    <button
-                      key={ch.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveChannelId(ch.id);
-                        setIsMobileDrawerOpen(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                        isActive
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2.5 truncate">
-                        <Icon size={16} className={isActive ? 'text-amber-300' : 'text-slate-500'} />
-                        <span className="truncate">{ch.name}</span>
-                      </span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
-                        isActive ? 'bg-indigo-800 text-amber-200' : 'bg-slate-800 text-slate-400'
-                      }`}>
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Current User in Drawer */}
-            <div className="pt-3 border-t border-slate-800 mt-2 flex items-center justify-between">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-xl">{currentProfile?.avatarEmoji || '👑'}</span>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-white truncate">
-                    {currentProfile?.displayName || currentUser?.displayName || 'সদস্য'}
-                  </p>
-                  <p className="text-[10px] text-emerald-400 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> অনলাইনে আছেন
-                  </p>
-                </div>
-              </div>
-            </div>
+    <div className="space-y-4 sm:space-y-5">
+      {/* 1. TOP BANNER: Discussion & Chat Hub */}
+      <div className="bg-gradient-to-r from-teal-900 via-indigo-900 to-slate-900 text-white p-4 sm:p-5 rounded-3xl shadow-md border border-teal-700/60 flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold px-2.5 py-0.5 bg-amber-400 text-teal-950 rounded-full inline-block">
+              💬 ফ্যামিলি ডিসকর্ড
+            </span>
+            <span className="text-[10px] bg-white/15 px-2 py-0.5 rounded-full text-teal-100">
+              রংপুর ➔ কক্সবাজার ২০২৬
+            </span>
           </div>
-        </div>
-      )}
-
-      {/* Desktop Channels Sidebar (Hidden on mobile) */}
-      <div className="hidden md:flex md:w-64 bg-slate-950 p-4 border-r border-slate-800 flex-col justify-between shrink-0">
-        <div>
-          {/* Header */}
-          <div className="flex items-center gap-2.5 pb-4 border-b border-slate-800">
-            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
-              DC
-            </div>
-            <div>
-              <h3 className="font-extrabold text-sm text-white leading-tight">ফ্যামিলি ডিসকর্ড</h3>
-              <p className="text-[10px] text-indigo-400">রংপুর ➔ কক্সবাজার ২০২৬</p>
-            </div>
-          </div>
-
-          {/* Channel List */}
-          <div className="mt-4 space-y-1">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 mb-1.5">
-              চ্যাট চ্যানেলসমূহ
-            </p>
-            {CHANNELS.map(ch => {
-              const Icon = ch.icon;
-              const isActive = activeChannelId === ch.id;
-              const count = (discussions[ch.id] || []).length;
-
-              return (
-                <button
-                  key={ch.id}
-                  onClick={() => setActiveChannelId(ch.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                    isActive
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="flex items-center gap-2 truncate">
-                    <Icon size={14} className={isActive ? 'text-amber-300' : 'text-slate-500'} />
-                    <span className="truncate">{ch.name}</span>
-                  </span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                    isActive ? 'bg-indigo-800 text-amber-200' : 'bg-slate-800 text-slate-400'
-                  }`}>
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <h3 className="text-lg sm:text-xl font-bold flex items-center gap-2">
+            ট্যুর আলোচনা ও কমিউনিকেশন হাব
+          </h3>
+          <p className="text-xs text-teal-100/90">
+            ৪টি নির্দিষ্ট চ্যানেলে পরিবার ও ট্যুর সদস্যদের তাৎক্ষণিক বার্তা, আপডেট ও আড্ডা
+          </p>
         </div>
 
-        {/* Current User Pill in Discord Sidebar */}
-        <div className="pt-3 border-t border-slate-800/80 mt-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-lg">{currentProfile?.avatarEmoji || '👑'}</span>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-white truncate">
-                {currentProfile?.displayName || currentUser?.displayName || 'সদস্য'}
-              </p>
-              <p className="text-[10px] text-emerald-400 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> অনলাইনে আছেন
-              </p>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 bg-black/25 px-3 py-1.5 rounded-2xl border border-white/10 text-xs text-teal-200">
+          <Users size={14} className="text-amber-300" />
+          <span className="font-semibold">{toBnNum(members.length)} জন সদস্য</span>
         </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col justify-between bg-slate-900/90 overflow-hidden">
-        {/* Chat Header */}
-        <div className="p-3 px-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-2.5 min-w-0">
-            {/* Mobile Channel Switcher Button */}
-            <button
-              type="button"
-              onClick={() => setIsMobileDrawerOpen(true)}
-              className="md:hidden px-2.5 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95 shrink-0"
-              title="চ্যানেলসমূহ দেখুন"
-            >
-              <Menu size={16} />
-              <span className="text-xs font-bold">চ্যানেল</span>
-            </button>
+      {/* 2. IN-PAGE CHANNEL SELECTOR GRID */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+        {CHANNELS.map((ch) => {
+          const Icon = ch.icon;
+          const isActive = activeChannelId === ch.id;
+          const count = (discussions[ch.id] || []).length;
 
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Hash size={18} className="text-indigo-400 shrink-0 hidden sm:inline" />
-              <div className="min-w-0">
-                <h4 className="font-bold text-sm text-white truncate flex items-center gap-1.5">
-                  <span className="truncate">{activeChannel.name}</span>
-                  <span className="text-[10px] bg-indigo-900/60 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-700/40 hidden xs:inline">
-                    {activeChannel.badge}
-                  </span>
-                </h4>
-                <p className="text-[10px] text-slate-400 truncate max-w-xs">{activeChannel.desc}</p>
+          return (
+            <button
+              key={ch.id}
+              type="button"
+              onClick={() => setActiveChannelId(ch.id)}
+              className={`p-3 sm:p-3.5 rounded-2xl sm:rounded-3xl text-left transition-all cursor-pointer flex flex-col justify-between gap-2 border ${
+                isActive
+                  ? 'bg-gradient-to-br from-indigo-700 to-teal-800 text-white shadow-md border-indigo-400/50 ring-2 ring-indigo-400/30'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200/90 shadow-2xs hover:border-indigo-300'
+              }`}
+            >
+              <div className="flex items-center justify-between w-full">
+                <div
+                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                    isActive ? 'bg-white/20 text-amber-300' : 'bg-indigo-50 text-indigo-700'
+                  }`}
+                >
+                  <Icon size={16} />
+                </div>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold ${
+                    isActive ? 'bg-black/30 text-amber-200' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {toBnNum(count)}
+                </span>
               </div>
+              <div>
+                <h4 className={`font-bold text-xs sm:text-sm truncate ${isActive ? 'text-white' : 'text-slate-800'}`}>
+                  {ch.title}
+                </h4>
+                <p className={`text-[10px] line-clamp-1 mt-0.5 ${isActive ? 'text-teal-100/80' : 'text-slate-400'}`}>
+                  {ch.desc}
+                </p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 3. DISCUSSION STREAM & COMPOSER CARD */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+        {/* Active Channel Header */}
+        <div className="p-3.5 sm:p-4 bg-slate-50/90 flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+              <Hash size={16} />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h4 className="font-extrabold text-sm sm:text-base text-slate-900 truncate">
+                  #{activeChannel.name}
+                </h4>
+                <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full border border-indigo-200">
+                  {activeChannel.badge}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 truncate">{activeChannel.desc}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-slate-400 shrink-0">
-            <Users size={14} className="text-teal-400" />
-            <span className="font-medium text-[11px] sm:text-xs">{members.length} জন</span>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-[11px] font-semibold text-slate-600 bg-white px-2.5 py-1 rounded-xl border border-slate-200">
+              মোট {toBnNum(channelMessages.length)}টি বার্তা
+            </span>
           </div>
         </div>
 
-        {/* Messages Scroll Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+        {/* Messages Feed (In-Page Vertical Flow) */}
+        <div className="p-4 sm:p-6 space-y-4 min-h-[320px] bg-slate-50/40">
           {channelMessages.length > 0 ? (
-            channelMessages.map(msg => {
+            channelMessages.map((msg) => {
               const myEmail = currentUser?.email?.toLowerCase();
-              const isMe = (msg.senderEmail ?? msg.authorEmail) === myEmail || (!msg.senderEmail && !msg.authorEmail && msg.author === currentUser?.displayName);
+              const isMe =
+                (msg.senderEmail ?? msg.authorEmail) === myEmail ||
+                (!msg.senderEmail && !msg.authorEmail && msg.author === currentUser?.displayName);
 
               return (
                 <div
                   key={msg.id}
-                  className={`flex items-start gap-3 group transition ${
+                  className={`flex items-start gap-2.5 sm:gap-3 transition ${
                     isMe ? 'flex-row-reverse' : ''
                   }`}
                 >
                   {/* User Avatar */}
-                  <div className="w-9 h-9 rounded-2xl bg-indigo-950 text-amber-300 border border-indigo-700/50 flex items-center justify-center font-bold text-base shrink-0">
-                    {msg.authorEmoji || '👑'}
-                  </div>
+                  <UserAvatar
+                    photoUrl={msg.authorPhoto}
+                    name={msg.author}
+                    size="w-8 h-8 sm:w-9 sm:h-9"
+                    ring={isMe ? 'ring-2 ring-teal-500' : 'ring-2 ring-indigo-300'}
+                    fallbackEmoji={msg.authorEmoji || '👑'}
+                    textClass="text-[10px]"
+                    className="shrink-0"
+                  />
 
                   {/* Message Bubble Container */}
-                  <div className={`max-w-[78%] space-y-1 ${isMe ? 'items-end text-right' : ''}`}>
-                    <div className="flex items-center gap-2 text-[11px]">
-                      <span className="font-bold text-slate-200">{msg.author}</span>
+                  <div className={`max-w-[85%] sm:max-w-[75%] space-y-1 ${isMe ? 'items-end text-right' : ''}`}>
+                    <div className={`flex items-center gap-1.5 text-[11px] ${isMe ? 'justify-end' : ''}`}>
+                      <span className="font-bold text-slate-800">{msg.author}</span>
                       {msg.authorRole && (
-                        <span className="text-[9px] bg-indigo-900/80 text-indigo-300 px-1.5 py-0.2 rounded border border-indigo-700/40">
+                        <span className="text-[9px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200 font-medium">
                           {msg.authorRole}
                         </span>
                       )}
-                      <span className="text-[10px] text-slate-500">{msg.time}</span>
+                      <span className="text-[10px] text-slate-400">{msg.time}</span>
                     </div>
 
-                    <div className={`p-3 rounded-2xl text-xs leading-relaxed text-left inline-block ${
-                      isMe
-                        ? 'bg-indigo-600 text-white rounded-tr-xs'
-                        : 'bg-slate-800 text-slate-100 rounded-tl-xs border border-slate-700/60'
-                    }`}>
+                    <div
+                      className={`p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed text-left inline-block shadow-2xs ${
+                        isMe
+                          ? 'bg-gradient-to-r from-teal-700 to-teal-800 text-white rounded-tr-xs'
+                          : 'bg-white text-slate-800 rounded-tl-xs border border-slate-200/90'
+                      }`}
+                    >
                       {msg.text}
                     </div>
 
                     {/* Emoji Reactions Bar */}
-                    <div className="flex items-center gap-1 pt-0.5">
-                      {EMOJI_REACTIONS.map(emoji => {
+                    <div className={`flex items-center flex-wrap gap-1 pt-0.5 ${isMe ? 'justify-end' : ''}`}>
+                      {EMOJI_REACTIONS.map((emoji) => {
                         const voters = Array.isArray(msg.reactions?.[emoji]) ? msg.reactions[emoji] : [];
                         const count = voters.length;
-                        const myIdentifier = (myEmail || currentProfile?.displayName || currentUser?.displayName || '').toLowerCase();
-                        const reactedByMe = Boolean(myIdentifier) && voters.some(v => String(v).toLowerCase() === myIdentifier);
+                        const myIdentifier = (
+                          currentUser?.email ||
+                          currentProfile?.displayName ||
+                          currentUser?.displayName ||
+                          'user'
+                        ).toLowerCase();
+                        const reactedByMe =
+                          Boolean(myIdentifier) && voters.some((v) => String(v).toLowerCase() === myIdentifier);
+
                         return (
                           <button
                             key={emoji}
                             type="button"
                             aria-pressed={reactedByMe}
                             onClick={() => onAddReaction(activeChannelId, msg.id, emoji)}
-                            className={`px-1.5 py-0.5 rounded-lg text-[10px] flex items-center gap-0.5 transition cursor-pointer select-none ${
+                            className={`px-1.5 py-0.5 rounded-lg text-[10px] flex items-center gap-0.5 transition cursor-pointer select-none border ${
                               reactedByMe
-                                ? 'bg-indigo-900 text-amber-300 border border-amber-400 font-bold scale-105 shadow-xs'
+                                ? 'bg-amber-100 text-amber-900 border-amber-400 font-bold scale-105 shadow-2xs'
                                 : count > 0
-                                  ? 'bg-indigo-950/80 text-amber-300 border border-indigo-700/80 font-medium'
-                                  : 'bg-slate-800/40 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent'
+                                  ? 'bg-indigo-50/80 text-indigo-900 border-indigo-200 font-medium'
+                                  : 'bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-100 border-slate-200/70'
                             }`}
                             title={reactedByMe ? `${emoji} রিঅ্যাকশন বাতিল করুন` : `${emoji} রিঅ্যাক্ট করুন`}
                           >
                             <span>{emoji}</span>
-                            {count > 0 && <span className="font-bold">{count}</span>}
+                            {count > 0 && <span className="font-bold font-mono">{toBnNum(count)}</span>}
                           </button>
                         );
                       })}
@@ -411,12 +347,14 @@ export default function DiscordDiscussion({
               );
             })
           ) : (
-            <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-950 text-indigo-400 flex items-center justify-center text-xl">
+            <div className="py-12 flex flex-col items-center justify-center text-center p-6 space-y-2">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl border border-indigo-100">
                 💬
               </div>
-              <h4 className="font-bold text-sm text-slate-300">চ্যানেল #{activeChannel.name}-এ স্বাগতম!</h4>
-              <p className="text-xs text-slate-500 max-w-xs">
+              <h4 className="font-bold text-sm text-slate-800">
+                চ্যানেল #{activeChannel.name}-এ স্বাগতম!
+              </h4>
+              <p className="text-xs text-slate-500 max-w-sm">
                 এই চ্যানেলে এখনো কোনো বার্তা নেই। ট্যুরের পরিবারের সবার সাথে প্রথম কথা শুরু করুন!
               </p>
             </div>
@@ -424,19 +362,13 @@ export default function DiscordDiscussion({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Message Input Box */}
-        <div className="p-3 bg-slate-950/90 border-t border-slate-800 space-y-2 shrink-0">
-          {/* Collapsible Quick Reaction Pill Shortcuts */}
+        {/* Message Input & Quick Shortcuts (Clean In-Page Section) */}
+        <div className="p-3.5 sm:p-4 bg-white border-t border-slate-100 space-y-2.5">
+          {/* Quick Prompts Bar */}
           {showQuickPrompts && (
-            <div className="flex items-center gap-1.5 overflow-x-auto text-xs pb-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
+            <div className="flex items-center gap-1.5 overflow-x-auto text-xs pb-1 animate-in fade-in duration-150">
               <span className="text-[10px] text-slate-400 font-semibold shrink-0">দ্রুত বার্তা:</span>
-              {[
-                'সবাই কি রেডি? 🏖️',
-                'আমরা এখন লবিতে আছি 📍',
-                'লাঞ্চ করতে যাচ্ছি 🍤',
-                'ছবিগুলো দারুণ হয়েছে! 📸',
-                'বাস ছাড়তে কতক্ষণ? 🚌'
-              ].map((shortcut, idx) => (
+              {QUICK_PROMPTS.map((shortcut, idx) => (
                 <button
                   key={idx}
                   type="button"
@@ -444,7 +376,7 @@ export default function DiscordDiscussion({
                     setInputText(shortcut);
                     setShowQuickPrompts(false);
                   }}
-                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 text-[11px] rounded-lg shrink-0 border border-slate-700/60 transition cursor-pointer"
+                  className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-[11px] rounded-lg shrink-0 border border-slate-200 transition cursor-pointer"
                 >
                   {shortcut}
                 </button>
@@ -458,26 +390,28 @@ export default function DiscordDiscussion({
               onClick={() => setShowQuickPrompts(!showQuickPrompts)}
               className={`p-2.5 rounded-2xl transition cursor-pointer shrink-0 border ${
                 showQuickPrompts
-                  ? 'bg-amber-400/20 text-amber-300 border-amber-400/50'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border-slate-700 hover:bg-slate-800'
+                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                  : 'bg-slate-100 text-slate-600 hover:text-slate-900 border-slate-200 hover:bg-slate-200'
               }`}
               title="দ্রুত বার্তা নির্বাচন করুন"
             >
-              <Zap size={16} className={showQuickPrompts ? 'fill-amber-300' : ''} />
+              <Zap size={16} className={showQuickPrompts ? 'fill-amber-400' : ''} />
             </button>
+
             <input
               type="text"
-              placeholder={`#${activeChannel.name} চ্যানেলে বার্তা পাঠান...`}
+              placeholder={`#${activeChannel.name} চ্যানেলে বার্তা লিখুন...`}
               value={inputText}
-              onChange={e => setInputText(e.target.value)}
-              className="flex-1 px-4 py-2.5 text-xs bg-slate-900 border border-slate-700 rounded-2xl focus:outline-none focus:border-indigo-500 text-white placeholder-slate-500"
+              onChange={(e) => setInputText(e.target.value)}
+              className="flex-1 px-4 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-indigo-600 focus:bg-white text-slate-800 placeholder-slate-400 transition"
             />
+
             <button
               type="submit"
               disabled={!inputText.trim()}
-              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold text-xs rounded-2xl flex items-center gap-1.5 transition cursor-pointer shadow-md shrink-0 active:scale-95"
+              className="px-4 py-2.5 bg-gradient-to-r from-teal-700 to-teal-800 hover:from-teal-800 hover:to-teal-900 disabled:opacity-40 text-white font-bold text-xs sm:text-sm rounded-2xl flex items-center gap-1.5 transition cursor-pointer shadow-sm shrink-0 active:scale-95"
             >
-              <Send size={14} />
+              <Send size={15} />
               <span className="hidden sm:inline">পাঠান</span>
             </button>
           </form>
