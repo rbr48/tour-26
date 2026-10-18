@@ -928,6 +928,58 @@ export default function App() {
     });
   };
 
+  const handleEditMessage = (channelId, messageId, newText) => {
+    const trimmed = (newText || '').trim();
+    if (!trimmed) return;
+    const msg = (data.discussions?.[channelId] || []).find((m) => String(m.id) === String(messageId));
+    const myEmail = (currentUser?.email || '').toLowerCase();
+    const isMe =
+      msg &&
+      ((msg.senderEmail ?? msg.authorEmail)?.toLowerCase() === myEmail ||
+        (!msg.senderEmail && !msg.authorEmail && msg.author === currentUser?.displayName));
+    if (msg && !isMe) return;
+
+    setData((prev) => ({
+      ...prev,
+      discussions: {
+        ...(prev.discussions || {}),
+        [channelId]: (prev.discussions?.[channelId] || []).map((m) =>
+          String(m.id) === String(messageId) ? { ...m, text: trimmed, edited: true, editedAt: localTimeHHMM() } : m
+        ),
+      },
+    }));
+    save(updateItem(['channels', channelId, 'messages'], messageId, {
+      text: trimmed,
+      edited: true,
+      editedAt: localTimeHHMM(),
+    }));
+  };
+
+  const handleDeleteMessage = (channelId, messageId) => {
+    const msg = (data.discussions?.[channelId] || []).find((m) => String(m.id) === String(messageId));
+    const myEmail = (currentUser?.email || '').toLowerCase();
+    const isMe =
+      msg &&
+      ((msg.senderEmail ?? msg.authorEmail)?.toLowerCase() === myEmail ||
+        (!msg.senderEmail && !msg.authorEmail && msg.author === currentUser?.displayName));
+    if (msg && !isMe) return;
+
+    askConfirm({
+      title: 'বার্তা মুছে ফেলবেন?',
+      message: 'এই আলোচনা বার্তাটি চ্যানেল থেকে স্থায়ীভাবে মুছে যাবে।',
+      onConfirm: () => {
+        setData((prev) => ({
+          ...prev,
+          discussions: {
+            ...(prev.discussions || {}),
+            [channelId]: (prev.discussions?.[channelId] || []).filter((m) => String(m.id) !== String(messageId)),
+          },
+        }));
+        save(removeItem(['channels', channelId, 'messages'], messageId));
+      },
+    });
+  };
+
   const handleAddReaction = (channelId, messageId, emoji) => {
     const me = (emailRef.current || currentUser?.email || currentProfile?.displayName || currentUser?.displayName || 'user').toLowerCase();
     const message = (data.discussions?.[channelId] || []).find((item) => String(item.id) === String(messageId));
@@ -2504,7 +2556,10 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               currentUser={currentUser}
               currentProfile={currentProfile}
               members={data.members || []}
+              isAdmin={isAdmin}
               onSendMessage={handleSendMessage}
+              onEditMessage={handleEditMessage}
+              onDeleteMessage={handleDeleteMessage}
               onAddReaction={handleAddReaction}
             />
           )}

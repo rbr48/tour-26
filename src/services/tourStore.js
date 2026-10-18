@@ -254,6 +254,52 @@ export function setReaction(channel, messageId, emoji, email, active, removeEmoj
   return updateDoc(itemRef(['channels', channel, 'messages'], messageId), updates);
 }
 
+/** Broadcasts whether a user is currently typing in a discussion channel. */
+export function setTypingStatus(channelId, userIdentifier, userName, isTyping) {
+  const safeKey = String(userIdentifier || 'user').toLowerCase().replace(/[.#$[\]/]/g, '_');
+  const docReference = itemRef(['meta'], `typing_${channelId}`);
+  if (isTyping) {
+    return setDoc(
+      docReference,
+      {
+        [safeKey]: {
+          name: userName || 'সদস্য',
+          timestamp: Date.now(),
+        },
+      },
+      { merge: true },
+    ).catch(() => {});
+  }
+  return updateDoc(docReference, {
+    [safeKey]: deleteField(),
+  }).catch(() => {});
+}
+
+/** Subscribes to real-time typing status updates for a specific discussion channel. */
+export function subscribeTyping(channelId, onTypingUpdate) {
+  return onSnapshot(
+    itemRef(['meta'], `typing_${channelId}`),
+    (snap) => {
+      if (!snap.exists()) {
+        onTypingUpdate([]);
+        return;
+      }
+      const data = snap.data() || {};
+      const now = Date.now();
+      const typingUsers = [];
+      for (const [key, val] of Object.entries(data)) {
+        if (val && typeof val === 'object' && val.timestamp && now - Number(val.timestamp || 0) < 5000) {
+          typingUsers.push({ id: key, name: val.name || 'সদস্য' });
+        }
+      }
+      onTypingUpdate(typingUsers);
+    },
+    () => {
+      onTypingUpdate([]);
+    },
+  );
+}
+
 export function saveProfile(profile) {
   const actor = currentActor();
   return setDoc(

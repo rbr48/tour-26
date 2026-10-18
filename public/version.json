@@ -1,10 +1,10 @@
 {
-  "versionCode": 6,
-  "versionName": "2.4",
+  "versionCode": 7,
+  "versionName": "2.5",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v6.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v7.apk",
   "apkSize": "8.1 MB",
-  "releaseNotes": "নতুন আপডেট v2.4: খরচ ভাউচার এডিট ও সংশোধন সুবিধা, সেটেলমেন্ট হিসাবের শিক্ষণীয় গাইডলাইন, সাইডবার ফুল-স্ক্রিন স্ক্রোলিং ও ন্যাভিগেশন বাটন সমাধান, অ্যান্ড্রয়েড স্ট্যাটাস বার নোটিফিকেশন আইকন অপটিমাইজেশন।",
-  "releasedAt": "2026-10-18T14:20:00Z",
+  "releaseNotes": "নতুন আপডেট v2.5: ডিসকাশনে পাঠানো নিজের বার্তা এডিট ও ডিলিট করার সুবিধা, লাইভ টাইপিং নির্দেশক, কমপ্যাক্ট বার্তা বাবল ও ইমোজি রিঅ্যাকশন।",
+  "releasedAt": "2026-10-18T16:55:00Z",
   "forceUpdate": false
 }

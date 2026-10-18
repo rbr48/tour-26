@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { newId } from '../services/tourStore';
+import { newId, setTypingStatus, subscribeTyping } from '../services/tourStore';
 import { useBackHandler } from '../utils/backNavigation';
 import UserAvatar from './UserAvatar';
 import {
@@ -13,6 +13,10 @@ import {
   Zap,
   Smile,
   Plus,
+  Pencil,
+  Trash2,
+  Check,
+  X,
 } from 'lucide-react';
 
 const CHANNELS = [
@@ -67,8 +71,11 @@ export default function DiscordDiscussion({
   currentUser = null,
   currentProfile = {},
   members = [],
+  isAdmin = false,
   onSendMessage,
-  onAddReaction
+  onEditMessage,
+  onDeleteMessage,
+  onAddReaction,
 }) {
   const [activeChannelId, setActiveChannelId] = useState(() => {
     try {
@@ -91,12 +98,21 @@ export default function DiscordDiscussion({
 
   const [showQuickPrompts, setShowQuickPrompts] = useState(false);
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState(null);
+  const [editingMessage, setEditingMessage] = useState(null);
+  const [typingUsers, setTypingUsers] = useState([]);
+
+  const inputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const lastHeartbeatRef = useRef(0);
 
   // Phone back button handlers
+  useBackHandler(Boolean(editingMessage), () => {
+    setEditingMessage(null);
+    setInputText('');
+  }, 15);
   useBackHandler(showQuickPrompts, () => setShowQuickPrompts(false), 20);
   useBackHandler(Boolean(reactionPickerMsgId), () => setReactionPickerMsgId(null), 25);
-
-  const messagesContainerRef = useRef(null);
 
   // Ensure window starts at the top when entering discussion tab
   useEffect(() => {
@@ -109,13 +125,17 @@ export default function DiscordDiscussion({
       if (e.key === 'Escape') {
         setShowQuickPrompts(false);
         setReactionPickerMsgId(null);
+        if (editingMessage) {
+          setEditingMessage(null);
+          setInputText('');
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [editingMessage]);
 
-  // Persist channel selection and draft text
+  // Persist channel selection and draft text (only if not editing)
   useEffect(() => {
     try {
       localStorage.setItem('tour_discussion_channel', activeChannelId);
@@ -124,16 +144,77 @@ export default function DiscordDiscussion({
 
   useEffect(() => {
     try {
-      if (inputText) {
+      if (inputText && !editingMessage) {
         localStorage.setItem('tour_discussion_draft', inputText);
-      } else {
+      } else if (!inputText && !editingMessage) {
         localStorage.removeItem('tour_discussion_draft');
       }
     } catch {}
-  }, [inputText]);
+  }, [inputText, editingMessage]);
 
   const activeChannel = CHANNELS.find((c) => c.id === activeChannelId) || CHANNELS[0];
   const channelMessages = discussions[activeChannelId] || [];
+
+  // Helper to report current typing status
+  const reportTyping = (isTyping) => {
+    const myId = (
+      currentUser?.email ||
+      currentProfile?.displayName ||
+      currentUser?.displayName ||
+      'user'
+    ).toLowerCase();
+    const myName = currentProfile?.displayName || currentUser?.displayName || 'সদস্য';
+    setTypingStatus(activeChannelId, myId, myName, isTyping);
+  };
+
+  // Subscribe to typing updates for the active channel
+  useEffect(() => {
+    const myId = (
+      currentUser?.email ||
+      currentProfile?.displayName ||
+      currentUser?.displayName ||
+      'user'
+    ).toLowerCase().replace(/[.#$[\]/]/g, '_');
+
+    const unsubscribe = subscribeTyping(activeChannelId, (users) => {
+      const others = (users || []).filter((u) => u.id !== myId);
+      setTypingUsers(others);
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [activeChannelId, currentUser, currentProfile]);
+
+  // Clear typing on channel switch or unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      reportTyping(false);
+    };
+  }, [activeChannelId]);
+
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setInputText(val);
+
+    if (!val.trim()) {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      reportTyping(false);
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastHeartbeatRef.current > 2500) {
+      reportTyping(true);
+      lastHeartbeatRef.current = now;
+    }
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      reportTyping(false);
+    }, 3500);
+  };
 
   // Scroll only the internal messages container to bottom (never hijacks page window)
   useEffect(() => {
@@ -145,6 +226,21 @@ export default function DiscordDiscussion({
   const handleSend = (e) => {
     e.preventDefault();
     if (!inputText || !inputText.trim()) return;
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    reportTyping(false);
+
+    if (editingMessage) {
+      if (onEditMessage) {
+        onEditMessage(activeChannelId, editingMessage.id, inputText.trim());
+      }
+      setEditingMessage(null);
+      setInputText('');
+      try {
+        localStorage.removeItem('tour_discussion_draft');
+      } catch {}
+      return;
+    }
 
     const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
     const authorRole = currentProfile?.role || 'সদস্য';
@@ -297,6 +393,9 @@ export default function DiscordDiscussion({
                         </span>
                       )}
                       <span className="text-[9px] text-slate-400">{msg.time}</span>
+                      {msg.edited && (
+                        <span className="text-[8px] text-slate-400 italic font-medium">(সম্পাদিত)</span>
+                      )}
                     </div>
 
                     {/* Popover Emoji Reaction Picker */}
@@ -390,19 +489,56 @@ export default function DiscordDiscussion({
                         )}
                       </div>
 
-                      {/* Quick Reaction Trigger Button */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setReactionPickerMsgId(reactionPickerMsgId === msg.id ? null : msg.id);
-                        }}
-                        className="p-1 rounded-full text-slate-400 hover:text-amber-500 hover:bg-slate-100 transition opacity-40 sm:opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0 cursor-pointer"
-                        title="ইমোজি রিঅ্যাকশন দিন"
-                        aria-label="ইমোজি রিঅ্যাকশন দিন"
-                      >
-                        <Smile size={13} />
-                      </button>
+                      {/* Action buttons (Emoji, Edit, Delete) */}
+                      <div className={`flex items-center gap-0.5 ${isMe ? 'flex-row-reverse' : ''} opacity-70 sm:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition shrink-0`}>
+                        {/* Quick Reaction Trigger Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReactionPickerMsgId(reactionPickerMsgId === msg.id ? null : msg.id);
+                          }}
+                          className="p-1 rounded-full text-slate-400 hover:text-amber-500 hover:bg-slate-100 transition cursor-pointer"
+                          title="ইমোজি রিঅ্যাকশন দিন"
+                          aria-label="ইমোজি রিঅ্যাকশন দিন"
+                        >
+                          <Smile size={13} />
+                        </button>
+
+                        {/* Edit Button (Author only) */}
+                        {isMe && onEditMessage && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingMessage({ id: msg.id, text: msg.text });
+                              setInputText(msg.text);
+                              inputRef.current?.focus();
+                            }}
+                            className="p-1 rounded-full text-slate-400 hover:text-teal-600 hover:bg-slate-100 transition cursor-pointer"
+                            title="বার্তা সংশোধন করুন"
+                            aria-label="বার্তা সংশোধন করুন"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                        )}
+
+                        {/* Delete Button (Author only) */}
+                        {isMe && onDeleteMessage && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteMessage(activeChannelId, msg.id);
+                            }}
+                            className="p-1 rounded-full text-slate-400 hover:text-red-500 hover:bg-slate-100 transition cursor-pointer"
+                            title="বার্তা মুছে ফেলুন"
+                            aria-label="বার্তা মুছে ফেলুন"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -426,8 +562,44 @@ export default function DiscordDiscussion({
         {/* Message Input & Quick Shortcuts (Seamlessly docked at the card's bottom - ZERO GAP!) */}
         <div className="shrink-0 bg-white border-t border-slate-200 p-2 sm:p-2.5">
           <div className="space-y-1.5">
+            {/* Live Typing Indicator */}
+            {typingUsers.length > 0 && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] text-teal-800 bg-teal-50/70 border border-teal-100 rounded-lg animate-in fade-in duration-150">
+                <span className="flex items-center gap-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </span>
+                <span className="font-medium truncate">
+                  {typingUsers.map((u) => u.name).join(', ')} টাইপ করছেন...
+                </span>
+              </div>
+            )}
+
+            {/* Editing Message Banner */}
+            {editingMessage && (
+              <div className="flex items-center justify-between gap-2 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 animate-in fade-in duration-150">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Pencil size={12} className="text-amber-600 shrink-0" />
+                  <span className="font-bold text-[11px] shrink-0">বার্তা সম্পাদনা:</span>
+                  <span className="truncate italic text-[11px] text-slate-600">"{editingMessage.text}"</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingMessage(null);
+                    setInputText('');
+                  }}
+                  className="px-2 py-0.5 bg-white hover:bg-amber-100 text-amber-800 text-[10px] font-bold rounded-lg border border-amber-300 transition cursor-pointer flex items-center gap-1 shrink-0"
+                >
+                  <X size={11} />
+                  বাতিল
+                </button>
+              </div>
+            )}
+
             {/* Quick Prompts Bar */}
-            {showQuickPrompts && (
+            {showQuickPrompts && !editingMessage && (
               <div className="flex items-center gap-1.5 overflow-x-auto text-xs pb-1 animate-in fade-in duration-150">
                 <span className="text-[10px] text-slate-400 font-semibold shrink-0">দ্রুত বার্তা:</span>
                 {QUICK_PROMPTS.map((shortcut, idx) => (
@@ -437,6 +609,7 @@ export default function DiscordDiscussion({
                     onClick={() => {
                       setInputText(shortcut);
                       setShowQuickPrompts(false);
+                      inputRef.current?.focus();
                     }}
                     className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-[11px] rounded-lg shrink-0 border border-slate-200 transition cursor-pointer"
                   >
@@ -449,11 +622,12 @@ export default function DiscordDiscussion({
             <form onSubmit={handleSend} className="flex items-center gap-2">
               <button
                 type="button"
+                disabled={Boolean(editingMessage)}
                 onClick={() => setShowQuickPrompts(!showQuickPrompts)}
                 className={`p-2 rounded-xl transition cursor-pointer shrink-0 border ${
                   showQuickPrompts
                     ? 'bg-amber-100 text-amber-800 border-amber-300'
-                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border-slate-200 hover:bg-slate-200'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border-slate-200 hover:bg-slate-200 disabled:opacity-40'
                 }`}
                 title="দ্রুত বার্তা নির্বাচন করুন"
                 aria-label="দ্রুত শর্টকাট বার্তা"
@@ -462,20 +636,42 @@ export default function DiscordDiscussion({
               </button>
 
               <input
+                ref={inputRef}
                 type="text"
-                placeholder={`#${activeChannel.name} চ্যানেলে বার্তা লিখুন...`}
+                placeholder={
+                  editingMessage
+                    ? 'সম্পাদিত নতুন বার্তাটি লিখুন...'
+                    : `#${activeChannel.name} চ্যানেলে বার্তা লিখুন...`
+                }
                 value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                className="flex-1 px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl focus:outline-none focus:border-teal-600 focus:bg-white text-slate-800 placeholder-slate-400 transition"
+                onChange={handleInputChange}
+                className={`flex-1 px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border rounded-xl sm:rounded-2xl focus:outline-none text-slate-800 placeholder-slate-400 transition ${
+                  editingMessage
+                    ? 'border-amber-400 focus:border-amber-500 focus:bg-amber-50/20 ring-1 ring-amber-300/40'
+                    : 'border-slate-200 focus:border-teal-600 focus:bg-white'
+                }`}
               />
 
               <button
                 type="submit"
                 disabled={!inputText.trim()}
-                className="px-3.5 sm:px-4 py-2 bg-gradient-to-r from-teal-700 to-teal-800 hover:from-teal-800 hover:to-teal-900 disabled:opacity-40 text-white font-bold text-xs sm:text-sm rounded-xl sm:rounded-2xl flex items-center gap-1.5 transition cursor-pointer shadow-sm shrink-0 active:scale-95"
+                className={`px-3.5 sm:px-4 py-2 disabled:opacity-40 font-bold text-xs sm:text-sm rounded-xl sm:rounded-2xl flex items-center gap-1.5 transition cursor-pointer shadow-sm shrink-0 active:scale-95 ${
+                  editingMessage
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white'
+                    : 'bg-gradient-to-r from-teal-700 to-teal-800 hover:from-teal-800 hover:to-teal-900 text-white'
+                }`}
               >
-                <Send size={15} />
-                <span className="hidden sm:inline">পাঠান</span>
+                {editingMessage ? (
+                  <>
+                    <Check size={15} />
+                    <span>আপডেট</span>
+                  </>
+                ) : (
+                  <>
+                    <Send size={15} />
+                    <span className="hidden sm:inline">পাঠান</span>
+                  </>
+                )}
               </button>
             </form>
           </div>
