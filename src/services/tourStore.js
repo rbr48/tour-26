@@ -300,6 +300,115 @@ export function subscribeTyping(channelId, onTypingUpdate) {
   );
 }
 
+/**
+ * Creates or updates a game room.
+ */
+export async function createGameRoom(roomData) {
+  const roomId = roomData.id;
+  const roomRef = itemRef(['meta'], `gameroom_${roomId}`);
+  await setDoc(roomRef, {
+    ...roomData,
+    updatedAt: Date.now(),
+  });
+
+  // Also update active rooms index
+  const indexRef = itemRef(['meta'], 'gamerooms_list');
+  await setDoc(
+    indexRef,
+    {
+      [roomId]: {
+        id: roomId,
+        title: roomData.title || 'কার্ড টেবিল',
+        gameType: roomData.gameType || 'teen_patti',
+        hostName: roomData.hostName || 'হোস্ট',
+        playerCount: (roomData.players || []).length,
+        maxPlayers: roomData.maxPlayers || 6,
+        status: roomData.status || 'waiting',
+        updatedAt: Date.now(),
+      },
+    },
+    { merge: true },
+  );
+  return roomId;
+}
+
+/**
+ * Subscribes to real-time updates for a single game room.
+ */
+export function subscribeGameRoom(roomId, onUpdate) {
+  return onSnapshot(
+    itemRef(['meta'], `gameroom_${roomId}`),
+    (snap) => {
+      if (!snap.exists()) {
+        onUpdate(null);
+        return;
+      }
+      onUpdate(snap.data());
+    },
+    () => {
+      onUpdate(null);
+    },
+  );
+}
+
+/**
+ * Updates an existing game room state.
+ */
+export function updateGameRoom(roomId, updates) {
+  const roomRef = itemRef(['meta'], `gameroom_${roomId}`);
+  const payload = {
+    ...updates,
+    updatedAt: Date.now(),
+  };
+
+  if ('status' in updates || 'players' in updates || 'title' in updates) {
+    const indexRef = itemRef(['meta'], 'gamerooms_list');
+    setDoc(
+      indexRef,
+      {
+        [roomId]: {
+          id: roomId,
+          ...(updates.title ? { title: updates.title } : {}),
+          ...(updates.status ? { status: updates.status } : {}),
+          ...(updates.players ? { playerCount: updates.players.length } : {}),
+          updatedAt: Date.now(),
+        },
+      },
+      { merge: true },
+    ).catch(() => {});
+  }
+
+  return setDoc(roomRef, payload, { merge: true });
+}
+
+/**
+ * Subscribes to the list of active game rooms.
+ */
+export function subscribeActiveGameRooms(onUpdate) {
+  return onSnapshot(
+    itemRef(['meta'], 'gamerooms_list'),
+    (snap) => {
+      if (!snap.exists()) {
+        onUpdate([]);
+        return;
+      }
+      const data = snap.data() || {};
+      const rooms = [];
+      const now = Date.now();
+      for (const [key, r] of Object.entries(data)) {
+        if (r && r.status !== 'closed' && now - (r.updatedAt || 0) < 4 * 3600 * 1000) {
+          rooms.push(r);
+        }
+      }
+      rooms.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      onUpdate(rooms);
+    },
+    () => {
+      onUpdate([]);
+    },
+  );
+}
+
 export function saveProfile(profile) {
   const actor = currentActor();
   return setDoc(

@@ -3,7 +3,7 @@ import {
   Calendar, Wallet, CheckSquare, PhoneCall, Trash2, CheckCircle2, Circle, RefreshCw, Bus, Hotel,
   Navigation, Eye, ShieldCheck, Clock, LogOut, Flame, Megaphone, Printer, Edit3, Save, X,
   Camera, MessageSquare, Menu, Smartphone, Sparkles, Compass, Plus, ExternalLink, Users,
-  ImageIcon, Terminal, AlertTriangle, MapPin, HardDrive, RotateCcw,
+  ImageIcon, Terminal, AlertTriangle, MapPin, HardDrive, RotateCcw, Gamepad2,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -60,9 +60,10 @@ const PrintableReport = lazy(() => import('./components/PrintableReport'));
 const FamilySafetyHub = lazy(() => import('./components/FamilySafetyHub'));
 const TourQuizModal = lazy(() => import('./components/TourQuizModal'));
 const AppUpdateModal = lazy(() => import('./components/AppUpdateModal'));
+const GameZoneHub = lazy(() => import('./components/GameZone/GameZoneHub'));
 
 export const APP_LOGO_URL = '/logo.png?v=6';
-const VALID_TABS = ['dashboard', 'itinerary', 'expenses', 'seats_rooms', 'feed', 'discussions', 'notices', 'checklist'];
+const VALID_TABS = ['dashboard', 'itinerary', 'expenses', 'seats_rooms', 'feed', 'discussions', 'notices', 'checklist', 'games'];
 const CACHE_KEY = 'rangpur_coxs_tour_data';
 const ACTIVITY_KEY = 'tour_recent_activities';
 const CHANNEL_LABELS = { general: 'সাধারণ আড্ডা', food: 'খাবার মেনু', sightseeing: 'দর্শনীয় স্থান', emergency: 'জরুরি সাহায্য' };
@@ -1295,6 +1296,7 @@ export default function App() {
     { id: 'itinerary', label: 'ভ্রমণ সূচি', icon: Calendar, desc: '৫ দিনের রুটিন ও চার্ট' },
     { id: 'feed', label: 'ইনস্টাফিড 📸', icon: Camera, desc: 'ফটো শেয়ার ও গ্যালারি' },
     { id: 'discussions', label: 'ডিসকর্ড চ্যাট 💬', icon: MessageSquare, desc: '৪টি ফ্যামিলি চ্যানেল' },
+    { id: 'games', label: 'গেমিং জোন 🎮', icon: Gamepad2, desc: '৩ পাত্তি ও ২৯ কার্ড গেম' },
     { id: 'expenses', label: 'হিসাব ও স্প্লিট', icon: Wallet, desc: 'খরচ ও সেটেলমেন্ট' },
     { id: 'seats_rooms', label: 'সিট ও রুম প্ল্যান', icon: Bus, desc: 'বাস ও হোটেল ম্যাপ' },
     { id: 'notices', label: 'নোটিশ ও মিটিং', icon: Megaphone, desc: 'জরুরি বার্তা ও ম্যাপ' },
@@ -2561,6 +2563,15 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               onEditMessage={handleEditMessage}
               onDeleteMessage={handleDeleteMessage}
               onAddReaction={handleAddReaction}
+            />
+          )}
+
+          {/* TAB: GAME ZONE (TEEN PATTI & 29 CARDS) */}
+          {activeTab === 'games' && (
+            <GameZoneHub
+              currentUser={currentUser}
+              currentProfile={currentProfile}
+              members={data.members || []}
             />
           )}
 

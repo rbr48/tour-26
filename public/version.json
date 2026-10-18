@@ -1,10 +1,10 @@
 {
-  "versionCode": 7,
-  "versionName": "2.5",
+  "versionCode": 8,
+  "versionName": "2.6",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v7.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v8.apk",
   "apkSize": "8.1 MB",
-  "releaseNotes": "নতুন আপডেট v2.5: ডিসকাশনে পাঠানো নিজের বার্তা এডিট ও ডিলিট করার সুবিধা, লাইভ টাইপিং নির্দেশক, কমপ্যাক্ট বার্তা বাবল ও ইমোজি রিঅ্যাকশন।",
-  "releasedAt": "2026-10-18T16:55:00Z",
+  "releaseNotes": "নতুন আপডেট v2.6: ফ্যামিলি অনলাইন গেমিং জোন! বাসে ও হোটেলে পরিবারের সবাই মিলে অনলাইনে খেলুন ৩ পাত্তি (Teen Patti) ও ২৯ কার্ড গেম (29 Cards), সাথে রিয়েল-টাইম টেবিল ও ভার্চুয়াল চিপস।",
+  "releasedAt": "2026-10-18T17:15:00Z",
   "forceUpdate": false
 }
