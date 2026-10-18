@@ -11,6 +11,8 @@ import {
   Utensils,
   Compass,
   Zap,
+  Smile,
+  Plus,
 } from 'lucide-react';
 
 const CHANNELS = [
@@ -88,9 +90,11 @@ export default function DiscordDiscussion({
   });
 
   const [showQuickPrompts, setShowQuickPrompts] = useState(false);
+  const [reactionPickerMsgId, setReactionPickerMsgId] = useState(null);
 
   // Phone back button handlers
   useBackHandler(showQuickPrompts, () => setShowQuickPrompts(false), 20);
+  useBackHandler(Boolean(reactionPickerMsgId), () => setReactionPickerMsgId(null), 25);
 
   const messagesContainerRef = useRef(null);
 
@@ -99,11 +103,12 @@ export default function DiscordDiscussion({
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
-  // Close quick prompts on Escape key
+  // Close quick prompts or reaction picker on Escape key
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         setShowQuickPrompts(false);
+        setReactionPickerMsgId(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -250,7 +255,7 @@ export default function DiscordDiscussion({
         {/* Messages Feed */}
         <div
           ref={messagesContainerRef}
-          className="flex-1 min-h-0 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 sm:space-y-3.5 bg-slate-50/40 overscroll-contain"
+          className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-3 space-y-1.5 sm:space-y-2 bg-slate-50/40 overscroll-contain"
         >
           {channelMessages.length > 0 ? (
             channelMessages.map((msg) => {
@@ -259,10 +264,15 @@ export default function DiscordDiscussion({
                 (msg.senderEmail ?? msg.authorEmail) === myEmail ||
                 (!msg.senderEmail && !msg.authorEmail && msg.author === currentUser?.displayName);
 
+              const activeReactions = EMOJI_REACTIONS.filter((emoji) => {
+                const voters = Array.isArray(msg.reactions?.[emoji]) ? msg.reactions[emoji] : [];
+                return voters.length > 0;
+              });
+
               return (
                 <div
                   key={msg.id}
-                  className={`flex items-start gap-2.5 sm:gap-3 transition ${
+                  className={`flex items-start gap-2 sm:gap-2.5 transition ${
                     isMe ? 'flex-row-reverse' : ''
                   }`}
                 >
@@ -270,70 +280,122 @@ export default function DiscordDiscussion({
                   <UserAvatar
                     photoUrl={msg.authorPhoto}
                     name={msg.author}
-                    size="w-8 h-8 sm:w-9 sm:h-9"
+                    size="w-7 h-7 sm:w-8 sm:h-8"
                     ring={isMe ? 'ring-2 ring-teal-500' : 'ring-2 ring-indigo-300'}
                     fallbackEmoji={msg.authorEmoji || '👑'}
-                    textClass="text-[10px]"
-                    className="shrink-0"
+                    textClass="text-[9px]"
+                    className="shrink-0 mt-0.5"
                   />
 
                   {/* Message Bubble Container */}
-                  <div className={`max-w-[85%] sm:max-w-[75%] space-y-1 ${isMe ? 'items-end text-right' : ''}`}>
-                    <div className={`flex items-center gap-1.5 text-[11px] ${isMe ? 'justify-end' : ''}`}>
+                  <div className={`relative group max-w-[85%] sm:max-w-[75%] space-y-0.5 ${isMe ? 'items-end text-right' : ''}`}>
+                    <div className={`flex items-center gap-1.5 text-[10px] sm:text-[11px] leading-none mb-0.5 ${isMe ? 'justify-end' : ''}`}>
                       <span className="font-bold text-slate-800">{msg.author}</span>
                       {msg.authorRole && (
-                        <span className="text-[9px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200 font-medium">
+                        <span className="text-[8px] sm:text-[9px] bg-indigo-50 text-indigo-700 px-1 py-0.2 rounded border border-indigo-200 font-medium">
                           {msg.authorRole}
                         </span>
                       )}
-                      <span className="text-[10px] text-slate-400">{msg.time}</span>
+                      <span className="text-[9px] text-slate-400">{msg.time}</span>
                     </div>
 
-                    <div
-                      className={`p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed text-left inline-block shadow-2xs ${
-                        isMe
-                          ? 'bg-gradient-to-r from-teal-700 to-teal-800 text-white rounded-tr-xs'
-                          : 'bg-white text-slate-800 rounded-tl-xs border border-slate-200/90'
-                      }`}
-                    >
-                      {msg.text}
-                    </div>
-
-                    {/* Emoji Reactions Bar */}
-                    <div className={`flex items-center flex-wrap gap-1 pt-0.5 ${isMe ? 'justify-end' : ''}`}>
-                      {EMOJI_REACTIONS.map((emoji) => {
-                        const voters = Array.isArray(msg.reactions?.[emoji]) ? msg.reactions[emoji] : [];
-                        const count = voters.length;
-                        const myIdentifier = (
-                          currentUser?.email ||
-                          currentProfile?.displayName ||
-                          currentUser?.displayName ||
-                          'user'
-                        ).toLowerCase();
-                        const reactedByMe =
-                          Boolean(myIdentifier) && voters.some((v) => String(v).toLowerCase() === myIdentifier);
-
-                        return (
+                    {/* Popover Emoji Reaction Picker */}
+                    {reactionPickerMsgId === msg.id && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className={`flex items-center gap-1 bg-white rounded-full shadow-md border border-slate-200 px-2 py-0.5 mb-1 ${
+                          isMe ? 'justify-end ml-auto' : 'justify-start'
+                        } animate-in fade-in zoom-in-95 duration-100`}
+                      >
+                        {EMOJI_REACTIONS.map((emoji) => (
                           <button
                             key={emoji}
                             type="button"
-                            aria-pressed={reactedByMe}
-                            onClick={() => onAddReaction(activeChannelId, msg.id, emoji)}
-                            className={`px-1.5 py-0.5 rounded-lg text-[10px] flex items-center gap-0.5 transition cursor-pointer select-none border ${
-                              reactedByMe
-                                ? 'bg-amber-100 text-amber-900 border-amber-400 font-bold scale-105 shadow-2xs'
-                                : count > 0
-                                  ? 'bg-indigo-50/80 text-indigo-900 border-indigo-200 font-medium'
-                                  : 'bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-100 border-slate-200/70'
-                            }`}
-                            title={reactedByMe ? `${emoji} রিঅ্যাকশন বাতিল করুন` : `${emoji} রিঅ্যাক্ট করুন`}
+                            onClick={() => {
+                              onAddReaction(activeChannelId, msg.id, emoji);
+                              setReactionPickerMsgId(null);
+                            }}
+                            className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-amber-50 hover:scale-125 transition text-xs cursor-pointer"
                           >
-                            <span>{emoji}</span>
-                            {count > 0 && <span className="font-bold font-mono">{toBnNum(count)}</span>}
+                            {emoji}
                           </button>
-                        );
-                      })}
+                        ))}
+                      </div>
+                    )}
+
+                    <div className={`flex items-center gap-1 ${isMe ? 'flex-row-reverse' : ''}`}>
+                      <div
+                        className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl text-xs sm:text-[13px] leading-relaxed text-left inline-block shadow-2xs ${
+                          isMe
+                            ? 'bg-gradient-to-r from-teal-700 to-teal-800 text-white rounded-tr-xs'
+                            : 'bg-white text-slate-800 rounded-tl-xs border border-slate-200/90'
+                        }`}
+                      >
+                        {msg.text}
+                      </div>
+
+                      {/* Quick Reaction Trigger Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setReactionPickerMsgId(reactionPickerMsgId === msg.id ? null : msg.id);
+                        }}
+                        className="p-1 rounded-full text-slate-400 hover:text-amber-500 hover:bg-slate-100 transition opacity-40 sm:opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0 cursor-pointer"
+                        title="ইমোজি রিঅ্যাকশন দিন"
+                        aria-label="ইমোজি রিঅ্যাকশন দিন"
+                      >
+                        <Smile size={13} />
+                      </button>
                     </div>
+
+                    {/* Active Reactions Pills Bar (Shown ONLY when count > 0) */}
+                    {activeReactions.length > 0 && (
+                      <div className={`flex items-center flex-wrap gap-1 pt-0.5 ${isMe ? 'justify-end' : ''}`}>
+                        {activeReactions.map((emoji) => {
+                          const voters = Array.isArray(msg.reactions?.[emoji]) ? msg.reactions[emoji] : [];
+                          const count = voters.length;
+                          const myIdentifier = (
+                            currentUser?.email ||
+                            currentProfile?.displayName ||
+                            currentUser?.displayName ||
+                            'user'
+                          ).toLowerCase();
+                          const reactedByMe =
+                            Boolean(myIdentifier) && voters.some((v) => String(v).toLowerCase() === myIdentifier);
+
+                          return (
+                            <button
+                              key={emoji}
+                              type="button"
+                              aria-pressed={reactedByMe}
+                              onClick={() => onAddReaction(activeChannelId, msg.id, emoji)}
+                              className={`px-1.5 py-0.2 rounded-md text-[10px] flex items-center gap-0.5 transition cursor-pointer select-none border ${
+                                reactedByMe
+                                  ? 'bg-amber-100 text-amber-900 border-amber-400 font-bold scale-105 shadow-2xs'
+                                  : 'bg-indigo-50/80 text-indigo-900 border-indigo-200 font-medium'
+                              }`}
+                              title={reactedByMe ? `${emoji} রিঅ্যাকশন বাতিল করুন` : `${emoji} রিঅ্যাক্ট করুন`}
+                            >
+                              <span>{emoji}</span>
+                              <span className="font-bold font-mono text-[9px]">{toBnNum(count)}</span>
+                            </button>
+                          );
+                        })}
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReactionPickerMsgId(reactionPickerMsgId === msg.id ? null : msg.id);
+                          }}
+                          className="px-1 py-0.5 rounded-md text-[9px] text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-slate-200/60 transition cursor-pointer flex items-center justify-center"
+                          title="আরো রিঅ্যাকশন যুক্ত করুন"
+                        >
+                          <Plus size={10} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

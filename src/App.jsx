@@ -1366,7 +1366,7 @@ export default function App() {
   // 3. Authenticated User View
   return (
     <Suspense fallback={<LoadingFallback />}>
-    <div className={`bg-slate-50 text-slate-800 flex flex-col md:flex-row font-sans ${activeTab === 'discussions' ? 'h-dvh max-h-dvh overflow-hidden' : 'min-h-screen'}`}>
+    <div className={`bg-slate-50 text-slate-800 flex flex-col md:flex-row font-sans ${activeTab === 'discussions' ? 'h-screen h-[100dvh] max-h-[100dvh] overflow-hidden' : 'min-h-screen'}`}>
       {upgradeNotice && (
         <output aria-live="polite" className="fixed bottom-20 left-3 right-3 z-40 block rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 shadow-lg md:left-auto md:right-6 md:bottom-6 md:max-w-sm">
           {upgradeNotice}
@@ -1873,7 +1873,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         {/* Content Body */}
         <main className={`flex-1 max-w-5xl w-full mx-auto ${
           activeTab === 'discussions'
-            ? 'p-2 sm:p-3 md:p-4 flex flex-col min-h-0 overflow-hidden pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))] md:pb-4'
+            ? 'p-2 sm:p-3 md:p-4 pb-1 sm:pb-2 md:pb-4 flex flex-col min-h-0 overflow-hidden'
             : 'p-3.5 md:p-6 space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:pb-6'
         }`}>
           {/* TAB 1: DASHBOARD */}
@@ -2582,7 +2582,11 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       {/* =========================================================================
           EXACTLY 5 BUTTONS FOR MOBILE BOTTOM NAVIGATION (Polished & Balanced)
       ========================================================================= */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200/90 py-1.5 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex justify-around items-center z-40 shadow-2xl">
+      <nav className={`md:hidden ${
+        activeTab === 'discussions'
+          ? 'shrink-0 relative w-full'
+          : 'fixed bottom-0 left-0 right-0'
+      } bg-white/95 backdrop-blur-xl border-t border-slate-200/90 py-1.5 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex justify-around items-center z-40 shadow-2xl`}>
         {primaryBottomNavItems.map(item => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
