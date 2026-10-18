@@ -51,6 +51,15 @@ export default function NotificationCenter({
     };
   }, []);
 
+  // Auto-dismiss active toast after 4 seconds
+  useEffect(() => {
+    if (!activeToast) return;
+    const timer = setTimeout(() => {
+      if (onDismissToast) onDismissToast();
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [activeToast?.id]);
+
   // Unread count
   const unreadCount = activities.filter((a) => !a.read).length;
 
@@ -127,6 +136,8 @@ export default function NotificationCenter({
         return <MessageCircle size={15} className="text-indigo-400 shrink-0" />;
       case 'expense':
         return <Wallet size={15} className="text-emerald-500 shrink-0" />;
+      case 'success':
+        return <CheckCheck size={16} className="text-emerald-400 shrink-0" />;
       default:
         return <Sparkles size={15} className="text-teal-400 shrink-0" />;
     }
@@ -367,7 +378,7 @@ export default function NotificationCenter({
 
       {/* IN-APP FLOATING TOAST BANNER */}
       {activeToast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-md animate-in slide-in-from-top duration-300">
+        <div className="fixed top-[calc(max(0.75rem,env(safe-area-inset-top))+4.25rem)] left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md animate-in slide-in-from-top duration-300 pointer-events-auto shadow-2xl">
           <div
             role="button"
             tabIndex={0}
@@ -383,29 +394,32 @@ export default function NotificationCenter({
               if (activeToast.tab) onNavigate(activeToast.tab);
               onDismissToast();
             }}
-            className="bg-slate-900/95 backdrop-blur-md text-white p-3.5 rounded-2xl shadow-2xl border border-teal-500/50 flex items-center justify-between gap-3 cursor-pointer"
+            className="bg-slate-900/95 backdrop-blur-md text-white p-3 sm:p-3.5 rounded-2xl shadow-2xl border border-teal-500/50 flex items-center justify-between gap-3 cursor-pointer"
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-teal-500/20 text-amber-300 flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <div className="w-8 h-8 rounded-xl bg-teal-500/20 text-emerald-400 flex items-center justify-center shrink-0">
                 {getActivityIcon(activeToast.type)}
               </div>
-              <div className="min-w-0">
-                <p className="font-bold text-xs text-white truncate">{activeToast.title}</p>
-                <p className="text-[11px] text-teal-100 truncate">{activeToast.body}</p>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-xs text-white leading-snug">{activeToast.title}</p>
+                <p className="text-[11px] text-teal-100 line-clamp-2 leading-relaxed mt-0.5">{activeToast.body}</p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <span className="px-2 py-0.5 bg-amber-400 text-teal-950 text-[10px] font-bold rounded-lg">
-                দেখুন
-              </span>
+              {activeToast.tab && activeToast.type !== 'success' && (
+                <span className="px-2.5 py-1 bg-amber-400 text-teal-950 text-[10px] font-black rounded-lg shadow-xs">
+                  দেখুন
+                </span>
+              )}
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onDismissToast();
                 }}
-                className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs"
+                className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs transition cursor-pointer"
+                title="বন্ধ করুন"
               >
                 ✕
               </button>

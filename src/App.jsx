@@ -644,8 +644,8 @@ export default function App() {
       setActiveToast({
         id: newId(),
         type: 'success',
-        title: '🔄 ডেটা সফলভাবে সিঙ্ক হয়েছে',
-        body: `ক্লাউড সার্ভার ও ফায়ারস্টোরের সাথে ডেটা আপডেট সম্পন্ন (${new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })})`,
+        title: 'ডেটা সিঙ্ক সম্পন্ন হয়েছে',
+        body: `ক্লাউড সার্ভার ও ফায়ারস্টোরে সব তথ্য আপডেট সফল (${new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })})`,
         tab: activeTab,
       });
     } catch {
