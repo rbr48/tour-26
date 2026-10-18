@@ -8,6 +8,9 @@ import { HttpError, readJsonBody, sendJson } from './http.js';
 import { createPushService } from './push-service.js';
 import { createStaticHandler } from './static-files.js';
 import { validateBackup } from './validate-backup.js';
+import { createReelsRegistry } from './reels-registry.js';
+import { compressVideo } from './video-compressor.js';
+import { createReelsArchiver } from './reels-archiver.js';
 
 const API_METHODS = 'GET, PUT, POST, OPTIONS';
 
@@ -18,7 +21,7 @@ function corsHeaders(origin, allowedOrigins) {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': API_METHODS,
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-File-Name',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-File-Name, X-Post-Id',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin',
   };
@@ -34,7 +37,7 @@ function bearerToken(headerValue) {
  * notification API under /api/push, and the static web app for everything else.
  * Dependencies can be injected for tests.
  */
-export function createApp({ config, verifyToken, store, pushService }) {
+export function createApp({ config, verifyToken, store, pushService, reelsRegistry, reelsArchiver }) {
   const verify =
     verifyToken ||
     createFirebaseTokenVerifier({
@@ -43,8 +46,13 @@ export function createApp({ config, verifyToken, store, pushService }) {
     });
   const backup = store || createBackupStore(config.dataDir);
   const push = pushService || createPushService({ dataDir: config.dataDir });
-  const serveStatic = createStaticHandler(config.distDir, path.join(config.dataDir, 'uploads'));
+  const registry = reelsRegistry || createReelsRegistry(config.dataDir);
+  const archiver = reelsArchiver || createReelsArchiver({ dataDir: config.dataDir, registry });
+  const serveStatic = createStaticHandler(config.distDir, path.join(config.dataDir, 'uploads'), registry);
   const allowedOrigins = new Set(config.allowedOrigins);
+
+  // Start background cron check for 7-day retention
+  archiver.startSchedule();
 
   async function handleApi(req, res) {
     const headers = corsHeaders(req.headers.origin, allowedOrigins);
@@ -227,13 +235,38 @@ export function createApp({ config, verifyToken, store, pushService }) {
       }
 
       const clientName = req.headers['x-file-name'] ? decodeURIComponent(req.headers['x-file-name']) : 'video.mp4';
+      const postId = req.headers['x-post-id'] ? decodeURIComponent(req.headers['x-post-id']) : null;
       const ext = path.extname(clientName) || '.mp4';
-      const safeName = `reel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+      const randomSuffix = Math.random().toString(36).slice(2, 8);
+      const safeName = `reel_${Date.now()}_${randomSuffix}${ext}`;
+      const rawName = `raw_${Date.now()}_${randomSuffix}${ext}`;
+      const rawPath = path.join(uploadsDir, rawName);
       const targetPath = path.join(uploadsDir, safeName);
 
-      await pipeline(req, fs.createWriteStream(targetPath));
+      // 1. Stream incoming video to temporary raw file
+      await pipeline(req, fs.createWriteStream(rawPath));
 
-      sendJson(res, 200, { success: true, url: `/uploads/${safeName}`, fileName: safeName }, headers);
+      // 2. Compress video asynchronously using 720p H.264 optimization
+      const compResult = await compressVideo(rawPath, targetPath);
+
+      // 3. Register in reels registry for 7-day retention tracking
+      registry.addReel({
+        id: safeName,
+        fileName: safeName,
+        postId,
+        originalSize: compResult.originalSize,
+        compressedSize: compResult.compressedSize,
+        uploadedAt: Date.now(),
+      });
+
+      sendJson(res, 200, {
+        success: true,
+        url: `/uploads/${safeName}`,
+        fileName: safeName,
+        compressed: compResult.compressed,
+        originalSize: compResult.originalSize,
+        compressedSize: compResult.compressedSize,
+      }, headers);
     } catch (err) {
       console.error('Upload failed:', err);
       sendJson(res, 500, { error: 'Upload failed: ' + (err.message || String(err)) }, headers);
@@ -250,6 +283,27 @@ export function createApp({ config, verifyToken, store, pushService }) {
       }
       if (pathname === '/api/upload') {
         await handleUploadApi(req, res);
+        return;
+      }
+      if (pathname === '/api/reels/registry' && (req.method === 'GET' || req.method === 'OPTIONS')) {
+        const headers = corsHeaders(req.headers.origin, allowedOrigins);
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, headers);
+          res.end();
+          return;
+        }
+        sendJson(res, 200, registry.getAll(), headers);
+        return;
+      }
+      if (pathname === '/api/reels/archive-check' && (req.method === 'POST' || req.method === 'OPTIONS')) {
+        const headers = corsHeaders(req.headers.origin, allowedOrigins);
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, headers);
+          res.end();
+          return;
+        }
+        const result = await archiver.archiveExpiredReels();
+        sendJson(res, 200, result, headers);
         return;
       }
       if (pathname.startsWith('/api/push/')) {

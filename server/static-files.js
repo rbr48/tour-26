@@ -58,7 +58,7 @@ function sendNotFound(res, method) {
  * file extension get a 404, so a missing download such as an APK can never come
  * back as index.html. Other unknown paths fall back to index.html for the SPA.
  */
-export function createStaticHandler(distDir, uploadsDir) {
+export function createStaticHandler(distDir, uploadsDir, reelsRegistry) {
   const root = path.resolve(distDir);
   const uploadsRoot = uploadsDir ? path.resolve(uploadsDir) : null;
   const indexFile = path.join(root, 'index.html');
@@ -79,6 +79,7 @@ export function createStaticHandler(distDir, uploadsDir) {
       if (candidateUpload.startsWith(uploadsRoot + path.sep) && isRegularFile(candidateUpload)) {
         return candidateUpload;
       }
+      return null;
     }
 
     const candidate = path.resolve(root, `.${path.posix.normalize(`/${decoded}`)}`);
@@ -109,6 +110,20 @@ export function createStaticHandler(distDir, uploadsDir) {
 
     const candidate = resolveRequestPath(pathname);
     if (!candidate) {
+      if (reelsRegistry && (pathname.startsWith('/uploads/') || pathname.startsWith('uploads/'))) {
+        const relName = pathname.replace(/^\/?uploads\//, '').split('?')[0];
+        const driveUrl = reelsRegistry.getArchivedDriveUrl(relName);
+        if (driveUrl) {
+          res.writeHead(302, {
+            Location: driveUrl,
+            'Cache-Control': 'public, max-age=86400',
+            ...CORS_HEADERS,
+            ...SECURITY_HEADERS,
+          });
+          res.end();
+          return;
+        }
+      }
       sendNotFound(res, req.method);
       return;
     }

@@ -645,13 +645,18 @@ export default function InstagramFeed({
               method: 'POST',
               headers: {
                 'X-File-Name': encodeURIComponent(fileToUpload.name || `reel_${postId}.mp4`),
+                'X-Post-Id': encodeURIComponent(postId),
               },
               body: fileToUpload,
             });
             if (uploadRes.ok) {
               const resData = await uploadRes.json();
               if (resData?.url) {
-                onUpdatePost?.(postId, { videoUrl: resData.url });
+                onUpdatePost?.(postId, {
+                  videoUrl: resData.url,
+                  vpsVideoUrl: resData.url,
+                  storageTier: 'vps_hot',
+                });
               }
             }
           } catch (uploadErr) {
