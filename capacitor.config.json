@@ -26,7 +26,7 @@
       "backgroundColor": "#134e4a"
     },
     "LocalNotifications": {
-      "smallIcon": "ic_launcher",
+      "smallIcon": "ic_stat_notification",
       "iconColor": "#134e4a"
     },
     "PushNotifications": {

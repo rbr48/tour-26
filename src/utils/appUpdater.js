@@ -4,8 +4,8 @@ import { App } from '@capacitor/app';
 // Register custom native Android AppUpdate plugin
 const NativeAppUpdate = registerPlugin('AppUpdate');
 
-export const CURRENT_WEB_VERSION = '2.3';
-export const CURRENT_WEB_BUILD = 5;
+export const CURRENT_WEB_VERSION = '2.4';
+export const CURRENT_WEB_BUILD = 6;
 
 /**
  * Returns the version metadata API endpoint URL.

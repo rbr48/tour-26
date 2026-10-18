@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Split, Plus, Trash2, ArrowRight, PieChart, Printer, Edit3,
+  Split, Plus, Trash2, ArrowRight, PieChart, Printer, Edit3, X, Check, Info,
 } from 'lucide-react';
 import { FUND_LABEL, computeLedger } from '../utils/ledger';
 import { localISODate, localTimeHHMM } from '../utils/date';
+import { useBackHandler } from '../utils/backNavigation';
 
 export const DEFAULT_CATEGORIES = {
   'খাবার': { color: 'bg-emerald-500', bgLight: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
@@ -67,11 +68,14 @@ export default function SplitwiseManager({
   members = [],
   expenses = [],
   onAddExpense,
+  onUpdateExpense,
   onDeleteExpense,
   onOpenPrintModal,
   onEditMemberDeposit,
 }) {
   const [newExpense, setNewExpense] = useState(blankExpense);
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [editForm, setEditForm] = useState(blankExpense);
   const [filterCategory, setFilterCategory] = useState('all');
   const [customCategories, setCustomCategories] = useState(() => {
     try {
@@ -83,6 +87,8 @@ export default function SplitwiseManager({
   });
   const [isCustomCategoryMode, setIsCustomCategoryMode] = useState(false);
   const [customCategoryInput, setCustomCategoryInput] = useState('');
+
+  useBackHandler(Boolean(editingExpense), () => setEditingExpense(null), 20);
 
   const ledger = useMemo(() => computeLedger({ members, expenses }), [members, expenses]);
 
@@ -136,6 +142,22 @@ export default function SplitwiseManager({
     setNewExpense(blankExpense());
     setIsCustomCategoryMode(false);
     setCustomCategoryInput('');
+  };
+
+  const handleUpdateSubmit = (event) => {
+    event.preventDefault();
+    if (!editingExpense || !editForm.title || !editForm.amount) return;
+    if (onUpdateExpense) {
+      onUpdateExpense(editingExpense.id, {
+        title: editForm.title.trim(),
+        category: editForm.category || 'অন্যান্য',
+        amount: Number(editForm.amount),
+        paidById: editForm.paidById === '' ? null : Number(editForm.paidById),
+        date: editForm.date || localISODate(),
+        time: editForm.time || localTimeHHMM(),
+      });
+    }
+    setEditingExpense(null);
   };
 
   const fundPositive = ledger.fundBalance >= 0;
@@ -223,6 +245,12 @@ export default function SplitwiseManager({
             <p className="text-xs text-teal-200 mt-0.5">
               সকল জমা এবং ব্যক্তিগতভাবে বহন করা বিল সমন্বয় করে চূড়ান্ত নিষ্পত্তির হিসাব
             </p>
+            <div className="mt-2.5 p-2.5 bg-white/10 rounded-xl border border-white/15 text-[11px] text-teal-100 flex items-start gap-2 max-w-xl">
+              <Info size={15} className="text-amber-300 shrink-0 mt-0.5" aria-hidden="true" />
+              <div>
+                <span className="font-bold text-amber-300">হিসাব পরিবর্তন বা সংশোধন করবেন কীভাবে?</span> এই সেটেলমেন্ট তালিকাটি সদস্যদের মোট জমা (ডিপোজিট) এবং খরচের ভাউচার হতে স্বয়ংক্রিয়ভাবে ক্যালকুলেট হয়। হিসাব ঠিক করতে নিচের <strong>খরচের ভাউচার তালিকা থেকে ✏️ এডিট</strong> করুন অথবা সদস্যদের <strong>ডিপোজিট আপডেট</strong> করুন।
+              </div>
+            </div>
           </div>
           <span className="text-xs bg-teal-800/80 px-3 py-1.5 rounded-xl border border-teal-700">
             জনপ্রতি ফেয়ার শেয়ার: ৳{money(ledger.perHeadCost)}
@@ -507,10 +535,31 @@ export default function SplitwiseManager({
                   <h5 className="font-bold text-sm text-slate-900 truncate">{item.title}</h5>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="font-extrabold text-sm sm:text-base text-slate-800">
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                  <span className="font-extrabold text-sm sm:text-base text-slate-800 mr-1 sm:mr-2">
                     ৳ {money(item.amount)}
                   </span>
+                  {onUpdateExpense && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingExpense(item);
+                        setEditForm({
+                          title: item.title,
+                          category: item.category || 'অন্যান্য',
+                          amount: item.amount,
+                          paidById: item.paidById ?? '',
+                          date: item.date || localISODate(),
+                          time: item.time || localTimeHHMM(),
+                        });
+                      }}
+                      className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-500 flex items-center justify-center transition cursor-pointer"
+                      title="খরচ এডিট করুন"
+                      aria-label={`${item.title} এডিট করুন`}
+                    >
+                      <Edit3 size={15} aria-hidden="true" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => onDeleteExpense(item.id)}
@@ -526,6 +575,148 @@ export default function SplitwiseManager({
           })}
         </div>
       </div>
+
+      {/* Edit Expense Modal */}
+      {editingExpense && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          onClick={() => setEditingExpense(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="bg-white w-full max-w-lg rounded-2xl p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 my-auto animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h4 className="font-bold text-base text-slate-800 flex items-center gap-2">
+                <Edit3 size={18} className="text-teal-700" aria-hidden="true" /> খরচের ভাউচার সংশোধন করুন
+              </h4>
+              <button
+                type="button"
+                onClick={() => setEditingExpense(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                aria-label="বন্ধ করুন"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateSubmit} className="space-y-3">
+              <div>
+                <label htmlFor="edit-expense-title" className="text-xs font-bold text-slate-700 block mb-1">
+                  খরচের বিবরণ / খাত
+                </label>
+                <input
+                  id="edit-expense-title"
+                  type="text"
+                  required
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="edit-expense-category" className="text-xs font-bold text-slate-700 block mb-1">
+                    ক্যাটাগরি
+                  </label>
+                  <select
+                    id="edit-expense-category"
+                    value={editForm.category}
+                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                    className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white cursor-pointer"
+                  >
+                    {allCategoryKeys.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="edit-expense-amount" className="text-xs font-bold text-slate-700 block mb-1">
+                    পরিমাণ (টাকা)
+                  </label>
+                  <input
+                    id="edit-expense-amount"
+                    type="number"
+                    min="1"
+                    step="any"
+                    required
+                    value={editForm.amount}
+                    onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                    className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label htmlFor="edit-expense-payer" className="text-xs font-bold text-slate-700 block mb-1">
+                    বিল কে পরিশোধ করেছে? (Paid By)
+                  </label>
+                  <select
+                    id="edit-expense-payer"
+                    value={editForm.paidById ?? ''}
+                    onChange={(e) => setEditForm({ ...editForm, paidById: e.target.value === '' ? null : Number(e.target.value) })}
+                    className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white cursor-pointer"
+                  >
+                    <option value="">{FUND_LABEL} (সবার জমা ফান্ড থেকে)</option>
+                    {members.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name} (ব্যক্তিগত পকেট থেকে)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="edit-expense-date" className="text-xs font-bold text-slate-700 block mb-1">
+                    তারিখ (Date)
+                  </label>
+                  <input
+                    id="edit-expense-date"
+                    type="date"
+                    value={editForm.date}
+                    onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                    className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="edit-expense-time" className="text-xs font-bold text-slate-700 block mb-1">
+                    সময় (Time)
+                  </label>
+                  <input
+                    id="edit-expense-time"
+                    type="time"
+                    value={editForm.time}
+                    onChange={(e) => setEditForm({ ...editForm, time: e.target.value })}
+                    className="w-full px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingExpense(null)}
+                  className="px-4 py-2.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2.5 text-xs font-bold text-white bg-teal-700 hover:bg-teal-800 rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check size={14} aria-hidden="true" /> আপডেট নিশ্চিত করুন
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

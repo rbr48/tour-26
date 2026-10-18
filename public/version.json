@@ -1,10 +1,10 @@
 {
-  "versionCode": 5,
-  "versionName": "2.3",
+  "versionCode": 6,
+  "versionName": "2.4",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v5.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v6.apk",
   "apkSize": "8.1 MB",
-  "releaseNotes": "নিরাপত্তা ও লেআউট আপডেট: ফায়ারস্টোর ও সার্ভার এন্ডপয়েন্ট প্রটেকশন, সাইরেন ফিক্স, রিয়েলমি ও নচ ডিসপ্লে অপটিমাইজেশন, দ্রুত লোডিং এবং সাইজ অপটিমাইজেশন।",
-  "releasedAt": "2026-10-18T13:30:00Z",
+  "releaseNotes": "নতুন আপডেট v2.4: খরচ ভাউচার এডিট ও সংশোধন সুবিধা, সেটেলমেন্ট হিসাবের শিক্ষণীয় গাইডলাইন, সাইডবার ফুল-স্ক্রিন স্ক্রোলিং ও ন্যাভিগেশন বাটন সমাধান, অ্যান্ড্রয়েড স্ট্যাটাস বার নোটিফিকেশন আইকন অপটিমাইজেশন।",
+  "releasedAt": "2026-10-18T14:20:00Z",
   "forceUpdate": false
 }

@@ -61,7 +61,7 @@ const FamilySafetyHub = lazy(() => import('./components/FamilySafetyHub'));
 const TourQuizModal = lazy(() => import('./components/TourQuizModal'));
 const AppUpdateModal = lazy(() => import('./components/AppUpdateModal'));
 
-export const APP_LOGO_URL = '/logo.png?v=5';
+export const APP_LOGO_URL = '/logo.png?v=6';
 const VALID_TABS = ['dashboard', 'itinerary', 'expenses', 'seats_rooms', 'feed', 'discussions', 'notices', 'checklist'];
 const CACHE_KEY = 'rangpur_coxs_tour_data';
 const ACTIVITY_KEY = 'tour_recent_activities';
@@ -1038,6 +1038,39 @@ export default function App() {
     });
   };
 
+  const handleUpdateExpense = (id, expData) => {
+    const amount = Number(expData.amount);
+    if (!expData.title || !(amount > 0)) return;
+    const payer = data.members.find((member) => member.id === expData.paidById) ?? null;
+    const patch = {
+      title: expData.title.trim(),
+      category: expData.category || 'খাবার',
+      amount,
+      paidById: payer ? payer.id : null,
+      paidBy: payer ? payer.name : FUND_LABEL,
+      updatedByEmail: emailRef.current,
+      updatedAt: new Date().toISOString(),
+      date: expData.date || localISODate(),
+      time: expData.time || localTimeHHMM(),
+    };
+    save(updateItem(['expenses'], id, patch));
+    addActivity({
+      id: newId(),
+      type: 'expense',
+      title: '✏️ খরচ আপডেট করা হয়েছে',
+      body: `${expData.title} • ৳${amount.toLocaleString()}`,
+      tab: 'expenses',
+      time: 'এইমাত্র',
+    });
+    setActiveToast({
+      id: newId(),
+      type: 'success',
+      title: 'খরচ সফলভাবে আপডেট হয়েছে',
+      body: `${expData.title}: ৳${amount.toLocaleString()}`,
+      tab: 'expenses',
+    });
+  };
+
   // Member & Deposit Handlers
   const handleAddMember = (e) => {
     e.preventDefault();
@@ -1423,7 +1456,7 @@ export default function App() {
             </button>
 
             <a
-              href="/Tour2026.apk?v=20261018b"
+              href="/Tour2026.apk?v=6"
               download="Tour2026.apk"
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-950 hover:bg-emerald-900 text-emerald-200 hover:text-white transition cursor-pointer border border-emerald-500/50 shadow-xs"
             >
@@ -1514,10 +1547,10 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
           />
 
           {/* Drawer Panel */}
-          <div className="relative w-[84%] max-w-xs bg-teal-950 text-white flex flex-col justify-between p-4 shadow-2xl z-10 overflow-y-auto animate-in slide-in-from-left duration-250 border-r border-teal-800">
-            <div className="space-y-4">
-              {/* Drawer Top Header */}
-              <div className="flex items-center justify-between pb-3.5 border-b border-teal-800/90">
+          <div className="relative w-[84%] max-w-xs h-full h-dvh max-h-screen bg-teal-950 text-white flex flex-col z-10 shadow-2xl animate-in slide-in-from-left duration-250 border-r border-teal-800">
+            {/* Drawer Top Header (Fixed at top) */}
+            <div className="shrink-0 p-4 pb-3.5 border-b border-teal-800/90 pt-[max(1rem,env(safe-area-inset-top))]">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <img
                     src={APP_LOGO_URL}
@@ -1530,17 +1563,25 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setIsMobileSidebarOpen(false)}
                   className="w-8 h-8 rounded-full bg-teal-900 hover:bg-teal-800 text-teal-200 flex items-center justify-center transition cursor-pointer"
+                  title="বন্ধ করুন"
                 >
                   <X size={18} />
                 </button>
               </div>
+            </div>
 
+            {/* Scrollable Middle Content (Smooth vertical scrolling) */}
+            <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4">
               {/* User Profile Card in Drawer */}
               {currentUser && (
                 <div
-                 role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}  onClick={() => {
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
+                  onClick={() => {
                     setIsMobileSidebarOpen(false);
                     setShowProfileModal(true);
                   }}
@@ -1637,7 +1678,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </button>
 
                 <a
-                  href="/Tour2026.apk?v=20261018b"
+                  href="/Tour2026.apk?v=6"
                   download="Tour2026.apk"
                   className="w-full py-2 px-3 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 rounded-xl text-xs font-semibold flex items-center justify-between border border-emerald-600/60 transition cursor-pointer"
                 >
@@ -1701,8 +1742,8 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               </div>
             </div>
 
-            {/* Drawer Bottom Status & Logout */}
-            <div className="pt-3 border-t border-teal-800 space-y-2 mt-4">
+            {/* Drawer Bottom Status & Logout (Pinned with Safe-Area clearance above Android Navigation Bar) */}
+            <div className="shrink-0 p-4 pt-3 border-t border-teal-800 space-y-2.5 bg-teal-950/95 pb-[max(2.5rem,calc(env(safe-area-inset-bottom,0px)+1.8rem))]">
               {backupStatus && <p className="px-1 text-[10px] text-teal-300/80">{backupStatus}</p>}
               <div className="flex items-center justify-between text-[11px] text-teal-300 px-1">
                 <span className="flex items-center gap-1 text-[10px]">
@@ -1710,6 +1751,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   {syncStatus}
                 </span>
                 <button
+                  type="button"
                   onClick={() => {
                     setIsMobileSidebarOpen(false);
                     backupNow();
@@ -1722,8 +1764,9 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               </div>
 
               <button
+                type="button"
                 onClick={handleLogout}
-                className="w-full py-2 bg-rose-950/60 hover:bg-rose-900 text-rose-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-rose-800/60 transition"
+                className="w-full py-2.5 bg-rose-950/80 hover:bg-rose-900 text-rose-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-rose-800/80 transition cursor-pointer shadow-xs active:scale-95"
               >
                 <LogOut size={13} /> লগআউট করুন
               </button>
@@ -2233,6 +2276,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               members={data.members || []}
               expenses={data.expenses || []}
               onAddExpense={handleAddExpense}
+              onUpdateExpense={handleUpdateExpense}
               onDeleteExpense={handleDeleteExpense}
               onOpenPrintModal={() => setShowPrintReport(true)}
               onEditMemberDeposit={(m) => setEditingMember(m)}
