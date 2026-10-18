@@ -215,8 +215,9 @@ export function compareHands(cardsA, cardsB) {
 /**
  * Finds the winner among an array of active players.
  * Each item in activePlayers: { email, name, cards: [...] }
+ * If challengerEmail is provided and hands tie, the defender wins!
  */
-export function getWinner(activePlayers) {
+export function getWinner(activePlayers, challengerEmail = null) {
   if (!activePlayers || activePlayers.length === 0) return null;
   if (activePlayers.length === 1) {
     return {
@@ -234,8 +235,17 @@ export function getWinner(activePlayers) {
     if (curEval.score > bestEval.score) {
       best = cur;
       bestEval = curEval;
+    } else if (curEval.score === bestEval.score && challengerEmail) {
+      // In Teen Patti, if the show is a tie, the non-challenger (defender) wins
+      const isCurChallenger = (cur.email || '').toLowerCase() === challengerEmail.toLowerCase();
+      const isBestChallenger = (best.email || '').toLowerCase() === challengerEmail.toLowerCase();
+      if (isBestChallenger && !isCurChallenger) {
+        best = cur;
+        bestEval = curEval;
+      }
     }
   }
 
   return { player: best, evaluation: bestEval };
 }
+

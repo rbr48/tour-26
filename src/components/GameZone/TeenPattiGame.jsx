@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import PlayingCard from './PlayingCard';
 import {
   createDeck,
@@ -13,12 +13,13 @@ import {
   Coins,
   Crown,
   Eye,
+  Info,
   LogOut,
   Play,
   RotateCcw,
   Sparkles,
-  Volume2,
-  VolumeX,
+  Swords,
+  Trophy,
   X,
   Zap,
 } from 'lucide-react';
@@ -33,7 +34,6 @@ export default function TeenPattiGame({
   currentProfile,
   onLeave,
 }) {
-  const [soundEnabled, setSoundEnabled] = useState(true);
   const myEmail = (currentUser?.email || '').toLowerCase();
   const myName = currentProfile?.displayName || currentUser?.displayName || 'খেলোয়াড়';
 
@@ -48,29 +48,57 @@ export default function TeenPattiGame({
     room.state?.turnIndex !== undefined &&
     room.players?.[room.state.turnIndex]?.email?.toLowerCase() === myEmail;
 
-  // Local state for seeing cards (can also persist in room player state)
-  const [hasSeenCardsLocally, setHasSeenCardsLocally] = useState(false);
+  // Local state for seeing cards - synced with player's actual seen state & round status
+  const [hasSeenCardsLocally, setHasSeenCardsLocally] = useState(Boolean(myPlayer?.seen));
 
   useEffect(() => {
-    if (myPlayer?.seen) {
-      setHasSeenCardsLocally(true);
+    // Whenever player.seen changes or new round starts, sync local state
+    setHasSeenCardsLocally(Boolean(myPlayer?.seen));
+  }, [myPlayer?.seen, room.state?.dealerIndex, room.status]);
+
+  const isSeen = Boolean(hasSeenCardsLocally || myPlayer?.seen);
+
+  // Check remaining active players (not folded)
+  const getRemainingActivePlayers = (players) => {
+    return (players || []).filter((p) => !p.folded);
+  };
+
+  // Find next active player turn
+  const getNextTurnIndex = (players, currentIndex) => {
+    const total = players.length;
+    for (let i = 1; i <= total; i++) {
+      const nextIdx = (currentIndex + i) % total;
+      if (!players[nextIdx].folded && (players[nextIdx].chips || 0) > 0) {
+        return nextIdx;
+      }
     }
-  }, [myPlayer?.seen]);
+    return currentIndex;
+  };
 
   // Handle Starting a New Hand (Host only)
   const handleStartHand = () => {
-    const activePlayers = (room.players || []).filter((p) => (p.chips || 0) >= DEFAULT_BOOT);
-    if (activePlayers.length < 2) {
+    const activeEligible = (room.players || []).filter(
+      (p) => (p.chips || 0) >= DEFAULT_BOOT
+    );
+    if (activeEligible.length < 2) {
       alert('খেলা শুরু করতে অন্তত ২ জন খেলোয়াড় প্রয়োজন যাদের অন্তত ২০ চিপস আছে!');
       return;
     }
 
-    // Shuffle and deal 3 cards to each player
+    // Shuffle and deal 3 cards to eligible players
     const deck = shuffleDeck(createDeck());
-    const hands = {};
-    const updatedPlayers = room.players.map((p, idx) => {
+    const updatedPlayers = (room.players || []).map((p) => {
+      const hasEnoughChips = (p.chips || 0) >= DEFAULT_BOOT;
+      if (!hasEnoughChips) {
+        return {
+          ...p,
+          cards: [],
+          seen: false,
+          folded: true, // Broke player is folded so they do not block showdowns
+          currentBet: 0,
+        };
+      }
       const cards = [deck.pop(), deck.pop(), deck.pop()];
-      hands[p.email.toLowerCase()] = cards;
       return {
         ...p,
         cards,
@@ -81,9 +109,9 @@ export default function TeenPattiGame({
       };
     });
 
-    const pot = activePlayers.length * DEFAULT_BOOT;
+    const pot = activeEligible.length * DEFAULT_BOOT;
     const dealerIndex = ((room.state?.dealerIndex ?? -1) + 1) % updatedPlayers.length;
-    const firstTurnIndex = (dealerIndex + 1) % updatedPlayers.length;
+    const firstTurnIndex = getNextTurnIndex(updatedPlayers, dealerIndex);
 
     updateGameRoom(room.id, {
       status: 'playing',
@@ -92,8 +120,9 @@ export default function TeenPattiGame({
         turnIndex: firstTurnIndex,
         pot,
         currentStake: DEFAULT_BOOT,
-        lastAction: `খেলা শুরু হয়েছে! সবার কাছ থেকে ${toBnNum(DEFAULT_BOOT)} চিপস বুট নেওয়া হয়েছে।`,
+        lastAction: `নতুন রাউন্ড শুরু হয়েছে! সবার কাছ থেকে ${toBnNum(DEFAULT_BOOT)} চিপস বুট নেওয়া হয়েছে।`,
         winner: null,
+        showdown: null,
       },
       players: updatedPlayers,
     });
@@ -115,28 +144,10 @@ export default function TeenPattiGame({
     });
   };
 
-  // Find next active player turn
-  const getNextTurnIndex = (players, currentIndex) => {
-    const total = players.length;
-    for (let i = 1; i < total; i++) {
-      const nextIdx = (currentIndex + i) % total;
-      if (!players[nextIdx].folded && (players[nextIdx].chips || 0) > 0) {
-        return nextIdx;
-      }
-    }
-    return currentIndex;
-  };
-
-  // Check remaining active players
-  const getRemainingActivePlayers = (players) => {
-    return players.filter((p) => !p.folded);
-  };
-
   // Chaal / Bet Action
   const handleBet = (isDouble = false) => {
     if (!isMyTurn) return;
 
-    const isSeen = hasSeenCardsLocally || myPlayer?.seen;
     let betAmount = room.state?.currentStake || DEFAULT_BOOT;
 
     if (isSeen) {
@@ -155,7 +166,7 @@ export default function TeenPattiGame({
       p.email?.toLowerCase() === myEmail
         ? {
             ...p,
-            chips: (p.chips || 0) - betAmount,
+            chips: Math.max(0, (p.chips || 0) - betAmount),
             currentBet: (p.currentBet || 0) + betAmount,
           }
         : p
@@ -163,12 +174,18 @@ export default function TeenPattiGame({
 
     const nextTurn = getNextTurnIndex(updatedPlayers, room.state.turnIndex);
 
+    // If doubled, current stake doubles for everyone (capped at 500)
+    let newStake = room.state?.currentStake || DEFAULT_BOOT;
+    if (isDouble) {
+      newStake = Math.min(500, newStake * 2);
+    }
+
     updateGameRoom(room.id, {
       players: updatedPlayers,
       state: {
         ...room.state,
         pot: newPot,
-        currentStake: isSeen ? betAmount / 2 : betAmount,
+        currentStake: newStake,
         turnIndex: nextTurn,
         lastAction: `${myName} ${isSeen ? 'চাল' : 'ব্লাইন্ড'} দিয়েছেন (${toBnNum(betAmount)} চিপস)`,
       },
@@ -190,7 +207,9 @@ export default function TeenPattiGame({
       const winner = remaining[0];
       const winPot = room.state?.pot || 0;
       const finalPlayers = updatedPlayers.map((p) =>
-        p.email === winner.email ? { ...p, chips: (p.chips || 0) + winPot } : p
+        p.email?.toLowerCase() === winner.email?.toLowerCase()
+          ? { ...p, chips: (p.chips || 0) + winPot }
+          : p
       );
 
       updateGameRoom(room.id, {
@@ -204,6 +223,7 @@ export default function TeenPattiGame({
             handName: 'অন্য সবাই প্যাক করায় জয়ী!',
             amount: winPot,
           },
+          showdown: null,
           lastAction: `${myName} প্যাক করায় ${winner.name} জয়ী হয়েছেন! (${toBnNum(winPot)} চিপস)`,
         },
       });
@@ -228,7 +248,11 @@ export default function TeenPattiGame({
     const remaining = getRemainingActivePlayers(room.players || []);
     if (remaining.length !== 2) return;
 
-    const showCost = (room.state?.currentStake || DEFAULT_BOOT) * (myPlayer?.seen ? 2 : 1);
+    // Show cost: 2x stake for seen, 1x stake for blind
+    const showCost = Math.min(
+      myPlayer?.chips || 0,
+      (room.state?.currentStake || DEFAULT_BOOT) * (isSeen ? 2 : 1)
+    );
     const newPot = (room.state?.pot || 0) + showCost;
 
     const updatedPlayers = room.players.map((p) =>
@@ -237,13 +261,21 @@ export default function TeenPattiGame({
         : p
     );
 
-    // Evaluate hands between the two players
-    const winnerData = getWinner(remaining);
+    // Evaluate hands between the two players with tie-break
+    // (If hands tie, defender who was challenged wins!)
+    const winnerData = getWinner(remaining, myEmail);
     const winner = winnerData?.player;
-    const handName = winnerData?.evaluation?.name || 'উচ্চ কার্ড';
+    const winnerEval = winnerData?.evaluation || evaluateHand(winner.cards || []);
+
+    const loser = remaining.find(
+      (p) => (p.email || '').toLowerCase() !== (winner.email || '').toLowerCase()
+    );
+    const loserEval = evaluateHand(loser?.cards || []);
 
     const finalPlayers = updatedPlayers.map((p) =>
-      p.email === winner.email ? { ...p, chips: (p.chips || 0) + newPot } : p
+      p.email?.toLowerCase() === winner.email?.toLowerCase()
+        ? { ...p, chips: (p.chips || 0) + newPot }
+        : p
     );
 
     updateGameRoom(room.id, {
@@ -255,10 +287,28 @@ export default function TeenPattiGame({
         winner: {
           name: winner.name,
           email: winner.email,
-          handName,
+          handName: winnerEval.name,
           amount: newPot,
         },
-        lastAction: `শোডাউন! ${winner.name} ${handName}-এ বিজয়ী হয়েছেন এবং ${toBnNum(newPot)} চিপস জিতেছেন!`,
+        showdown: {
+          callerName: myName,
+          callerEmail: myEmail,
+          winner: {
+            name: winner.name,
+            email: winner.email,
+            handName: winnerEval.name,
+            cards: winner.cards || [],
+          },
+          loser: loser
+            ? {
+                name: loser.name,
+                email: loser.email,
+                handName: loserEval.name,
+                cards: loser.cards || [],
+              }
+            : null,
+        },
+        lastAction: `শোডাউন! ${winner.name} (${winnerEval.name}) জয়ী হয়েছেন এবং ${toBnNum(newPot)} চিপস জিতেছেন!`,
       },
     });
   };
@@ -273,8 +323,28 @@ export default function TeenPattiGame({
     });
   };
 
-  const remainingActiveCount = getRemainingActivePlayers(room.players || []).length;
-  const canShow = isMyTurn && remainingActiveCount === 2;
+  const remainingActive = getRemainingActivePlayers(room.players || []);
+  const remainingActiveCount = remainingActive.length;
+
+  const otherActivePlayer = remainingActive.find(
+    (p) => (p.email || '').toLowerCase() !== myEmail
+  );
+  const isOtherSeen = Boolean(otherActivePlayer?.seen);
+
+  // Authenticated Teen Patti rule:
+  // - If I am Blind: I can ask for a show (cost: 1x stake)
+  // - If both are Seen: I can ask for a show (cost: 2x stake)
+  // - If I am Seen and opponent is Blind: I CANNOT ask for a show! (Must Chaal or Pack)
+  const canShow =
+    isMyTurn &&
+    remainingActiveCount === 2 &&
+    (!isSeen || isOtherSeen);
+
+  const isBlockedByBlindOpponent =
+    isMyTurn &&
+    remainingActiveCount === 2 &&
+    isSeen &&
+    !isOtherSeen;
 
   return (
     <div className="flex-1 flex flex-col bg-slate-950 text-white rounded-3xl overflow-hidden border border-slate-800 shadow-2xl relative select-none">
@@ -344,9 +414,18 @@ export default function TeenPattiGame({
                       size="w-8 h-8 sm:w-10 sm:h-10"
                       ring={isCurrentTurn ? 'ring-2 ring-amber-400' : 'ring-1 ring-white/20'}
                     />
-                    {p.seen && !p.folded && (
-                      <span className="absolute -bottom-1 -right-1 bg-teal-600 text-[8px] font-bold px-1 rounded-full text-white shadow-xs">
+                    {/* Status Badge: Folded, Seen, or Blind */}
+                    {p.folded ? (
+                      <span className="absolute -bottom-1 -right-1 bg-red-600 text-[8px] font-bold px-1 rounded-full text-white shadow-xs">
+                        প্যাক
+                      </span>
+                    ) : p.seen ? (
+                      <span className="absolute -bottom-1 -right-1 bg-teal-500 text-[8px] font-bold px-1 rounded-full text-white shadow-xs">
                         সিন
+                      </span>
+                    ) : (
+                      <span className="absolute -bottom-1 -right-1 bg-amber-400 text-[8px] font-black px-1 rounded-full text-teal-950 shadow-xs animate-pulse">
+                        ব্লাইন্ড
                       </span>
                     )}
                   </div>
@@ -360,7 +439,7 @@ export default function TeenPattiGame({
 
                   {/* Opponent's Cards */}
                   <div className="flex items-center -space-x-4 sm:-space-x-5 mt-1">
-                    {(p.cards || ['??', '??', '??']).map((c, cIdx) => (
+                    {(p.cards && p.cards.length === 3 ? p.cards : ['??', '??', '??']).map((c, cIdx) => (
                       <PlayingCard
                         key={cIdx}
                         card={c}
@@ -395,23 +474,65 @@ export default function TeenPattiGame({
             </p>
           </div>
 
-          {/* Winner Showcase Banner */}
+          {/* Winner & Showdown Showcase Banner */}
           {room.status === 'round_ended' && room.state?.winner && (
-            <div className="mt-3 p-3 bg-gradient-to-r from-amber-500/90 to-yellow-500/90 text-teal-950 rounded-2xl shadow-2xl border-2 border-amber-200 animate-in zoom-in duration-200 text-center space-y-1">
-              <div className="flex items-center justify-center gap-1 font-black text-sm">
-                <Crown size={18} className="text-teal-950 fill-teal-950" />
-                <span>{room.state.winner.name} জয়ী!</span>
+            <div className="mt-3 p-3.5 bg-gradient-to-br from-amber-500 via-yellow-500 to-amber-600 text-teal-950 rounded-2xl shadow-2xl border-2 border-amber-200 animate-in zoom-in duration-200 text-center space-y-2 max-w-sm sm:max-w-md mx-auto">
+              <div className="flex items-center justify-center gap-1.5 font-black text-sm sm:text-base">
+                <Crown size={20} className="text-teal-950 fill-teal-950 animate-bounce" />
+                <span>{room.state.winner.name} জয়ী! 🏆</span>
               </div>
-              <p className="text-xs font-bold text-teal-900">
-                {room.state.winner.handName} • পেয়েছেন {toBnNum(room.state.winner.amount)} চিপস
+              <p className="text-xs font-extrabold text-teal-950">
+                {room.state.winner.handName} • পেয়েছেন {toBnNum(room.state.winner.amount)} চিপস!
               </p>
+
+              {/* Detailed Showdown Comparison Box */}
+              {room.state?.showdown && room.state.showdown.loser && (
+                <div className="bg-black/30 backdrop-blur-sm p-2 rounded-xl border border-black/20 text-white space-y-2 mt-2">
+                  <div className="text-[10px] font-bold text-amber-200 uppercase tracking-wider flex items-center justify-center gap-1">
+                    <Swords size={12} />
+                    <span>শোডাউন ফলাফল বিশ্লেষণ</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                    {/* Winner Hand */}
+                    <div className="bg-emerald-950/60 p-2 rounded-lg border border-emerald-500/50 flex flex-col items-center">
+                      <span className="text-[10px] text-emerald-300 font-bold truncate max-w-[90px]">
+                        {room.state.showdown.winner.name} (জয়ী)
+                      </span>
+                      <span className="text-[11px] font-black text-yellow-300">
+                        {room.state.showdown.winner.handName}
+                      </span>
+                      <div className="flex items-center -space-x-3 mt-1.5 scale-90">
+                        {(room.state.showdown.winner.cards || []).map((c, i) => (
+                          <PlayingCard key={i} card={c} size="sm" isFaceDown={false} />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Loser Hand */}
+                    <div className="bg-rose-950/60 p-2 rounded-lg border border-rose-500/40 flex flex-col items-center">
+                      <span className="text-[10px] text-rose-300 font-bold truncate max-w-[90px]">
+                        {room.state.showdown.loser.name}
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-200">
+                        {room.state.showdown.loser.handName}
+                      </span>
+                      <div className="flex items-center -space-x-3 mt-1.5 scale-90">
+                        {(room.state.showdown.loser.cards || []).map((c, i) => (
+                          <PlayingCard key={i} card={c} size="sm" isFaceDown={false} />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {isHost && (
                 <button
                   type="button"
                   onClick={handleStartHand}
-                  className="mt-1 px-4 py-1.5 bg-teal-950 hover:bg-teal-900 text-amber-300 font-extrabold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center gap-1 mx-auto"
+                  className="mt-1 px-4 py-2 bg-teal-950 hover:bg-teal-900 text-amber-300 font-black text-xs rounded-xl shadow-md transition cursor-pointer flex items-center gap-1.5 mx-auto"
                 >
-                  <RotateCcw size={13} />
+                  <RotateCcw size={14} />
                   পরবর্তী রাউন্ড শুরু করুন
                 </button>
               )}
@@ -451,21 +572,29 @@ export default function TeenPattiGame({
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-bold text-amber-300">আপনার কার্ড:</span>
                 {myPlayer.cards && myPlayer.cards.length === 3 && (
-                  <span className="text-[10px] px-2 py-0.2 rounded-full font-semibold bg-black/40 border border-white/10 text-teal-200">
-                    {hasSeenCardsLocally
-                      ? evaluateHand(myPlayer.cards).name
-                      : 'ব্লাইন্ড (কার্ড দেখা হয়নি)'}
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-black/50 border border-white/10 text-teal-200 flex items-center gap-1">
+                    {isSeen ? (
+                      <>
+                        <span className="text-teal-400">👀 সিন:</span>
+                        <span>{evaluateHand(myPlayer.cards).name}</span>
+                      </>
+                    ) : (
+                      <span className="text-amber-300 animate-pulse flex items-center gap-1">
+                        <span>🙈 ব্লাইন্ড</span>
+                        <span className="text-[9px] opacity-80">(কার্ড দেখা হয়নি)</span>
+                      </span>
+                    )}
                   </span>
                 )}
               </div>
 
               <div className="flex items-center -space-x-3 sm:-space-x-4">
-                {(myPlayer.cards || ['??', '??', '??']).map((c, idx) => (
+                {(myPlayer.cards && myPlayer.cards.length === 3 ? myPlayer.cards : ['??', '??', '??']).map((c, idx) => (
                   <PlayingCard
                     key={idx}
                     card={c}
                     size="md"
-                    isFaceDown={!hasSeenCardsLocally && room.status !== 'round_ended'}
+                    isFaceDown={!isSeen && room.status !== 'round_ended'}
                   />
                 ))}
               </div>
@@ -494,11 +623,11 @@ export default function TeenPattiGame({
       {/* 3. Action Controls Bottom Bar */}
       <div className="shrink-0 bg-slate-900 border-t border-slate-800 p-2 sm:p-3 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          {!hasSeenCardsLocally && room.status === 'playing' && !myPlayer?.folded && (
+          {!isSeen && room.status === 'playing' && !myPlayer?.folded && (
             <button
               type="button"
               onClick={handleSeeCards}
-              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-1 cursor-pointer"
+              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-1 cursor-pointer animate-pulse"
             >
               <Eye size={14} />
               কার্ড দেখুন (Seen)
@@ -508,6 +637,13 @@ export default function TeenPattiGame({
           {myPlayer?.folded && (
             <span className="text-xs text-red-400 font-bold bg-red-950/60 px-2.5 py-1.5 rounded-xl border border-red-800/60">
               আপনি এই রাউন্ডে প্যাক করেছেন
+            </span>
+          )}
+
+          {isBlockedByBlindOpponent && (
+            <span className="text-[10px] sm:text-xs text-amber-300 bg-amber-950/60 px-2.5 py-1 rounded-xl border border-amber-600/40 flex items-center gap-1">
+              <Info size={12} className="shrink-0 text-amber-400" />
+              প্রতিপক্ষ ব্লাইন্ড থাকায় আপনি শো চাইতে পারবেন না (চাল বা প্যাক করুন)
             </span>
           )}
         </div>
@@ -529,9 +665,9 @@ export default function TeenPattiGame({
               className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-teal-950 font-black text-xs sm:text-sm rounded-xl shadow-lg transition cursor-pointer active:scale-95 flex items-center gap-1"
             >
               <Coins size={14} />
-              {hasSeenCardsLocally ? 'চাল' : 'ব্লাইন্ড'} (
+              {isSeen ? 'চাল' : 'ব্লাইন্ড'} (
               {toBnNum(
-                (room.state?.currentStake || DEFAULT_BOOT) * (hasSeenCardsLocally ? 2 : 1)
+                (room.state?.currentStake || DEFAULT_BOOT) * (isSeen ? 2 : 1)
               )}
               )
             </button>
@@ -552,7 +688,7 @@ export default function TeenPattiGame({
                 className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg transition cursor-pointer active:scale-95 flex items-center gap-1"
               >
                 <Sparkles size={14} />
-                শো (Show)
+                শো (Show) ({toBnNum((room.state?.currentStake || DEFAULT_BOOT) * (isSeen ? 2 : 1))})
               </button>
             )}
           </div>

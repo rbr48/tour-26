@@ -80,4 +80,15 @@ describe('Teen Patti Poker Evaluator', () => {
     const winnerData = getWinner(players);
     expect(winnerData.player.name).toBe('Player B');
   });
+
+  it('gives victory to defender when hands are tied in showdown', () => {
+    // Both players have identical High Card A-K-Q in different suits
+    const players = [
+      { email: 'challenger@test.com', name: 'Challenger', cards: ['AS', 'KH', 'QD'] },
+      { email: 'defender@test.com', name: 'Defender', cards: ['AD', 'KC', 'QS'] },
+    ];
+    const winnerData = getWinner(players, 'challenger@test.com');
+    expect(winnerData.player.name).toBe('Defender');
+  });
 });
+
