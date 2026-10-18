@@ -61,6 +61,7 @@ const FamilySafetyHub = lazy(() => import('./components/FamilySafetyHub'));
 const TourQuizModal = lazy(() => import('./components/TourQuizModal'));
 const AppUpdateModal = lazy(() => import('./components/AppUpdateModal'));
 
+export const APP_LOGO_URL = '/logo.png?v=5';
 const VALID_TABS = ['dashboard', 'itinerary', 'expenses', 'seats_rooms', 'feed', 'discussions', 'notices', 'checklist'];
 const CACHE_KEY = 'rangpur_coxs_tour_data';
 const ACTIVITY_KEY = 'tour_recent_activities';
@@ -1189,7 +1190,7 @@ export default function App() {
       <div className="min-h-screen bg-gradient-to-br from-teal-950 via-teal-900 to-slate-900 text-white flex flex-col items-center justify-center p-6 font-sans">
         <div className="relative mb-6">
           <img
-            src="/logo.png"
+            src={APP_LOGO_URL}
             alt="App Logo"
             className="w-24 h-24 rounded-3xl object-contain bg-white p-1 ring-4 ring-amber-400 shadow-2xl animate-pulse"
           />
@@ -1216,7 +1217,7 @@ export default function App() {
           <div className="bg-gradient-to-r from-teal-800 via-teal-700 to-cyan-700 text-white p-6 sm:p-8 text-center relative">
             <div className="mx-auto w-20 h-20 mb-3.5 relative">
               <img
-                src="/logo.png"
+                src={APP_LOGO_URL}
                 alt="Tour 2026 Logo"
                 className="w-20 h-20 rounded-2xl object-contain bg-white p-1 ring-4 ring-amber-400 shadow-lg mx-auto"
               />
@@ -1314,7 +1315,7 @@ export default function App() {
           <div className="flex items-center gap-3 pb-6 border-b border-teal-700">
             <div className="relative">
               <img
-                src="/logo.png"
+                src={APP_LOGO_URL}
                 alt="App Logo"
                 className="w-13 h-13 rounded-2xl object-contain bg-white p-0.5 ring-2 ring-amber-400 shadow-md"
               />
@@ -1490,7 +1491,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               <div className="flex items-center justify-between pb-3.5 border-b border-teal-800/90">
                 <div className="flex items-center gap-2.5">
                   <img
-                    src="/logo.png"
+                    src={APP_LOGO_URL}
                     alt="App Logo"
                     className="w-10 h-10 rounded-2xl object-contain bg-white p-0.5 ring-2 ring-amber-400 shadow-md"
                   />
@@ -1720,7 +1721,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               </button>
 
               <img
-                src="/logo.png"
+                src={APP_LOGO_URL}
                 alt="App Logo"
                 className="w-9 h-9 md:w-11 md:h-11 rounded-xl object-contain bg-white p-0.5 ring-2 ring-amber-400 shadow-md md:hidden"
               />

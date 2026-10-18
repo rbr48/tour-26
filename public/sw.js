@@ -11,6 +11,7 @@ const SHELL = [
   '/apple-touch-icon.png',
   '/icon-192.png',
   '/icon-512.png',
+  '/logo.png',
 ];
 
 self.addEventListener('install', (event) => {

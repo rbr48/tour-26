@@ -34,7 +34,18 @@ const CORS_HEADERS = {
 };
 
 // Files that must always be revalidated so deploys reach users immediately.
-const REVALIDATE_FILES = new Set(['index.html', 'sw.js', 'manifest.json']);
+const REVALIDATE_FILES = new Set([
+  'index.html',
+  'sw.js',
+  'manifest.json',
+  'logo.png',
+  'favicon.png',
+  'favicon.ico',
+  'apple-touch-icon.png',
+  'icon-192.png',
+  'icon-512.png',
+  'app-logo.jpeg',
+]);
 
 function cacheControlFor(relativePath) {
   if (relativePath.endsWith('.apk') || relativePath.endsWith('version.json')) return 'no-cache, no-store, must-revalidate';
