@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Heart, Send, MapPin, ChevronLeft, ChevronRight, Play, Pause, Volume2, VolumeX } from 'lucide-react';
+import { X, Heart, Send, MapPin, ChevronLeft, ChevronRight, Play, Pause, Volume2, VolumeX, Eye } from 'lucide-react';
 import { useBackHandler } from '../utils/backNavigation';
 import { triggerHaptic } from '../utils/haptics';
 import UserAvatar from './UserAvatar';
-import { photoSource, toBnNum } from './InstagramFeed';
+import { photoSource, toBnNum, getFilterCss } from './InstagramFeed';
 
 const STORY_DURATION = 5000; // 5 seconds per story slide
 
@@ -14,6 +14,7 @@ export default function StoryViewerModal({
   onClose,
   onLikePost,
   onAddComment,
+  onViewPost,
   currentUser,
   currentProfile,
 }) {
@@ -37,6 +38,13 @@ export default function StoryViewerModal({
   const currentMember = membersWithStories[memberIndex] || null;
   const currentStories = currentMember?.posts || [];
   const currentStory = currentStories[storyIndex] || null;
+
+  // Auto-record story view
+  useEffect(() => {
+    if (isOpen && currentStory?.id && onViewPost) {
+      onViewPost(currentStory.id);
+    }
+  }, [isOpen, currentStory?.id, onViewPost]);
 
   const handleNextStory = useCallback(() => {
     triggerHaptic('light');
@@ -102,9 +110,21 @@ export default function StoryViewerModal({
 
   const handleSendReply = (e) => {
     e.preventDefault();
-    if (!replyText.trim() || !onAddComment) return;
+    const trimmed = replyText.trim();
+    if (!trimmed || !onAddComment) return;
     triggerHaptic('success');
-    onAddComment(currentStory.id, replyText.trim());
+    const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
+    const profilePhoto = currentProfile?.customPhotoURL;
+    const commentObj = {
+      id: Date.now(),
+      user: authorName,
+      authorEmail: currentUser?.email || 'member@tour.family',
+      userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
+      text: trimmed,
+      time: 'এইমাত্র',
+      createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
+    };
+    onAddComment(currentStory.id, commentObj);
     setReplyText('');
     setIsSent(true);
     setTimeout(() => setIsSent(false), 2000);
@@ -178,6 +198,14 @@ export default function StoryViewerModal({
             </div>
 
             <div className="flex items-center gap-2">
+              <div
+                className="flex items-center gap-1 text-[11px] font-mono text-white/95 bg-black/45 px-2.5 py-1 rounded-full backdrop-blur-xs border border-white/15 shadow-xs"
+                title="মোট ভিউ"
+              >
+                <Eye size={12} className="text-teal-300" />
+                <span>{toBnNum(currentStory.views || 0)}</span>
+              </div>
+
               <button
                 type="button"
                 onClick={() => setIsPaused(!isPaused)}
@@ -213,6 +241,7 @@ export default function StoryViewerModal({
               src={mediaUrl}
               alt={currentStory.caption || 'Story'}
               className="w-full h-full object-cover select-none pointer-events-none"
+              style={{ filter: getFilterCss(currentStory.filter) }}
               loading="eager"
             />
           ) : (

@@ -51,7 +51,18 @@ export default function InstagramCommentSheet({
 
     triggerHaptic('success');
     setIsSubmitting(true);
-    onAddComment(post.id, trimmed);
+    const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
+    const profilePhoto = currentProfile?.customPhotoURL;
+    const newCommentObj = {
+      id: Date.now(),
+      user: authorName,
+      authorEmail: currentUser?.email || 'member@tour.family',
+      userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
+      text: trimmed,
+      time: 'এইমাত্র',
+      createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
+    };
+    onAddComment(post.id, newCommentObj);
     setCommentText('');
     setIsSubmitting(false);
 
@@ -124,29 +135,34 @@ export default function InstagramCommentSheet({
             </div>
           ) : (
             comments.map((c, idx) => {
-              const commentId = c.id !== undefined && c.id !== null ? c.id : idx;
+              const commentId = (c && typeof c === 'object' && c.id !== undefined && c.id !== null) ? c.id : idx;
+              const userName = typeof c === 'string' ? 'পরিবারের সদস্য' : (c.user || c.author || 'পরিবারের সদস্য');
+              const commentText = typeof c === 'string' ? c : (c.text || c.comment || c.message || c.body || '');
+              const userAvatar = typeof c === 'object' ? c.userPhoto : null;
+              const timeDisplay = (typeof c === 'object' && (c.time || c.createdAt)) ? (c.time || c.createdAt) : 'এইমাত্র';
+              const reactions = (typeof c === 'object' && c.reactions) ? c.reactions : {};
 
               return (
-                <div key={c.id || idx} className="flex items-start gap-3 group">
+                <div key={commentId} className="flex items-start gap-3 group">
                   <UserAvatar
-                    photoUrl={c.userPhoto}
-                    name={c.user}
+                    photoUrl={userAvatar}
+                    name={userName}
                     size="w-8 h-8"
                     ring="ring-1 ring-slate-200"
                   />
                   <div className="flex-1 space-y-1">
                     <div className="text-xs text-slate-800 leading-relaxed">
-                      <span className="font-bold text-slate-900 mr-1.5">{c.user}</span>
-                      <span>{c.text}</span>
+                      <span className="font-bold text-slate-900 mr-1.5">{userName}</span>
+                      <span>{commentText}</span>
                     </div>
 
                     <div className="flex items-center gap-3 text-[10px] text-slate-400">
-                      <span>{c.time || 'এইমাত্র'}</span>
+                      <span>{timeDisplay}</span>
 
                       {/* Emoji Reactions for this comment */}
                       <div className="flex items-center gap-1">
                         {COMMENT_REACTIONS.map((emoji) => {
-                          const voters = Array.isArray(c.reactions?.[emoji]) ? c.reactions[emoji] : [];
+                          const voters = Array.isArray(reactions[emoji]) ? reactions[emoji] : [];
                           const count = voters.length;
                           const hasVoted = voters.some((v) => String(v).toLowerCase() === myIdentifier);
 

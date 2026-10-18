@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toBnNum, isSafeMediaUrl, getPostImages } from './InstagramFeed';
+import { toBnNum, isSafeMediaUrl, getPostImages, IG_FILTERS, getFilterCss } from './InstagramFeed';
 
 describe('InstagramFeed utilities & helpers', () => {
   it('converts western numerals to Bengali numerals accurately', () => {
@@ -37,5 +37,26 @@ describe('InstagramFeed utilities & helpers', () => {
 
     const emptyPost = { id: 3 };
     expect(getPostImages(emptyPost)).toEqual([]);
+  });
+
+  it('provides 8 authentic Instagram preset CSS filters', () => {
+    expect(IG_FILTERS.length).toBe(8);
+    const ids = IG_FILTERS.map((f) => f.id);
+    expect(ids).toContain('normal');
+    expect(ids).toContain('clarendon');
+    expect(ids).toContain('juno');
+    expect(ids).toContain('valencia');
+    expect(ids).toContain('lark');
+    expect(ids).toContain('sunset');
+    expect(ids).toContain('moon');
+    expect(ids).toContain('vintage');
+  });
+
+  it('retrieves filter CSS accurately and gracefully falls back', () => {
+    expect(getFilterCss('normal')).toBe('none');
+    expect(getFilterCss('clarendon')).toBe('contrast(1.2) saturate(1.25)');
+    expect(getFilterCss('moon')).toContain('grayscale(1)');
+    expect(getFilterCss('unknown_filter')).toBe('none');
+    expect(getFilterCss(null)).toBe('none');
   });
 });

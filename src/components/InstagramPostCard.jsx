@@ -19,11 +19,12 @@ import {
   Check,
   Loader2,
   X,
+  Eye,
 } from 'lucide-react';
 import { triggerHaptic } from '../utils/haptics';
 import { formatDuration } from '../utils/videoHelper';
 import UserAvatar from './UserAvatar';
-import { toBnNum, getPostImages, photoSource } from './InstagramFeed';
+import { toBnNum, getPostImages, photoSource, getFilterCss } from './InstagramFeed';
 
 export default function InstagramPostCard({
   post,
@@ -37,6 +38,7 @@ export default function InstagramPostCard({
   onDeletePost,
   onOpenReel,
   onOpenFullscreenImage,
+  onViewPost,
   manualDriveUploadId,
   hasStory = false,
   onOpenStory,
@@ -56,6 +58,25 @@ export default function InstagramPostCard({
 
   const lastTapRef = useRef(0);
   const carouselRef = useRef(null);
+  const cardRef = useRef(null);
+
+  // Auto-record impression view when post is scrolled into view (authentic Instagram behavior)
+  useEffect(() => {
+    if (!onViewPost || !cardRef.current || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.45) {
+            onViewPost(post.id);
+            observer.disconnect();
+          }
+        });
+      },
+      { threshold: 0.45 }
+    );
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, [post.id, onViewPost]);
 
   const postImages = getPostImages(post);
   const totalImages = postImages.length;
@@ -91,12 +112,13 @@ export default function InstagramPostCard({
         const saved = JSON.parse(localStorage.getItem('tour_saved_posts') || '[]');
         const updated = next ? [...saved, post.id] : saved.filter((id) => id !== post.id);
         localStorage.setItem('tour_saved_posts', JSON.stringify(updated));
+        window.dispatchEvent(new Event('tour_saved_updated'));
       } catch {}
       return next;
     });
   };
 
-  // Double Tap to Like
+  // Double Tap to Like & Single Tap to View Media
   const handleMediaTouchOrClick = (e) => {
     const now = Date.now();
     const DOUBLE_TAP_DELAY = 300;
@@ -110,7 +132,8 @@ export default function InstagramPostCard({
         onLikePost(post.id, currentUser?.displayName || currentProfile?.displayName || 'User');
       }
     } else {
-      // Single tap
+      // Single tap: record view and open media
+      onViewPost?.(post.id);
       if (postIsReel && onOpenReel) {
         onOpenReel(post);
       } else if (!postIsReel && onOpenFullscreenImage) {
@@ -145,6 +168,7 @@ export default function InstagramPostCard({
 
   return (
     <article
+      ref={cardRef}
       data-post-id={post.id}
       className="bg-white border-b border-slate-200/90 sm:border sm:rounded-2xl sm:shadow-2xs overflow-hidden max-w-[470px] mx-auto select-none"
     >
@@ -216,6 +240,7 @@ export default function InstagramPostCard({
                 src={src}
                 alt={post.caption || 'Tour photo'}
                 className="w-full h-full object-cover select-none pointer-events-none"
+                style={{ filter: getFilterCss(post.filter) }}
                 loading={idx === 0 ? 'eager' : 'lazy'}
               />
             </div>
@@ -382,11 +407,35 @@ export default function InstagramPostCard({
       </div>
 
       {/* 4. Engagement & Caption Details */}
-      <div className="px-3.5 pb-3 space-y-1 text-xs">
-        {/* Likes Count */}
-        {likeCount > 0 && (
-          <p className="font-extrabold text-[13px] text-slate-900">
-            {toBnNum(likeCount)}টি লাইক
+      <div className="px-3.5 pb-3 space-y-1.5 text-xs">
+        {/* Likes and Views Count Row */}
+        <div className="flex items-center justify-between pt-0.5">
+          <div className="flex items-center gap-2">
+            {likeCount > 0 ? (
+              <p className="font-extrabold text-[13px] text-slate-900">
+                {toBnNum(likeCount)}টি লাইক
+              </p>
+            ) : (
+              <p className="text-slate-400 font-medium text-[12px]">
+                প্রথম লাইক দিন
+              </p>
+            )}
+          </div>
+
+          {/* View Count Badge */}
+          <div
+            className="flex items-center gap-1.5 text-slate-500 text-[11px] font-semibold bg-slate-50 hover:bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200/80 transition-colors select-none"
+            title="মোট ভিউ সংখ্যা"
+          >
+            <Eye size={13} className="text-teal-600" />
+            <span className="font-mono">{toBnNum(post.views || 0)} ভিউ</span>
+          </div>
+        </div>
+
+        {/* If Reel: Display authentic Instagram "দেখা হয়েছে X বার" */}
+        {postIsReel && (
+          <p className="text-slate-600 font-medium text-[11px]">
+            দেখা হয়েছে <span className="font-bold text-slate-900">{toBnNum(post.views || 0)}</span> বার
           </p>
         )}
 
@@ -408,6 +457,26 @@ export default function InstagramPostCard({
                 আরও
               </button>
             )}
+          </div>
+        )}
+
+        {/* Recent Comments Preview (Authentic Instagram Style) */}
+        {commentCount > 0 && (
+          <div className="space-y-0.5 pt-0.5">
+            {(Array.isArray(post.comments) ? post.comments : []).slice(-2).map((c, idx) => {
+              const userName = typeof c === 'string' ? '' : (c.user || c.author || '');
+              const commentText = typeof c === 'string' ? c : (c.text || c.comment || c.message || '');
+              return (
+                <div
+                  key={idx}
+                  onClick={() => onOpenComments?.(post)}
+                  className="text-[12px] text-slate-800 leading-snug cursor-pointer line-clamp-2"
+                >
+                  {userName && <span className="font-bold mr-1.5">{userName}</span>}
+                  <span className="text-slate-700">{commentText}</span>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -487,6 +556,17 @@ export default function InstagramPostCard({
               <Share2 size={15} />
               <span>ছবি শেয়ার করুন</span>
             </button>
+
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(`📸 *কক্সবাজার ট্যুর ২০২৬*\n${post.author}: "${post.caption || 'পারিবারিক আনন্দঘন মুহূর্ত'}"\n📍 ${post.location || 'কক্সবাজার'}\n\n👉 দেখুন: ${window.location.origin}/#feed`)}`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => setShowOptionsMenu(false)}
+              className="w-full py-3.5 text-emerald-800 hover:bg-emerald-50 transition cursor-pointer flex items-center justify-center gap-2"
+            >
+              <MessageCircle size={15} className="text-emerald-600" />
+              <span>হোয়াটসঅ্যাপে শেয়ার করুন</span>
+            </a>
 
             <a
               href={currentMediaSrc}

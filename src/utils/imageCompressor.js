@@ -2,7 +2,7 @@
 // Downscales high-resolution camera/mobile photos to lightweight web-optimized JPEG data URLs
 // Prevents Firestore 1MB document limit exceed errors and speeds up app performance
 
-export const compressImage = (dataUrl, maxWidth = 900, maxHeight = 900, quality = 0.7) => {
+export const compressImage = (dataUrl, maxWidth = 1440, maxHeight = 1440, quality = 0.82) => {
   return new Promise((resolve) => {
     if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
       return resolve(dataUrl);
@@ -26,15 +26,21 @@ export const compressImage = (dataUrl, maxWidth = 900, maxHeight = 900, quality 
 
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
+        canvas.width = Math.max(1, width);
+        canvas.height = Math.max(1, height);
+        const ctx = canvas.getContext('2d', { alpha: false });
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
 
-        const compressed = canvas.toDataURL('image/jpeg', quality);
-        resolve(compressed);
+          const compressed = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressed);
+        } else {
+          resolve(dataUrl);
+        }
       } catch (err) {
         console.warn('Canvas compression error, using original:', err);
         resolve(dataUrl);
@@ -50,7 +56,7 @@ export const compressImage = (dataUrl, maxWidth = 900, maxHeight = 900, quality 
 };
 
 // Compress a File object directly from <input type="file">
-export const compressImageFile = (file, maxWidth = 900, maxHeight = 900, quality = 0.7) => {
+export const compressImageFile = (file, maxWidth = 1440, maxHeight = 1440, quality = 0.82) => {
   return new Promise((resolve, reject) => {
     const isImage = Boolean(file) && (
       !file.name ||

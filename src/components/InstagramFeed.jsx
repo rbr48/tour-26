@@ -27,6 +27,9 @@ import {
   Clock,
   Edit3,
   Eye,
+  Bookmark,
+  Grid3X3,
+  LayoutList,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { useBackHandler } from '../utils/backNavigation';
@@ -56,6 +59,23 @@ import {
 } from '../services/photos';
 import { newId } from '../services/tourStore';
 import { connectGoogleDrive } from '../firebase';
+
+// Instagram Preset CSS Filters
+export const IG_FILTERS = [
+  { id: 'normal', name: 'Normal', css: 'none', label: 'নরমাল' },
+  { id: 'clarendon', name: 'Clarendon', css: 'contrast(1.2) saturate(1.25)', label: 'ক্ল্যারেন্ডন' },
+  { id: 'juno', name: 'Juno', css: 'contrast(1.15) saturate(1.3) brightness(1.04)', label: 'জুনো' },
+  { id: 'valencia', name: 'Valencia', css: 'contrast(1.08) brightness(1.08) sepia(0.18)', label: 'ভ্যালেন্সিয়া' },
+  { id: 'lark', name: 'Lark', css: 'contrast(0.95) brightness(1.12) saturate(1.15)', label: 'লার্ক' },
+  { id: 'sunset', name: 'Sunset', css: 'sepia(0.22) saturate(1.35) contrast(1.12)', label: 'সূর্যাস্ত' },
+  { id: 'moon', name: 'Moon (B&W)', css: 'grayscale(1) contrast(1.15) brightness(1.05)', label: 'মুন' },
+  { id: 'vintage', name: 'Vintage', css: 'sepia(0.35) contrast(0.95) brightness(0.95)', label: 'ভিন্টেজ' },
+];
+
+export const getFilterCss = (filterId) => {
+  const match = IG_FILTERS.find((f) => f.id === filterId);
+  return match ? match.css : 'none';
+};
 
 // Bengali numeral formatter
 export const toBnNum = (n) => String(n).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[d]);
@@ -97,7 +117,7 @@ export const photoSource = (post) => {
   } else if (post.imageUrl && typeof post.imageUrl === 'string') {
     raw = post.imageUrl;
   } else if (post.driveFileId) {
-    return `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1000`;
+    return `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1600`;
   } else {
     raw = post.image || post.thumb || null;
   }
@@ -216,6 +236,45 @@ export default function InstagramFeed({
   // Instagram Native Modals: Comments Bottom Sheet & Story Viewer
   const [activeCommentPost, setActiveCommentPost] = useState(null);
   const [storyViewer, setStoryViewer] = useState({ isOpen: false, memberIndex: 0 });
+
+  // Instagram Filter Selection for New Posts
+  const [selectedFilter, setSelectedFilter] = useState('normal');
+
+  // Photo Feed View Mode: 'feed' (vertical 4:5 cards) vs 'grid' (3x3 explore mosaic)
+  const [photoViewMode, setPhotoViewMode] = useState(() => {
+    try {
+      return localStorage.getItem('tour_photo_view_mode') || 'feed';
+    } catch {
+      return 'feed';
+    }
+  });
+
+  // Saved / Bookmarked Posts
+  const [savedPostIds, setSavedPostIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('tour_saved_posts') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    const handleSavedUpdated = () => {
+      try {
+        setSavedPostIds(JSON.parse(localStorage.getItem('tour_saved_posts') || '[]'));
+      } catch {}
+    };
+    window.addEventListener('tour_saved_updated', handleSavedUpdated);
+    window.addEventListener('storage', handleSavedUpdated);
+    return () => {
+      window.removeEventListener('tour_saved_updated', handleSavedUpdated);
+      window.removeEventListener('storage', handleSavedUpdated);
+    };
+  }, []);
+
+  const savedPosts = React.useMemo(() => {
+    return posts.filter((p) => savedPostIds.includes(p.id));
+  }, [posts, savedPostIds]);
 
   // Group posts by author to construct genuine Instagram Stories
   const membersWithStories = React.useMemo(() => {
@@ -443,7 +502,7 @@ export default function InstagramFeed({
             return null;
           }
           try {
-            return await compressImageFile(file, 900, 900, 0.7);
+            return await compressImageFile(file, 1600, 1600, 0.85);
           } catch (err) {
             console.warn('Image compression fallback to direct FileReader:', err);
             return new Promise((resolve) => {
@@ -644,6 +703,7 @@ export default function InstagramFeed({
         location: finalLocation,
         likes: [],
         comments: [],
+        views: 0,
         videoUrl: (trimmedReelData.videoUrl && !trimmedReelData.videoUrl.startsWith('blob:')) ? trimmedReelData.videoUrl : null,
         startTime: trimmedReelData.startTime || 0,
         endTime: trimmedReelData.endTime || trimmedReelData.duration || 0,
@@ -776,6 +836,8 @@ export default function InstagramFeed({
       location: finalLocation,
       likes: [],
       comments: [],
+      views: 0,
+      filter: selectedFilter || 'normal',
       images: thumbnailImages,
       thumb: thumbnailImages[0] || null,
       image: thumbnailImages[0] || null,
@@ -790,6 +852,7 @@ export default function InstagramFeed({
     setCaption('');
     setImageInput('');
     setSelectedImages([]);
+    setSelectedFilter('normal');
     setIsCustomLocMode(false);
     setCustomLocInput('');
     try {
@@ -1037,41 +1100,60 @@ export default function InstagramFeed({
         );
       })()}
 
-      {/* Sub-tab Switcher: Photos Feed vs Reels Shorts */}
-      <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+      {/* Sub-tab Switcher: Photos Feed vs Reels Shorts vs Saved Collection */}
+      <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 text-center">
         <button
           type="button"
           onClick={() => {
+            triggerHaptic('light');
             setFeedSubTab('photos');
             try { localStorage.setItem('tour_feed_subtab', 'photos'); } catch {}
           }}
-          className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer ${
+          className={`py-2 px-1.5 sm:px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
             feedSubTab === 'photos'
               ? 'bg-white text-teal-950 shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Camera size={15} className={feedSubTab === 'photos' ? 'text-pink-600' : 'text-slate-400'} />
-          <span>ফটো ফিড ({toBnNum(filteredPhotoPosts.length)})</span>
+          <Camera size={14} className={feedSubTab === 'photos' ? 'text-pink-600' : 'text-slate-400'} />
+          <span>ফটো ({toBnNum(filteredPhotoPosts.length)})</span>
         </button>
 
         <button
           type="button"
           onClick={() => {
+            triggerHaptic('light');
             setFeedSubTab('reels');
             try { localStorage.setItem('tour_feed_subtab', 'reels'); } catch {}
           }}
-          className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer ${
+          className={`py-2 px-1.5 sm:px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
             feedSubTab === 'reels'
               ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Film size={15} />
-          <span>ইনস্টা রিলস ({toBnNum(filteredReelPosts.length)})</span>
+          <Film size={14} />
+          <span>রিলস ({toBnNum(filteredReelPosts.length)})</span>
           {filteredReelPosts.length > 0 && (
-            <span className="w-2 h-2 rounded-full bg-amber-300 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-pulse" />
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic('light');
+            setFeedSubTab('saved');
+            try { localStorage.setItem('tour_feed_subtab', 'saved'); } catch {}
+          }}
+          className={`py-2 px-1.5 sm:px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+            feedSubTab === 'saved'
+              ? 'bg-white text-amber-950 shadow-xs ring-1 ring-amber-300'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Bookmark size={14} className={feedSubTab === 'saved' ? 'fill-amber-600 text-amber-600' : 'text-slate-400'} />
+          <span>সংরক্ষিত ({toBnNum(savedPosts.length)})</span>
         </button>
       </div>
 
@@ -1175,6 +1257,195 @@ export default function InstagramFeed({
             </div>
           )}
         </div>
+      ) : feedSubTab === 'saved' ? (
+        /* SAVED POSTS COLLECTION TAB */
+        <div className="space-y-4">
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <Bookmark size={20} className="fill-amber-600 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-slate-800">সংরক্ষিত পোস্টসমূহ</h3>
+                <p className="text-[11px] text-slate-500">
+                  {toBnNum(savedPosts.length)}টি প্রিয় ছবি ও মুহূর্ত সেভ করা আছে
+                </p>
+              </div>
+            </div>
+
+            {savedPosts.length > 0 && (
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setPhotoViewMode('feed');
+                    try { localStorage.setItem('tour_photo_view_mode', 'feed'); } catch {}
+                  }}
+                  className={`p-1.5 rounded-lg transition cursor-pointer ${
+                    photoViewMode === 'feed'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                  title="ফিড ভিউ"
+                  aria-label="ফিড ভিউ"
+                >
+                  <LayoutList size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setPhotoViewMode('grid');
+                    try { localStorage.setItem('tour_photo_view_mode', 'grid'); } catch {}
+                  }}
+                  className={`p-1.5 rounded-lg transition cursor-pointer ${
+                    photoViewMode === 'grid'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                  title="গ্রিড ভিউ"
+                  aria-label="গ্রিড ভিউ"
+                >
+                  <Grid3X3 size={16} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {savedPosts.length > 0 ? (
+            photoViewMode === 'grid' ? (
+              /* 3x3 Grid Mode for Saved Posts */
+              <div className="grid grid-cols-3 gap-1 sm:gap-2">
+                {savedPosts.map((post) => {
+                  const mediaSrc = photoSource(post);
+                  const isCarousel = (post.images || []).length > 1;
+                  return (
+                    <div
+                      key={post.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        recordPostView(post.id);
+                        if (post.type === 'reel') {
+                          const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
+                          setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                        } else {
+                          const imgs = (post.images && post.images.length > 0) ? post.images : [mediaSrc];
+                          setPreviewMedia({ images: imgs, index: 0, post });
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          recordPostView(post.id);
+                          if (post.type === 'reel') {
+                            const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
+                            setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                          } else {
+                            const imgs = (post.images && post.images.length > 0) ? post.images : [mediaSrc];
+                            setPreviewMedia({ images: imgs, index: 0, post });
+                          }
+                        }
+                      }}
+                      className="relative aspect-square bg-slate-900 rounded-xl overflow-hidden cursor-pointer group shadow-2xs select-none"
+                    >
+                      <img
+                        src={mediaSrc}
+                        alt={post.caption || 'Saved post'}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        style={{ filter: getFilterCss(post.filter) }}
+                        loading="lazy"
+                      />
+                      {isCarousel && (
+                        <span className="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-xs text-white p-1 rounded-md text-[10px]">
+                          <Images size={12} />
+                        </span>
+                      )}
+                      {post.type === 'reel' && (
+                        <span className="absolute top-1.5 right-1.5 bg-pink-600/80 backdrop-blur-xs text-white p-1 rounded-md text-[10px]">
+                          <Film size={12} />
+                        </span>
+                      )}
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-3 text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <span className="flex items-center gap-1 drop-shadow-md">
+                          <Heart size={14} className="fill-white" />
+                          {toBnNum((post.likes || []).length)}
+                        </span>
+                        <span className="flex items-center gap-1 drop-shadow-md">
+                          <Eye size={14} />
+                          {toBnNum(post.views || 0)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Feed Mode for Saved Posts */
+              <div className="space-y-4 sm:space-y-6">
+                {savedPosts.map((post) => {
+                  const postHasStory = membersWithStories.some((m) => m.memberName === post.author);
+                  return (
+                    <InstagramPostCard
+                      key={post.id}
+                      post={post}
+                      currentUser={currentUser}
+                      currentProfile={currentProfile}
+                      onLikePost={onLikePost}
+                      onViewPost={recordPostView}
+                      onOpenComments={(p) => {
+                        triggerHaptic('light');
+                        setActiveCommentPost(p);
+                      }}
+                      onShareMedia={handleShareMedia}
+                      onManualDriveBackup={handleManualDriveBackup}
+                      onStartEditPost={handleStartEditPost}
+                      onDeletePost={onDeletePost}
+                      onOpenReel={(p) => {
+                        const rIdx = allReelPosts.findIndex((r) => r.id === p.id);
+                        setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                      }}
+                      onOpenFullscreenImage={(media) => {
+                        if (typeof media === 'string') {
+                          const imgs = (post.images && post.images.length > 0) ? post.images : [media];
+                          setPreviewMedia({ images: imgs, index: 0, post });
+                        } else {
+                          setPreviewMedia({ ...media, post: media.post || post });
+                        }
+                      }}
+                      manualDriveUploadId={manualDriveUploadId}
+                      hasStory={postHasStory}
+                      onOpenStory={(author) => {
+                        const mIdx = membersWithStories.findIndex((m) => m.memberName === author);
+                        if (mIdx >= 0) {
+                          setStoryViewer({ isOpen: true, memberIndex: mIdx });
+                        }
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            )
+          ) : (
+            <div className="p-8 bg-white rounded-3xl border border-slate-200 text-center space-y-3">
+              <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto text-2xl">
+                <Bookmark size={26} className="fill-amber-600/20 text-amber-600" />
+              </div>
+              <h4 className="font-bold text-slate-800 text-sm">কোনো সংরক্ষিত পোস্ট নেই!</h4>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                ফিডের যেকোনো ছবির নিচে বা রিলসের নিচে থাকা বুকমার্ক আইকনে ট্যাপ করে আপনার পছন্দের পোস্টগুলো এখানে সেভ করে রাখতে পারেন।
+              </p>
+              <button
+                type="button"
+                onClick={() => setFeedSubTab('photos')}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+              >
+                📸 ফিড ব্রাউজ করুন
+              </button>
+            </div>
+          )}
+        </div>
       ) : (
         /* REGULAR PHOTO FEED MODE */
         <>
@@ -1268,60 +1539,191 @@ export default function InstagramFeed({
             })}
           </div>
 
-          {/* Instagram-style Posts Feed */}
-          <div className="space-y-4 sm:space-y-6">
-            {filteredPosts.length > 0 ? (
-              filteredPosts.map((post) => {
-                const postHasStory = membersWithStories.some((m) => m.memberName === post.author);
-                return (
-                  <InstagramPostCard
-                    key={post.id}
-                    post={post}
-                    currentUser={currentUser}
-                    currentProfile={currentProfile}
-                    onLikePost={onLikePost}
-                    onOpenComments={(p) => {
-                      triggerHaptic('light');
-                      setActiveCommentPost(p);
-                    }}
-                    onShareMedia={handleShareMedia}
-                    onManualDriveBackup={handleManualDriveBackup}
-                    onStartEditPost={handleStartEditPost}
-                    onDeletePost={onDeletePost}
-                    onOpenReel={(p) => {
-                      const rIdx = allReelPosts.findIndex((r) => r.id === p.id);
-                      setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
-                    }}
-                    onOpenFullscreenImage={(media) => setPreviewMedia(media)}
-                    manualDriveUploadId={manualDriveUploadId}
-                    hasStory={postHasStory}
-                    onOpenStory={(author) => {
-                      const mIdx = membersWithStories.findIndex((m) => m.memberName === author);
-                      if (mIdx >= 0) {
-                        setStoryViewer({ isOpen: true, memberIndex: mIdx });
-                      }
-                    }}
-                  />
-                );
-              })
-        ) : (
-          <div className="p-8 bg-white rounded-3xl border border-slate-200 text-center space-y-3">
-            <div className="w-12 h-12 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center mx-auto text-xl">
-              📸
+          {/* View Mode & Filter Subheader Toolbar */}
+          <div className="flex items-center justify-between px-1 py-1">
+            <span className="text-xs font-semibold text-slate-500">
+              {activeStoryFilter !== 'all' ? (
+                <span>
+                  <strong className="text-slate-800">{activeStoryFilter}</strong> এর ছবি ({toBnNum(filteredPosts.length)}টি)
+                </span>
+              ) : (
+                <span>সকল পোস্ট ({toBnNum(filteredPosts.length)}টি)</span>
+              )}
+            </span>
+
+            {/* View Mode Toggle: Feed (Cards) vs Grid (3x3 Explore) */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setPhotoViewMode('feed');
+                  try { localStorage.setItem('tour_photo_view_mode', 'feed'); } catch {}
+                }}
+                className={`p-1.5 rounded-lg transition cursor-pointer ${
+                  photoViewMode === 'feed'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-700'
+                }`}
+                title="ফিড ভিউ"
+                aria-label="ফিড ভিউ"
+              >
+                <LayoutList size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setPhotoViewMode('grid');
+                  try { localStorage.setItem('tour_photo_view_mode', 'grid'); } catch {}
+                }}
+                className={`p-1.5 rounded-lg transition cursor-pointer ${
+                  photoViewMode === 'grid'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-700'
+                }`}
+                title="গ্রিড ভিউ"
+                aria-label="গ্রিড ভিউ"
+              >
+                <Grid3X3 size={15} />
+              </button>
             </div>
-            <h4 className="font-bold text-slate-800 text-sm">এখনো কোনো ছবি শেয়ার করা হয়নি!</h4>
-            <p className="text-xs text-slate-500 max-w-xs mx-auto">
-              কক্সবাজার ভ্রমণের সুন্দর সুন্দর ছবি ও সেলফি আপলোড করে পরিবারের সবার সাথে শেয়ার করুন।
-            </p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 bg-teal-800 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
-            >
-              প্রথম ছবিটি পোস্ট করুন
-            </button>
           </div>
-        )}
-      </div>
+
+          {/* Instagram-style Posts Feed / 3x3 Grid */}
+          <div>
+            {filteredPosts.length > 0 ? (
+              photoViewMode === 'grid' ? (
+                /* 3x3 Explore Grid */
+                <div className="grid grid-cols-3 gap-1 sm:gap-2">
+                  {filteredPosts.map((post) => {
+                    const mediaSrc = photoSource(post);
+                    const isCarousel = (post.images || []).length > 1;
+                    return (
+                      <div
+                        key={post.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          recordPostView(post.id);
+                          if (post.type === 'reel') {
+                            const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
+                            setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                          } else {
+                            const imgs = (post.images && post.images.length > 0) ? post.images : [mediaSrc];
+                            setPreviewMedia({ images: imgs, index: 0, post });
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            recordPostView(post.id);
+                            if (post.type === 'reel') {
+                              const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
+                              setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                            } else {
+                              const imgs = (post.images && post.images.length > 0) ? post.images : [mediaSrc];
+                              setPreviewMedia({ images: imgs, index: 0, post });
+                            }
+                          }
+                        }}
+                        className="relative aspect-square bg-slate-900 rounded-xl overflow-hidden cursor-pointer group shadow-2xs select-none"
+                      >
+                        <img
+                          src={mediaSrc}
+                          alt={post.caption || 'Tour photo'}
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                          style={{ filter: getFilterCss(post.filter) }}
+                          loading="lazy"
+                        />
+                        {isCarousel && (
+                          <span className="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-xs text-white p-1 rounded-md text-[10px]">
+                            <Images size={12} />
+                          </span>
+                        )}
+                        {post.type === 'reel' && (
+                          <span className="absolute top-1.5 right-1.5 bg-pink-600/80 backdrop-blur-xs text-white p-1 rounded-md text-[10px]">
+                            <Film size={12} />
+                          </span>
+                        )}
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-3 text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          <span className="flex items-center gap-1 drop-shadow-md">
+                            <Heart size={14} className="fill-white" />
+                            {toBnNum((post.likes || []).length)}
+                          </span>
+                          <span className="flex items-center gap-1 drop-shadow-md">
+                            <Eye size={14} />
+                            {toBnNum(post.views || 0)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                /* Full Card Feed */
+                <div className="space-y-4 sm:space-y-6">
+                  {filteredPosts.map((post) => {
+                    const postHasStory = membersWithStories.some((m) => m.memberName === post.author);
+                    return (
+                      <InstagramPostCard
+                        key={post.id}
+                        post={post}
+                        currentUser={currentUser}
+                        currentProfile={currentProfile}
+                        onLikePost={onLikePost}
+                        onViewPost={recordPostView}
+                        onOpenComments={(p) => {
+                          triggerHaptic('light');
+                          setActiveCommentPost(p);
+                        }}
+                        onShareMedia={handleShareMedia}
+                        onManualDriveBackup={handleManualDriveBackup}
+                        onStartEditPost={handleStartEditPost}
+                        onDeletePost={onDeletePost}
+                        onOpenReel={(p) => {
+                          const rIdx = allReelPosts.findIndex((r) => r.id === p.id);
+                          setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                        }}
+                        onOpenFullscreenImage={(media) => {
+                          if (typeof media === 'string') {
+                            const imgs = (post.images && post.images.length > 0) ? post.images : [media];
+                            setPreviewMedia({ images: imgs, index: 0, post });
+                          } else {
+                            setPreviewMedia({ ...media, post: media.post || post });
+                          }
+                        }}
+                        manualDriveUploadId={manualDriveUploadId}
+                        hasStory={postHasStory}
+                        onOpenStory={(author) => {
+                          const mIdx = membersWithStories.findIndex((m) => m.memberName === author);
+                          if (mIdx >= 0) {
+                            setStoryViewer({ isOpen: true, memberIndex: mIdx });
+                          }
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              )
+            ) : (
+              <div className="p-8 bg-white rounded-3xl border border-slate-200 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center mx-auto text-xl">
+                  📸
+                </div>
+                <h4 className="font-bold text-slate-800 text-sm">এখনো কোনো ছবি শেয়ার করা হয়নি!</h4>
+                <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                  কক্সবাজার ভ্রমণের সুন্দর সুন্দর ছবি ও সেলফি আপলোড করে পরিবারের সবার সাথে শেয়ার করুন।
+                </p>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="px-4 py-2 bg-teal-800 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                >
+                  প্রথম ছবিটি পোস্ট করুন
+                </button>
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -1566,6 +1968,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                               src={img}
                               alt={`Selected ${idx + 1}`}
                               className="w-full h-full object-cover"
+                              style={{ filter: getFilterCss(selectedFilter) }}
                             />
                             {/* Sequence number badge */}
                             <span className="absolute top-1 left-1 bg-black/75 backdrop-blur-xs text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
@@ -1603,6 +2006,54 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                             />
                           </label>
                         )}
+                      </div>
+
+                      {/* Instagram Presets Filter Ribbon */}
+                      <div className="space-y-1.5 pt-2 border-t border-slate-200">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                            <Sparkles size={12} className="text-pink-600" />
+                            ইনস্টাগ্রাম ফিল্টার প্রিসেট
+                          </span>
+                          <span className="text-[10px] text-pink-600 font-bold">
+                            {IG_FILTERS.find((f) => f.id === selectedFilter)?.nameBn || 'স্বাভাবিক'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 scrollbar-none select-none">
+                          {IG_FILTERS.map((f) => {
+                            const isSelected = selectedFilter === f.id;
+                            return (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => {
+                                  triggerHaptic('light');
+                                  setSelectedFilter(f.id);
+                                }}
+                                className={`flex flex-col items-center gap-1 shrink-0 p-1 rounded-xl transition cursor-pointer ${
+                                  isSelected ? 'bg-pink-50 ring-2 ring-pink-500 shadow-2xs' : 'hover:bg-slate-100'
+                                }`}
+                              >
+                                <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-300 relative bg-slate-900">
+                                  <img
+                                    src={selectedImages[0]}
+                                    alt={f.name}
+                                    className="w-full h-full object-cover"
+                                    style={{ filter: f.css }}
+                                  />
+                                  {isSelected && (
+                                    <div className="absolute inset-0 bg-pink-600/30 flex items-center justify-center">
+                                      <Check size={14} className="text-white drop-shadow-md stroke-[3]" />
+                                    </div>
+                                  )}
+                                </div>
+                                <span className={`text-[10px] font-medium leading-tight ${isSelected ? 'text-pink-600 font-bold' : 'text-slate-600'}`}>
+                                  {f.name}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1955,6 +2406,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                     src={currentImg}
                     alt="Fullscreen Preview"
                     className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-2xl select-none"
+                    style={{ filter: getFilterCss(previewMedia.post?.filter) }}
                   />
 
                   {/* Prev Button in Lightbox */}
@@ -2099,7 +2551,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       {/* INSTAGRAM SLIDING BOTTOM SHEET FOR COMMENTS */}
       <InstagramCommentSheet
         isOpen={Boolean(activeCommentPost)}
-        post={posts.find((p) => p.id === activeCommentPost?.id) || activeCommentPost}
+        post={posts.find((p) => String(p.id) === String(activeCommentPost?.id)) || activeCommentPost}
         currentUser={currentUser}
         currentProfile={currentProfile}
         onClose={() => setActiveCommentPost(null)}
@@ -2115,6 +2567,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         onClose={() => setStoryViewer({ isOpen: false, memberIndex: 0 })}
         onLikePost={onLikePost}
         onAddComment={onAddComment}
+        onViewPost={recordPostView}
         currentUser={currentUser}
         currentProfile={currentProfile}
       />

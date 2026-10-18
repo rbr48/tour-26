@@ -796,15 +796,39 @@ export default function App() {
   };
 
   const handleAddComment = (postId, comment) => {
+    const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
+    const profilePhoto = currentProfile?.customPhotoURL;
+    const authorEmail = currentUser?.email || 'member@tour.family';
+
+    const normalized = typeof comment === 'string' ? {
+      id: Date.now(),
+      user: authorName,
+      authorEmail,
+      userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
+      text: comment.trim(),
+      time: 'এইমাত্র',
+      createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
+    } : {
+      id: comment.id || Date.now(),
+      user: comment.user || comment.author || authorName,
+      authorEmail: comment.authorEmail || authorEmail,
+      userPhoto: comment.userPhoto || (typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null)),
+      text: String(comment.text || comment.comment || comment.message || comment.body || '').trim(),
+      time: comment.time || 'এইমাত্র',
+      reactions: comment.reactions || {},
+      createdAt: comment.createdAt || new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
+      ...comment,
+    };
+
     setData((prev) => ({
       ...prev,
       posts: (prev.posts || []).map((p) =>
         String(p.id) === String(postId)
-          ? { ...p, comments: [...(p.comments || []), comment] }
+          ? { ...p, comments: [...(p.comments || []), normalized] }
           : p
       ),
     }));
-    save(pushToArray(['posts'], postId, 'comments', comment));
+    save(pushToArray(['posts'], postId, 'comments', normalized));
   };
 
   const handleCommentReaction = (postId, commentId, emoji) => {
@@ -813,9 +837,10 @@ export default function App() {
     const me = (emailRef.current || currentUser?.email || currentProfile?.displayName || currentUser?.displayName || 'user').toLowerCase();
 
     const updatedComments = (post.comments || []).map((c, idx) => {
-      const cId = c.id !== undefined && c.id !== null ? String(c.id) : String(idx);
+      const cId = (c && typeof c === 'object' && c.id !== undefined && c.id !== null) ? String(c.id) : String(idx);
       if (cId !== String(commentId)) return c;
-      const currentReactions = { ...(c.reactions || {}) };
+      const cObj = typeof c === 'string' ? { id: idx, text: c, user: 'পরিবারের সদস্য' } : { ...c };
+      const currentReactions = { ...(cObj.reactions || {}) };
       const currentVoters = Array.isArray(currentReactions[emoji]) ? [...currentReactions[emoji]] : [];
       const alreadyVoted = currentVoters.map((v) => String(v).toLowerCase()).includes(me);
       if (alreadyVoted) {
@@ -826,7 +851,7 @@ export default function App() {
       } else {
         currentReactions[emoji] = [...currentVoters, me];
       }
-      return { ...c, reactions: currentReactions };
+      return { ...cObj, reactions: currentReactions };
     });
 
     setData((prev) => ({
