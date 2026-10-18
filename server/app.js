@@ -444,13 +444,13 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
           return;
         }
         let versionData = {
-          versionCode: 9,
-          versionName: '2.7',
+          versionCode: 10,
+          versionName: '2.8',
           minVersionCode: 1,
-          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v9.apk',
+          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v10.apk',
           apkSize: '8.2 MB',
-          releaseNotes: 'নতুন আপডেট v2.7: গেমিং জোনে যুক্ত হলো ক্লাসিক \'লুডো\' (Ludo) ও বুদ্ধির লড়াই \'দাবা\' (Chess)! সাথে রয়েছে ৩ পাত্তি ও ২৯ কার্ড গেম, লাইভ মাল্টিপ্লেয়ার ও ভার্চুয়াল চিপস।',
-          releasedAt: '2026-10-18T17:40:00Z',
+          releaseNotes: 'নতুন আপডেট v2.8: অ্যান্ড্রয়েড স্ট্যাটাস বার ও হেডার ডিসপ্লে ফিক্স, মসৃণ নোটিফিকেশন ব্যানার, এবং গেমিং জোনের (লুডো, দাবা, ৩ পাত্তি, ২৯ কার্ড) সার্বিক পারফরম্যান্স উন্নয়ন।',
+          releasedAt: '2026-10-18T18:10:00Z',
           forceUpdate: false,
         };
         const versionFilePath = path.join(config.distDir, 'version.json');

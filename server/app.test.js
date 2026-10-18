@@ -354,13 +354,13 @@ describe('upload and reels endpoints security', () => {
     expect(res.status).toBe(401);
   });
 
-  it('serves version 9 metadata at /api/app-version', async () => {
+  it('serves version 10 metadata at /api/app-version', async () => {
     const base = await startApp();
     const res = await fetch(`${base}/api/app-version`);
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.versionCode).toBe(9);
-    expect(data.versionName).toBe('2.7');
+    expect(data.versionCode).toBe(10);
+    expect(data.versionName).toBe('2.8');
   });
 });
 
