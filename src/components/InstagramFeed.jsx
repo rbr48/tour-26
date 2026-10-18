@@ -30,6 +30,19 @@ import {
   Bookmark,
   Grid3X3,
   LayoutList,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Users,
+  Tag,
+  Calendar,
+  WifiOff,
+  RefreshCw,
+  MessageSquare,
+  Compass,
+  Utensils,
+  ShieldAlert,
+  Copy,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { useBackHandler } from '../utils/backNavigation';
@@ -59,6 +72,18 @@ import {
 } from '../services/photos';
 import { newId } from '../services/tourStore';
 import { connectGoogleDrive } from '../firebase';
+import {
+  TOUR_DAYS,
+  getTourDayById,
+  getPostTourDay,
+  getSuggestedTourLocation,
+  getCurrentTourDay,
+} from '../utils/tourSchedule';
+import {
+  enqueueOfflinePost,
+  getOfflineQueue,
+  drainOfflineQueue,
+} from '../utils/offlineQueue';
 
 // Instagram Preset CSS Filters
 export const IG_FILTERS = [
@@ -155,11 +180,39 @@ export default function InstagramFeed({
   onUpdatePost,
   onViewPost,
   onCommentReaction,
+  onShareToDiscussion = null,
 }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeStoryFilter, setActiveStoryFilter] = useState('all');
+  const [activeTourDayFilter, setActiveTourDayFilter] = useState(() => {
+    try {
+      return localStorage.getItem('tour_active_day_filter') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
   const [previewMedia, setPreviewMedia] = useState(null);
   const [sharingPostId, setSharingPostId] = useState(null);
+
+  // In-app Share Sheet modal state
+  const [shareModalPost, setShareModalPost] = useState(null);
+  const [shareFeedback, setShareFeedback] = useState('');
+
+  // Lightbox Zoom & Swipe state
+  const [lightboxZoom, setLightboxZoom] = useState(1);
+  const [lightboxTouchCoord, setLightboxTouchCoord] = useState({ start: null, end: null });
+  const lightboxLastTapRef = useRef(0);
+
+  // Offline Post Upload Queue state
+  const [offlineQueueCount, setOfflineQueueCount] = useState(() => {
+    try {
+      return getOfflineQueue().length;
+    } catch {
+      return 0;
+    }
+  });
+  const [isDrainingQueue, setIsDrainingQueue] = useState(false);
+  const [offlineNotification, setOfflineNotification] = useState('');
 
   // Deduplicated view tracker per session
   const viewedPostsRef = useRef(new Set());
@@ -190,6 +243,10 @@ export default function InstagramFeed({
       return '';
     }
   });
+
+  // Tour Day selector and Member Tagging state for new post
+  const [selectedTourDay, setSelectedTourDay] = useState('auto');
+  const [selectedTaggedMembers, setSelectedTaggedMembers] = useState([]);
 
   // Custom user locations persisted in localStorage
   const [customLocations, setCustomLocations] = useState(() => {
@@ -295,12 +352,95 @@ export default function InstagramFeed({
     return Array.from(memberMap.values());
   }, [posts]);
 
+  // Extract unique family member names for tagging
+  const familyMemberNames = React.useMemo(() => {
+    const set = new Set();
+    (members || []).forEach((m) => {
+      if (!m?.name) return;
+      const clean = m.name.split('/')[0].split('(')[0].trim();
+      if (clean) set.add(clean);
+    });
+    return Array.from(set);
+  }, [members]);
+
   // Phone Back Button Handlers for modals inside InstagramFeed
   useBackHandler(storyViewer.isOpen, () => setStoryViewer({ isOpen: false, memberIndex: 0 }), 28);
+  useBackHandler(Boolean(shareModalPost), () => setShareModalPost(null), 27);
   useBackHandler(Boolean(activeCommentPost), () => setActiveCommentPost(null), 26);
-  useBackHandler(Boolean(previewMedia), () => setPreviewMedia(null), 25);
+  useBackHandler(Boolean(previewMedia), () => {
+    setPreviewMedia(null);
+    setLightboxZoom(1);
+  }, 25);
   useBackHandler(Boolean(editingPost), () => setEditingPost(null), 20);
   useBackHandler(showCreateModal, () => setShowCreateModal(false), 15);
+
+  // Discussion Channel Sharing Handler
+  const handleShareToDiscussionChannel = (channelId, post) => {
+    if (!post) return;
+    triggerHaptic('success');
+    const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
+    const profilePhoto = currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL;
+    const media = photoSource(post);
+
+    const shareMessage = {
+      id: newId(),
+      author: authorName,
+      senderEmail: (currentUser?.email || '').toLowerCase() || 'member@tour.family',
+      userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
+      text: `📸 [ইনস্টাফিড শেয়ার]\n${post.author}: "${post.caption || 'আনন্দঘন স্মৃতি'}"\n📍 ${post.location || 'কক্সবাজার'}\n\n👉 ফিডে দেখুন: ${window.location.origin}/#feed`,
+      photoUrl: media || null,
+      time: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
+      timestamp: Date.now(),
+      reactions: {},
+    };
+
+    if (onShareToDiscussion) {
+      onShareToDiscussion(channelId, shareMessage);
+    }
+
+    setShareFeedback(`✓ #${channelId} চ্যানেলে সফলভাবে শেয়ার করা হয়েছে!`);
+    setTimeout(() => {
+      setShareFeedback('');
+      setShareModalPost(null);
+    }, 1200);
+  };
+
+  // Offline Upload Queue Drain Handler
+  const handleDrainOfflineQueue = async () => {
+    if (isDrainingQueue) return;
+    setIsDrainingQueue(true);
+    setOfflineNotification('অফলাইন পোস্ট আপলোড হচ্ছে...');
+    try {
+      await drainOfflineQueue(async (queuedPost) => {
+        await onAddPost(queuedPost);
+      });
+      const remaining = getOfflineQueue().length;
+      setOfflineQueueCount(remaining);
+      if (remaining === 0) {
+        setOfflineNotification('✓ সব অফলাইন পোস্ট সফলভাবে আপলোড সম্পন্ন হয়েছে!');
+      } else {
+        setOfflineNotification(`⚠️ এখনও ${remaining}টি পোস্ট বাকি রয়েছে`);
+      }
+    } catch (err) {
+      console.warn('Queue drain error:', err);
+      setOfflineNotification('আপলোড করার সময় সমস্যা হয়েছে। আবার চেষ্টা করুন।');
+    } finally {
+      setIsDrainingQueue(false);
+      setTimeout(() => setOfflineNotification(''), 3500);
+    }
+  };
+
+  useEffect(() => {
+    const handleOnline = () => {
+      const q = getOfflineQueue();
+      setOfflineQueueCount(q.length);
+      if (q.length > 0) {
+        handleDrainOfflineQueue();
+      }
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
 
   const handleStartEditPost = (post) => {
     setEditingPost(post);
@@ -692,6 +832,8 @@ export default function InstagramFeed({
       const postId = newId();
       const profilePhoto = currentProfile?.customPhotoURL;
 
+      const finalTourDay = selectedTourDay === 'auto' ? getCurrentTourDay() : selectedTourDay;
+
       const newReelPost = {
         id: postId,
         type: 'reel',
@@ -702,6 +844,8 @@ export default function InstagramFeed({
           : (currentUser?.photoURL || null),
         caption: postCaption,
         location: finalLocation,
+        tourDay: finalTourDay,
+        taggedMembers: selectedTaggedMembers,
         likes: [],
         comments: [],
         views: 0,
@@ -718,6 +862,17 @@ export default function InstagramFeed({
         driveViewUrl: null,
         createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' }),
       };
+
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        enqueueOfflinePost(newReelPost);
+        setOfflineQueueCount(getOfflineQueue().length);
+        setCaption('');
+        setTrimmedReelData(null);
+        setSelectedTaggedMembers([]);
+        setShowCreateModal(false);
+        alert('ইন্টারনেট সংযোগ না থাকায় আপনার রিলসটি অফলাইনে জমা রাখা হয়েছে। অনলাইনে এলে এটি স্বয়ংক্রিয়ভাবে আপলোড হবে! 📶');
+        return;
+      }
 
       // Storage & upload for video file if provided
       const fileToUpload = (trimmedReelData.videoSource instanceof Blob || trimmedReelData.videoSource instanceof File)
@@ -788,6 +943,7 @@ export default function InstagramFeed({
       setTrimmedReelData(null);
       setVideoSourceForTrimmer(null);
       setVideoUrlInput('');
+      setSelectedTaggedMembers([]);
       setIsCustomLocMode(false);
       setCustomLocInput('');
       try {
@@ -825,6 +981,7 @@ export default function InstagramFeed({
 
     const postId = newId();
     const profilePhoto = currentProfile?.customPhotoURL;
+    const finalTourDay = selectedTourDay === 'auto' ? getCurrentTourDay() : selectedTourDay;
 
     const newPost = {
       id: postId,
@@ -835,6 +992,8 @@ export default function InstagramFeed({
         : (currentUser?.photoURL || null),
       caption: postCaption,
       location: finalLocation,
+      tourDay: finalTourDay,
+      taggedMembers: selectedTaggedMembers,
       likes: [],
       comments: [],
       views: 0,
@@ -848,12 +1007,31 @@ export default function InstagramFeed({
       createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' }),
     };
 
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      enqueueOfflinePost(newPost);
+      setOfflineQueueCount(getOfflineQueue().length);
+      setCaption('');
+      setImageInput('');
+      setSelectedImages([]);
+      setSelectedFilter('normal');
+      setSelectedTaggedMembers([]);
+      setIsCustomLocMode(false);
+      setCustomLocInput('');
+      try {
+        localStorage.removeItem('tour_post_draft_caption');
+      } catch {}
+      setShowCreateModal(false);
+      alert('ইন্টারনেট সংযোগ না থাকায় পোস্টটি অফলাইনে জমা রাখা হয়েছে। অনলাইনে এলে এটি স্বয়ংক্রিয়ভাবে আপলোড হবে! 📶');
+      return;
+    }
+
     // 1. Post is added to feed and Firestore instantly!
     onAddPost(newPost);
     setCaption('');
     setImageInput('');
     setSelectedImages([]);
     setSelectedFilter('normal');
+    setSelectedTaggedMembers([]);
     setIsCustomLocMode(false);
     setCustomLocInput('');
     try {
@@ -914,10 +1092,15 @@ export default function InstagramFeed({
   const isPostReel = (p) => Boolean(p && (p.type === 'reel' || p.videoUrl || p.video));
   const allReelPosts = posts.filter(isPostReel);
 
+  // Filter posts by Tour Day Highlights
+  const dayFilteredPosts = activeTourDayFilter === 'all'
+    ? posts
+    : posts.filter((p) => (p.tourDay || getPostTourDay(p)) === activeTourDayFilter);
+
   // Filter posts if story filter is clicked
   const filteredPosts = activeStoryFilter === 'all'
-    ? posts
-    : posts.filter(p => p.author?.includes(activeStoryFilter));
+    ? dayFilteredPosts
+    : dayFilteredPosts.filter((p) => p.author?.includes(activeStoryFilter));
 
   const filteredReelPosts = filteredPosts.filter(isPostReel);
   const filteredPhotoPosts = filteredPosts.filter((p) => !isPostReel(p));
@@ -997,6 +1180,44 @@ export default function InstagramFeed({
 
   return (
     <div className="max-w-xl mx-auto space-y-5 pb-8">
+      {/* Offline Upload Queue Status Banner */}
+      {offlineQueueCount > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border border-amber-300 p-3.5 rounded-3xl flex items-center justify-between gap-3 text-xs text-amber-950 shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <WifiOff size={16} />
+            </div>
+            <div className="min-w-0">
+              <p className="font-extrabold text-xs truncate">
+                {toBnNum(offlineQueueCount)}টি পোস্ট অফলাইন ড্রাফটে জমা আছে
+              </p>
+              <p className="text-[11px] text-amber-800 truncate">
+                ইন্টারনেট পেলেই স্বয়ংক্রিয়ভাবে ক্লাউডে আপলোড হবে
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleDrainOfflineQueue}
+            disabled={isDrainingQueue}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer text-xs shrink-0 disabled:opacity-50"
+          >
+            {isDrainingQueue ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <RefreshCw size={13} />
+            )}
+            <span>এখনই আপলোড</span>
+          </button>
+        </div>
+      )}
+
+      {offlineNotification && (
+        <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-2xl text-center animate-in fade-in">
+          {offlineNotification}
+        </div>
+      )}
+
       {/* Top Banner: InstaTour & Google Drive Backup Status */}
       <div className="bg-gradient-to-r from-purple-900 via-pink-900 to-rose-900 text-white p-4 sm:p-5 rounded-3xl shadow-md flex items-center justify-between border border-pink-700/50">
         <div>
@@ -1405,6 +1626,7 @@ export default function InstagramFeed({
                         setActiveCommentPost(p);
                       }}
                       onShareMedia={handleShareMedia}
+                      onOpenShareModal={(p) => setShareModalPost(p)}
                       onManualDriveBackup={handleManualDriveBackup}
                       onStartEditPost={handleStartEditPost}
                       onDeletePost={onDeletePost}
@@ -1545,15 +1767,87 @@ export default function InstagramFeed({
             })}
           </div>
 
+          {/* Tour Day Highlights Bubbles (Day 1 – Day 5) */}
+          <div className="bg-slate-50/80 border-b border-slate-200/80 py-2.5 px-2 flex items-center gap-3 overflow-x-auto scrollbar-none select-none">
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setActiveTourDayFilter('all');
+                try { localStorage.setItem('tour_active_day_filter', 'all'); } catch {}
+              }}
+              className={`flex flex-col items-center gap-1 shrink-0 cursor-pointer transition ${
+                activeTourDayFilter === 'all' ? 'opacity-100 scale-105' : 'opacity-70 hover:opacity-100'
+              }`}
+            >
+              <div
+                className={`w-12 h-12 rounded-full p-0.5 flex items-center justify-center ${
+                  activeTourDayFilter === 'all'
+                    ? 'ring-2 ring-teal-600 bg-gradient-to-tr from-teal-500 to-cyan-600'
+                    : 'border border-slate-300 bg-white'
+                }`}
+              >
+                <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-xs font-black text-teal-900">
+                  সব
+                </div>
+              </div>
+              <span className="text-[10px] font-bold text-slate-700">সব দিন</span>
+            </button>
+
+            {TOUR_DAYS.map((day) => {
+              const count = posts.filter((p) => (p.tourDay || getPostTourDay(p)) === day.id).length;
+              const isSelected = activeTourDayFilter === day.id;
+              return (
+                <button
+                  key={day.id}
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setActiveTourDayFilter(day.id);
+                    try { localStorage.setItem('tour_active_day_filter', day.id); } catch {}
+                  }}
+                  className={`flex flex-col items-center gap-1 shrink-0 cursor-pointer transition relative ${
+                    isSelected ? 'opacity-100 scale-105' : 'opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  <div
+                    className={`w-12 h-12 rounded-full p-0.5 flex items-center justify-center ${
+                      isSelected
+                        ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-pink-500 to-amber-500 shadow-xs'
+                        : 'border border-slate-200 bg-white shadow-2xs'
+                    }`}
+                  >
+                    <div className="w-full h-full rounded-full bg-slate-50 flex items-center justify-center text-lg">
+                      {day.emoji}
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-semibold text-slate-700 truncate max-w-[64px]">
+                    {day.shortLabel}
+                  </span>
+                  {count > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 bg-slate-800 text-white text-[9px] font-bold px-1 rounded-full">
+                      {toBnNum(count)}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
           {/* View Mode & Filter Subheader Toolbar */}
           <div className="flex items-center justify-between px-1 py-1">
-            <span className="text-xs font-semibold text-slate-500">
+            <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5 flex-wrap">
+              {activeTourDayFilter !== 'all' && (
+                <span className="bg-sky-50 text-sky-800 font-bold px-2 py-0.5 rounded-full border border-sky-200 text-[10px]">
+                  {getTourDayById(activeTourDayFilter)?.emoji} {getTourDayById(activeTourDayFilter)?.title}
+                </span>
+              )}
               {activeStoryFilter !== 'all' ? (
                 <span>
                   <strong className="text-slate-800">{activeStoryFilter}</strong> এর ছবি ({toBnNum(filteredPosts.length)}টি)
                 </span>
               ) : (
-                <span>সকল পোস্ট ({toBnNum(filteredPosts.length)}টি)</span>
+                <span>পোস্ট ({toBnNum(filteredPosts.length)}টি)</span>
               )}
             </span>
 
@@ -1686,6 +1980,7 @@ export default function InstagramFeed({
                           setActiveCommentPost(p);
                         }}
                         onShareMedia={handleShareMedia}
+                        onOpenShareModal={(p) => setShareModalPost(p)}
                         onManualDriveBackup={handleManualDriveBackup}
                         onStartEditPost={handleStartEditPost}
                         onDeletePost={onDeletePost}
@@ -2103,6 +2398,45 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </div>
                 )}
 
+                {/* Tour Day Selection Bar */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Calendar size={13} className="text-pink-600" /> ট্যুর দিন (Tour Day)
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      {selectedTourDay === 'auto' ? `স্বয়ংক্রিয় (${getTourDayById(getCurrentTourDay())?.shortLabel})` : getTourDayById(selectedTourDay)?.title}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTourDay('auto')}
+                      className={`py-1.5 px-2 rounded-xl border text-center transition cursor-pointer font-bold ${
+                        selectedTourDay === 'auto'
+                          ? 'bg-teal-700 text-white border-teal-700 shadow-2xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      ✨ অটো (তারিখ)
+                    </button>
+                    {TOUR_DAYS.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => setSelectedTourDay(d.id)}
+                        className={`py-1.5 px-2 rounded-xl border text-center transition cursor-pointer font-semibold truncate ${
+                          selectedTourDay === d.id
+                            ? 'bg-pink-600 text-white border-pink-600 shadow-2xs'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {d.emoji} {d.shortLabel}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Caption with auto-saved draft indicator */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
@@ -2136,6 +2470,31 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                       {isCustomLocMode ? '⤺ ড্রপডাউন তালিকা দেখুন' : '✍️ কাস্টম স্থান লিখুন'}
                     </button>
                   </div>
+
+                  {/* Tour Schedule Auto-Location Suggestion */}
+                  {(() => {
+                    const suggestedLoc = getSuggestedTourLocation();
+                    if (!suggestedLoc || location === suggestedLoc) return null;
+                    return (
+                      <div className="flex items-center justify-between p-2 bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-xl text-xs text-sky-950 shadow-2xs">
+                        <span className="flex items-center gap-1.5 truncate">
+                          <Sparkles size={13} className="text-sky-600 shrink-0" />
+                          <span className="text-[10px] font-medium text-sky-700">বর্তমান শিডিউল:</span>
+                          <strong className="truncate text-[11px] font-bold">{suggestedLoc}</strong>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLocation(suggestedLoc);
+                            setIsCustomLocMode(false);
+                          }}
+                          className="px-2.5 py-0.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-bold rounded-lg shrink-0 cursor-pointer text-[10px] shadow-2xs"
+                        >
+                          প্রয়োগ করুন
+                        </button>
+                      </div>
+                    );
+                  })()}
 
                   {locationNotification && (
                     <div className="px-2.5 py-1 bg-emerald-50 text-emerald-800 text-[10px] font-semibold rounded-lg border border-emerald-200">
@@ -2219,6 +2578,45 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                         {chip}
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* Member Tagging Multi-Select Bar */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Users size={13} className="text-sky-600" /> সাথে আছেন (সদস্য ট্যাগ করুন)
+                    </span>
+                    {selectedTaggedMembers.length > 0 && (
+                      <span className="text-[10px] bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded-full">
+                        {toBnNum(selectedTaggedMembers.length)} জন ট্যাগ
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                    {familyMemberNames.map((name) => {
+                      const isSelected = selectedTaggedMembers.includes(name);
+                      return (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => {
+                            triggerHaptic('light');
+                            setSelectedTaggedMembers((prev) =>
+                              isSelected ? prev.filter((m) => m !== name) : [...prev, name]
+                            );
+                          }}
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition cursor-pointer flex items-center gap-1 ${
+                            isSelected
+                              ? 'bg-sky-600 text-white shadow-2xs font-bold'
+                              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span>{name}</span>
+                          {isSelected && <Check size={10} strokeWidth={3} />}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -2353,10 +2751,18 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       {/* FULLSCREEN PHOTO PREVIEW MODAL */}
       {previewMedia && (
         <div
-          className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 z-50 cursor-pointer animate-in fade-in duration-150"
+          className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 z-50 cursor-pointer animate-in fade-in duration-150 select-none"
           role="presentation"
-          onClick={() => setPreviewMedia(null)}
-          onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
+          onClick={() => {
+            setPreviewMedia(null);
+            setLightboxZoom(1);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setPreviewMedia(null);
+              setLightboxZoom(1);
+            }
+          }}
         >
           {(() => {
             const isGallery = typeof previewMedia === 'object' && Array.isArray(previewMedia?.images);
@@ -2385,7 +2791,46 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2.5">
+                  {/* Zoom Controls & Action Buttons */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center bg-white/15 rounded-full p-0.5 border border-white/10">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setLightboxZoom((z) => Math.max(1, +(z - 0.5).toFixed(1)));
+                        }}
+                        disabled={lightboxZoom <= 1}
+                        className="p-1.5 rounded-full hover:bg-white/20 disabled:opacity-30 text-white transition cursor-pointer"
+                        title="জুম কমান"
+                      >
+                        <ZoomOut size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setLightboxZoom(1);
+                        }}
+                        className="px-2 py-0.5 text-xs font-bold text-white/90 hover:text-white transition cursor-pointer"
+                        title="জুম রিসেট"
+                      >
+                        {lightboxZoom}x
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setLightboxZoom((z) => Math.min(2.5, +(z + 0.5).toFixed(1)));
+                        }}
+                        disabled={lightboxZoom >= 2.5}
+                        className="p-1.5 rounded-full hover:bg-white/20 disabled:opacity-30 text-white transition cursor-pointer"
+                        title="জুম বাড়ান"
+                      >
+                        <ZoomIn size={15} />
+                      </button>
+                    </div>
+
                     <a
                       href={currentImg}
                       download={`Tour2026_${currentGalleryIdx + 1}.jpg`}
@@ -2398,7 +2843,10 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                     </a>
                     <button
                       type="button"
-                      onClick={() => setPreviewMedia(null)}
+                      onClick={() => {
+                        setPreviewMedia(null);
+                        setLightboxZoom(1);
+                      }}
                       className="text-white hover:text-rose-400 bg-white/20 hover:bg-white/30 p-1.5 rounded-full transition cursor-pointer active:scale-95"
                       title="বন্ধ করুন"
                       aria-label="Close lightbox"
@@ -2408,20 +2856,60 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   </div>
                 </div>
 
-                {/* Main Preview Image */}
-                <div className="relative w-full flex items-center justify-center max-h-[82vh] overflow-hidden">
+                {/* Main Preview Image with Double-Tap Zoom & Swipe */}
+                <div
+                  className="relative w-full flex items-center justify-center max-h-[75vh] overflow-hidden"
+                  onTouchStart={(e) => {
+                    if (lightboxZoom === 1 && e.touches.length === 1) {
+                      setLightboxTouchCoord({ start: e.touches[0].clientX, end: null });
+                    }
+                  }}
+                  onTouchMove={(e) => {
+                    if (lightboxZoom === 1 && e.touches.length === 1) {
+                      setLightboxTouchCoord((prev) => ({ ...prev, end: e.touches[0].clientX }));
+                    }
+                  }}
+                  onTouchEnd={() => {
+                    if (lightboxZoom === 1 && lightboxTouchCoord.start !== null && lightboxTouchCoord.end !== null) {
+                      const delta = lightboxTouchCoord.start - lightboxTouchCoord.end;
+                      if (delta > 50 && galleryImages.length > 1 && currentGalleryIdx < galleryImages.length - 1) {
+                        triggerHaptic('light');
+                        setPreviewMedia({ images: galleryImages, index: currentGalleryIdx + 1, post: previewMedia.post });
+                      } else if (delta < -50 && galleryImages.length > 1 && currentGalleryIdx > 0) {
+                        triggerHaptic('light');
+                        setPreviewMedia({ images: galleryImages, index: currentGalleryIdx - 1, post: previewMedia.post });
+                      }
+                    }
+                    setLightboxTouchCoord({ start: null, end: null });
+                  }}
+                >
                   <img
                     src={currentImg}
                     alt="Fullscreen Preview"
-                    className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-2xl select-none"
-                    style={{ filter: getFilterCss(previewMedia.post?.filter) }}
+                    onClick={() => {
+                      const now = Date.now();
+                      if (now - lightboxLastTapRef.current < 300) {
+                        triggerHaptic('medium');
+                        setLightboxZoom((z) => (z > 1 ? 1 : 2));
+                      }
+                      lightboxLastTapRef.current = now;
+                    }}
+                    className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl select-none transition-transform duration-200 cursor-zoom-in"
+                    style={{
+                      transform: `scale(${lightboxZoom})`,
+                      filter: getFilterCss(previewMedia.post?.filter),
+                    }}
                   />
 
                   {/* Prev Button in Lightbox */}
                   {galleryImages.length > 1 && currentGalleryIdx > 0 && (
                     <button
                       type="button"
-                      onClick={() => setPreviewMedia({ images: galleryImages, index: currentGalleryIdx - 1, post: previewMedia.post })}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setPreviewMedia({ images: galleryImages, index: currentGalleryIdx - 1, post: previewMedia.post });
+                        setLightboxZoom(1);
+                      }}
                       className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center transition shadow-lg cursor-pointer active:scale-90"
                       title="পূর্ববর্তী ছবি"
                       aria-label="Previous image"
@@ -2434,7 +2922,11 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   {galleryImages.length > 1 && currentGalleryIdx < galleryImages.length - 1 && (
                     <button
                       type="button"
-                      onClick={() => setPreviewMedia({ images: galleryImages, index: currentGalleryIdx + 1, post: previewMedia.post })}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setPreviewMedia({ images: galleryImages, index: currentGalleryIdx + 1, post: previewMedia.post });
+                        setLightboxZoom(1);
+                      }}
                       className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center transition shadow-lg cursor-pointer active:scale-90"
                       title="পরবর্তী ছবি"
                       aria-label="Next image"
@@ -2443,9 +2935,200 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                     </button>
                   )}
                 </div>
+
+                {/* Bottom Caption & Post Info Overlay */}
+                {previewMedia?.post && (
+                  <div className="w-full mt-2 px-3 py-2 bg-black/60 backdrop-blur-md rounded-xl text-white text-xs flex flex-col gap-1 max-w-2xl border border-white/10">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-teal-300">{previewMedia.post.author}</span>
+                      {previewMedia.post.location && (
+                        <span className="text-[11px] text-slate-300 flex items-center gap-1">
+                          <MapPin size={11} className="text-teal-400" />
+                          {previewMedia.post.location}
+                        </span>
+                      )}
+                    </div>
+                    {previewMedia.post.caption && (
+                      <p className="text-[11px] text-slate-200 line-clamp-2 leading-relaxed">
+                        {previewMedia.post.caption}
+                      </p>
+                    )}
+                    {Array.isArray(previewMedia.post.taggedMembers) && previewMedia.post.taggedMembers.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-white/10 text-[10px] text-sky-200">
+                        <Users size={11} className="text-sky-400 shrink-0" />
+                        <span>সাথে: {previewMedia.post.taggedMembers.join(', ')}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {/* IN-APP SHARE SHEET MODAL */}
+      {shareModalPost && (
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          role="presentation"
+          onClick={() => setShareModalPost(null)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShareModalPost(null);
+          }}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-sm w-full shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 bg-gradient-to-r from-teal-800 to-teal-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Share2 size={18} className="text-teal-300" />
+                <h4 className="font-bold text-sm">ট্যুর মেমোরি শেয়ার করুন</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShareModalPost(null)}
+                className="p-1 rounded-full hover:bg-white/20 text-white cursor-pointer transition active:scale-90"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Post Preview Snippet */}
+            <div className="p-3.5 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
+              <img
+                src={photoSource(shareModalPost)}
+                alt="Post preview"
+                className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0"
+              />
+              <div className="min-w-0 flex-1 text-xs">
+                <p className="font-bold text-slate-800 truncate">{shareModalPost.author}</p>
+                <p className="text-slate-500 text-[11px] truncate flex items-center gap-1">
+                  <MapPin size={10} className="text-teal-600" />
+                  {shareModalPost.location || 'কক্সবাজার'}
+                </p>
+                {shareModalPost.caption && (
+                  <p className="text-slate-600 text-[11px] truncate italic mt-0.5">
+                    "{shareModalPost.caption}"
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Share Feedback Toast */}
+            {shareFeedback && (
+              <div className="mx-4 mt-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-bold text-center animate-in fade-in">
+                {shareFeedback}
+              </div>
+            )}
+
+            <div className="p-4 space-y-4">
+              {/* Discussion Channels Section */}
+              <div>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  ট্যুর ডিসকাশন চ্যানেলে পাঠান
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleShareToDiscussionChannel('general', shareModalPost)}
+                    className="p-2.5 rounded-xl border border-sky-200 bg-sky-50/70 hover:bg-sky-100 text-sky-900 flex items-center gap-2 transition text-left cursor-pointer active:scale-95"
+                  >
+                    <MessageSquare size={16} className="text-sky-600 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold truncate">সাধারণ আড্ডা</p>
+                      <p className="text-[10px] text-sky-700 truncate">#general</p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleShareToDiscussionChannel('sightseeing', shareModalPost)}
+                    className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-900 flex items-center gap-2 transition text-left cursor-pointer active:scale-95"
+                  >
+                    <Compass size={16} className="text-emerald-600 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold truncate">দর্শনীয় স্থান</p>
+                      <p className="text-[10px] text-emerald-700 truncate">#sightseeing</p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleShareToDiscussionChannel('food', shareModalPost)}
+                    className="p-2.5 rounded-xl border border-amber-200 bg-amber-50/70 hover:bg-amber-100 text-amber-900 flex items-center gap-2 transition text-left cursor-pointer active:scale-95"
+                  >
+                    <Utensils size={16} className="text-amber-600 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold truncate">খাবার মেনু</p>
+                      <p className="text-[10px] text-amber-700 truncate">#food</p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleShareToDiscussionChannel('emergency', shareModalPost)}
+                    className="p-2.5 rounded-xl border border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-900 flex items-center gap-2 transition text-left cursor-pointer active:scale-95"
+                  >
+                    <ShieldAlert size={16} className="text-rose-600 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold truncate">জরুরি হেল্প</p>
+                      <p className="text-[10px] text-rose-700 truncate">#emergency</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* External Share Section */}
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  অন্যান্য মাধ্যমে শেয়ার
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      const shareText = `রংপুর ➔ কক্সবাজার ট্যুর ২০২৬\n${shareModalPost.author}: "${shareModalPost.caption || 'আনন্দঘন মুহূর্ত'}"\n📍 ${shareModalPost.location || 'কক্সবাজার'}\n\n👉 ফিডে দেখুন: ${window.location.origin}/#feed`;
+                      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank');
+                    }}
+                    className="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
+                  >
+                    <span>💬 WhatsApp</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      triggerHaptic('light');
+                      const shareText = `${shareModalPost.author}: "${shareModalPost.caption || 'ট্যুর মেমোরি'}" - ${shareModalPost.location || 'কক্সবাজার'}`;
+                      if (navigator.share) {
+                        try {
+                          await navigator.share({
+                            title: 'কক্সবাজার ট্যুর ২০২৬',
+                            text: shareText,
+                            url: `${window.location.origin}/#feed`,
+                          });
+                        } catch {}
+                      } else {
+                        try {
+                          await navigator.clipboard.writeText(`${shareText}\n${window.location.origin}/#feed`);
+                          setShareFeedback('✓ লিঙ্ক ক্লিপবোর্ডে কপি হয়েছে!');
+                          setTimeout(() => setShareFeedback(''), 2000);
+                        } catch {}
+                      }
+                    }}
+                    className="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95"
+                  >
+                    <Copy size={14} />
+                    <span>লিঙ্ক কপি</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

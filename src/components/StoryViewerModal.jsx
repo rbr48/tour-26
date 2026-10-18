@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Heart, Send, MapPin, ChevronLeft, ChevronRight, Play, Pause, Volume2, VolumeX, Eye } from 'lucide-react';
 import { useBackHandler } from '../utils/backNavigation';
 import { triggerHaptic } from '../utils/haptics';
+import { getTourDayById, getPostTourDay } from '../utils/tourSchedule';
 import UserAvatar from './UserAvatar';
 import { photoSource, toBnNum, getFilterCss } from './InstagramFeed';
 
 const STORY_DURATION = 5000; // 5 seconds per story slide
+const QUICK_EMOJI_REACTIONS = ['❤️', '🔥', '😂', '😍', '👏', '🏖️'];
 
 export default function StoryViewerModal({
   isOpen,
@@ -27,6 +29,7 @@ export default function StoryViewerModal({
   const [replyText, setReplyText] = useState('');
   const [showHeartAnim, setShowHeartAnim] = useState(false);
   const [isSent, setIsSent] = useState(false);
+  const [floatingParticles, setFloatingParticles] = useState([]);
 
   // Hardware back button support on Android
   useBackHandler(isOpen, onClose, 30);
@@ -95,6 +98,9 @@ export default function StoryViewerModal({
 
   if (!isOpen || !currentStory) return null;
 
+  const tourDayId = currentStory.tourDay || getPostTourDay(currentStory);
+  const tourDayInfo = tourDayId ? getTourDayById(tourDayId) : null;
+
   const mediaUrl = photoSource(currentStory);
   const isLiked =
     currentStory.likes?.includes(currentUser?.displayName || 'user') ||
@@ -107,6 +113,32 @@ export default function StoryViewerModal({
     setTimeout(() => setShowHeartAnim(false), 850);
     if (onLikePost) {
       onLikePost(currentStory.id, currentUser?.displayName || currentProfile?.displayName || 'User');
+    }
+  };
+
+  const handleQuickEmojiReaction = (emoji) => {
+    triggerHaptic('medium');
+    const newId = `${Date.now()}_${Math.random()}`;
+    const xPos = Math.floor(Math.random() * 60 + 20); // 20% to 80%
+    setFloatingParticles((prev) => [...prev, { id: newId, emoji, x: xPos }]);
+    setTimeout(() => {
+      setFloatingParticles((prev) => prev.filter((p) => p.id !== newId));
+    }, 1100);
+
+    if (onAddComment && currentStory?.id) {
+      const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
+      const profilePhoto = currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL;
+      const commentObj = {
+        id: Date.now(),
+        user: authorName,
+        authorEmail: (currentUser?.email || '').toLowerCase() || 'member@tour.family',
+        userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
+        text: emoji,
+        time: 'এইমাত্র',
+        isReaction: true,
+        createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
+      };
+      onAddComment(currentStory.id, commentObj);
     }
   };
 
@@ -250,12 +282,43 @@ export default function StoryViewerModal({
             <div className="p-6 text-center text-white/60 text-xs">ছবি লোড হতে পারেনি</div>
           )}
 
+          {/* Location Sticker on Story Canvas */}
+          {currentStory.location && (
+            <div className="absolute top-20 left-3.5 z-20 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="bg-white/90 backdrop-blur-md text-slate-900 text-[11px] font-extrabold px-3 py-1.5 rounded-xl shadow-2xl border border-white/60 flex items-center gap-1.5 -rotate-2">
+                <MapPin size={12} className="text-pink-600 shrink-0" />
+                <span className="truncate max-w-[190px]">{currentStory.location}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Tour Day Sticker on Story Canvas */}
+          {tourDayInfo && (
+            <div className="absolute top-20 right-3.5 z-20 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="bg-gradient-to-r from-pink-500/95 to-purple-600/95 backdrop-blur-md text-white text-[11px] font-black px-3 py-1.5 rounded-xl shadow-2xl border border-white/40 flex items-center gap-1.5 rotate-3">
+                <span>{tourDayInfo.emoji}</span>
+                <span>{tourDayInfo.shortLabel}</span>
+              </div>
+            </div>
+          )}
+
           {/* Double-Tap Heart Popup Animation */}
           {showHeartAnim && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
               <Heart className="w-24 h-24 fill-white text-white drop-shadow-2xl animate-ig-heart" />
             </div>
           )}
+
+          {/* Floating Flying Emoji Particles */}
+          {floatingParticles.map((particle) => (
+            <div
+              key={particle.id}
+              className="absolute bottom-28 pointer-events-none z-40 text-3xl animate-ig-float"
+              style={{ left: `${particle.x}%` }}
+            >
+              {particle.emoji}
+            </div>
+          ))}
 
           {/* Bottom Caption Overlay (if caption present) */}
           {currentStory.caption && (
@@ -268,7 +331,22 @@ export default function StoryViewerModal({
         </div>
 
         {/* Story Bottom Reply & Reaction Bar */}
-        <div className="relative z-30 p-3 pt-2 bg-gradient-to-t from-black via-black/80 to-transparent">
+        <div className="relative z-30 p-3 pt-2 bg-gradient-to-t from-black via-black/85 to-transparent space-y-2">
+          {/* Quick Story Emoji Reaction Tray */}
+          <div className="flex items-center justify-between px-1">
+            {QUICK_EMOJI_REACTIONS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => handleQuickEmojiReaction(emoji)}
+                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/25 active:scale-125 transition flex items-center justify-center text-lg cursor-pointer backdrop-blur-xs shadow-xs"
+                title={`${emoji} রিঅ্যাক্ট করুন`}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+
           <form onSubmit={handleSendReply} className="flex items-center gap-2">
             <input
               type="text"

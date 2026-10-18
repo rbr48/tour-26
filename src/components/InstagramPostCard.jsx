@@ -20,10 +20,14 @@ import {
   Loader2,
   X,
   Eye,
+  Tag,
+  Users,
+  Calendar,
 } from 'lucide-react';
 import { triggerHaptic } from '../utils/haptics';
 import { formatDuration } from '../utils/videoHelper';
 import { resolveCommenterName } from '../utils/members';
+import { getTourDayById, getPostTourDay } from '../utils/tourSchedule';
 import UserAvatar from './UserAvatar';
 import { toBnNum, getPostImages, photoSource, getFilterCss } from './InstagramFeed';
 
@@ -36,6 +40,7 @@ export default function InstagramPostCard({
   onLikePost,
   onOpenComments,
   onShareMedia,
+  onOpenShareModal,
   onManualDriveBackup,
   onStartEditPost,
   onDeletePost,
@@ -58,10 +63,20 @@ export default function InstagramPostCard({
   });
   const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [showTags, setShowTags] = useState(false);
 
-  const lastTapRef = useRef(0);
+  const singleTapTimerRef = useRef(null);
   const carouselRef = useRef(null);
   const cardRef = useRef(null);
+
+  // Clear single tap timer on unmount
+  useEffect(() => {
+    return () => {
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+      }
+    };
+  }, []);
 
   // Auto-record impression view when post is scrolled into view (authentic Instagram behavior)
   useEffect(() => {
@@ -85,6 +100,9 @@ export default function InstagramPostCard({
   const totalImages = postImages.length;
   const currentMediaSrc = postImages[activeImageIdx] || photoSource(post);
   const postIsReel = Boolean(post.isReel || post.reel || post.videoUrl || post.video || post.type === 'reel');
+
+  const tourDayId = post.tourDay || getPostTourDay(post);
+  const tourDayInfo = tourDayId ? getTourDayById(tourDayId) : null;
 
   const myIdentifier = (
     currentUser?.email ||
@@ -121,13 +139,12 @@ export default function InstagramPostCard({
     });
   };
 
-  // Double Tap to Like & Single Tap to View Media
+  // Double Tap to Like & Single Tap to View Media (reliably debounced)
   const handleMediaTouchOrClick = (e) => {
-    const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
-
-    if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
-      // Double tap triggered
+    if (singleTapTimerRef.current) {
+      // Second tap arrived within debounce threshold: it's a double tap!
+      clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = null;
       triggerHaptic('medium');
       setShowHeartAnim(true);
       setTimeout(() => setShowHeartAnim(false), 850);
@@ -135,15 +152,17 @@ export default function InstagramPostCard({
         onLikePost(post.id, currentUser?.displayName || currentProfile?.displayName || 'User');
       }
     } else {
-      // Single tap: record view and open media
-      onViewPost?.(post.id);
-      if (postIsReel && onOpenReel) {
-        onOpenReel(post);
-      } else if (!postIsReel && onOpenFullscreenImage) {
-        onOpenFullscreenImage({ images: postImages, index: activeImageIdx, post });
-      }
+      // First tap: set timer to execute single-tap action unless second tap arrives
+      singleTapTimerRef.current = setTimeout(() => {
+        singleTapTimerRef.current = null;
+        onViewPost?.(post.id);
+        if (postIsReel && onOpenReel) {
+          onOpenReel(post);
+        } else if (!postIsReel && onOpenFullscreenImage) {
+          onOpenFullscreenImage({ images: postImages, index: activeImageIdx, post });
+        }
+      }, 275);
     }
-    lastTapRef.current = now;
   };
 
   // Carousel horizontal scroll-snap position listener
@@ -196,10 +215,15 @@ export default function InstagramPostCard({
           </div>
 
           <div className="leading-tight">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <h4 className="font-extrabold text-[13px] text-slate-900 tracking-tight">
                 {post.author}
               </h4>
+              {tourDayInfo && (
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shadow-2xs ${tourDayInfo.badgeColor || 'bg-sky-50 text-sky-700 border-sky-200'}`}>
+                  {tourDayInfo.emoji} {tourDayInfo.shortLabel}
+                </span>
+              )}
               {postIsReel && (
                 <span className="text-[9px] bg-pink-100 text-pink-700 font-bold px-1.5 py-0.2 rounded-full">
                   🎬 রিলস
@@ -343,6 +367,45 @@ export default function InstagramPostCard({
             <span>ড্রাইভে সংরক্ষিত</span>
           </div>
         ) : null}
+
+        {/* Member Tags Toggle Button & Overlay */}
+        {!postIsReel && Array.isArray(post.taggedMembers) && post.taggedMembers.length > 0 && (
+          <>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                triggerHaptic('light');
+                setShowTags((prev) => !prev);
+              }}
+              className="absolute bottom-3 left-3 bg-black/65 hover:bg-black/85 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md border border-white/20 transition cursor-pointer z-20 backdrop-blur-xs active:scale-95"
+              title="ট্যাগ করা সদস্যদের দেখুন"
+            >
+              <Users size={12} className="text-sky-300" />
+              <span>{toBnNum(post.taggedMembers.length)} জন ট্যাগ</span>
+            </button>
+
+            {showTags && (
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowTags(false);
+                }}
+                className="absolute inset-0 bg-black/45 backdrop-blur-[2px] z-25 flex flex-wrap items-center justify-center gap-2 p-4 animate-in fade-in duration-150 cursor-pointer"
+              >
+                {post.taggedMembers.map((member, i) => (
+                  <span
+                    key={i}
+                    className="bg-black/80 text-white text-xs font-semibold px-3 py-1.5 rounded-full border border-white/30 shadow-lg flex items-center gap-1.5 animate-in zoom-in-95 duration-100"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-sky-400" />
+                    <span>{member}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* 3. Action Bar (Heart, Comment, Share, Bookmark) */}
@@ -381,12 +444,16 @@ export default function InstagramPostCard({
             <MessageCircle size={25} className="-rotate-6" />
           </button>
 
-          {/* Direct Share Paper Airplane */}
+          {/* Direct Share Paper Airplane (Opens In-App Discussion & Share Sheet) */}
           <button
             type="button"
             onClick={() => {
               triggerHaptic('light');
-              onShareMedia?.(post, currentMediaSrc);
+              if (onOpenShareModal) {
+                onOpenShareModal(post);
+              } else {
+                onShareMedia?.(post, currentMediaSrc);
+              }
             }}
             className="cursor-pointer active:scale-75 transition-transform duration-150 text-slate-800 hover:text-slate-600"
             title="শেয়ার করুন"
@@ -453,6 +520,14 @@ export default function InstagramPostCard({
                 আরও
               </button>
             )}
+          </div>
+        )}
+
+        {/* Tagged Members in Caption */}
+        {Array.isArray(post.taggedMembers) && post.taggedMembers.length > 0 && (
+          <div className="text-[11px] text-sky-700 font-semibold flex items-center gap-1.5 pt-0.5">
+            <Users size={12} className="text-sky-600 shrink-0" />
+            <span>সাথে: {post.taggedMembers.join(', ')}</span>
           </div>
         )}
 
@@ -545,12 +620,16 @@ export default function InstagramPostCard({
               type="button"
               onClick={() => {
                 setShowOptionsMenu(false);
-                onShareMedia?.(post, currentMediaSrc);
+                if (onOpenShareModal) {
+                  onOpenShareModal(post);
+                } else {
+                  onShareMedia?.(post, currentMediaSrc);
+                }
               }}
               className="w-full py-3.5 text-slate-800 hover:bg-slate-50 transition cursor-pointer flex items-center justify-center gap-2"
             >
               <Share2 size={15} />
-              <span>ছবি শেয়ার করুন</span>
+              <span>ছবি শেয়ার করুন (ডিসকাশন ও সোশ্যাল)</span>
             </button>
 
             <a

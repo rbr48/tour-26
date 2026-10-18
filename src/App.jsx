@@ -2632,6 +2632,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               onUpdatePost={handleUpdatePost}
               onViewPost={handleViewPost}
               onCommentReaction={handleCommentReaction}
+              onShareToDiscussion={handleSendMessage}
             />
           )}
 
