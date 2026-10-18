@@ -14,11 +14,13 @@ import {
   ExternalLink,
   RefreshCw,
   Image as ImageIcon,
+  Loader2,
 } from 'lucide-react';
 import { compressImageFile } from '../utils/imageCompressor';
 import { findLinkedMember } from '../utils/members';
 import { useBackHandler } from '../utils/backNavigation';
 import { resolveMediaUrl } from '../utils/videoHelper';
+import { checkForAppUpdate } from '../utils/appUpdater';
 
 const AVATAR_OPTIONS = [
   { id: 'leader', label: 'ট্যুর লিডার', emoji: '👑', bg: 'bg-amber-100 text-amber-800 border-amber-300' },
@@ -39,7 +41,8 @@ export default function UserProfileModal({
   currentUser,
   currentProfile = {},
   members = [],
-  onSaveProfile
+  onSaveProfile,
+  onOpenUpdateModal,
 }) {
   useBackHandler(isOpen, onClose, 20);
   const fileInputRef = useRef(null);
@@ -70,6 +73,25 @@ export default function UserProfileModal({
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [photoNotification, setPhotoNotification] = useState('');
   const [photoLoadError, setPhotoLoadError] = useState(false);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [updateStatusMsg, setUpdateStatusMsg] = useState('');
+
+  const handleCheckUpdateManual = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateStatusMsg('');
+    try {
+      const info = await checkForAppUpdate();
+      if (info?.hasUpdate) {
+        onOpenUpdateModal?.(info);
+      } else {
+        setUpdateStatusMsg(`✓ অ্যাপটি আপ-টু-ডেট আছে (v${info?.currentVersion || '2.1'})`);
+      }
+    } catch {
+      setUpdateStatusMsg('আপডেট চেক করতে সমস্যা হয়েছে');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
 
   useEffect(() => {
     setPhotoLoadError(false);
@@ -513,6 +535,46 @@ export default function UserProfileModal({
               >
                 <ExternalLink size={12} /> ফোল্ডার
               </a>
+            </div>
+
+            {/* In-App OTA Update Check Card */}
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/90 flex flex-col gap-2 text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-teal-800 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                    <Sparkles size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-800 text-[11px]">Tour 2026 অ্যাপ ভার্সন</p>
+                    <p className="text-[10px] text-slate-500">ইন-অ্যাপ স্বয়ংক্রিয় OTA সিস্টেম</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCheckUpdateManual}
+                  disabled={isCheckingUpdate}
+                  className="px-3 py-1.5 bg-teal-800 hover:bg-teal-700 active:scale-95 text-white rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition shadow-xs shrink-0 cursor-pointer disabled:opacity-50"
+                >
+                  {isCheckingUpdate ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin text-white" />
+                      <span>চেক হচ্ছে...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw size={12} className="text-white" />
+                      <span>আপডেট চেক</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {updateStatusMsg && (
+                <p className="text-[10px] text-teal-800 font-bold bg-teal-50 border border-teal-200 rounded-lg p-1.5 text-center">
+                  {updateStatusMsg}
+                </p>
+              )}
             </div>
 
             {savedSuccess && (

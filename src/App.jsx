@@ -45,6 +45,7 @@ import { saveBackup } from './services/backupService';
 import { FUND_LABEL, computeLedger, payerIdFor } from './utils/ledger';
 import { localISODate, localTimeHHMM } from './utils/date';
 import { toBnNum } from './utils/videoHelper';
+import { checkForAppUpdate } from './utils/appUpdater';
 
 // Heavy screens load on demand so the first screen opens quickly.
 const SplitwiseManager = lazy(() => import('./components/SplitwiseManager'));
@@ -58,6 +59,7 @@ const UserProfileModal = lazy(() => import('./components/UserProfileModal'));
 const PrintableReport = lazy(() => import('./components/PrintableReport'));
 const FamilySafetyHub = lazy(() => import('./components/FamilySafetyHub'));
 const TourQuizModal = lazy(() => import('./components/TourQuizModal'));
+const AppUpdateModal = lazy(() => import('./components/AppUpdateModal'));
 
 const VALID_TABS = ['dashboard', 'itinerary', 'expenses', 'seats_rooms', 'feed', 'discussions', 'notices', 'checklist'];
 const CACHE_KEY = 'rangpur_coxs_tour_data';
@@ -203,6 +205,25 @@ export default function App() {
   const [showSafetyHubModal, setShowSafetyHubModal] = useState(false);
   const [showQuizModal, setShowQuizModal] = useState(false);
   const [confirmRequest, setConfirmRequest] = useState(null);
+  const [appUpdateInfo, setAppUpdateInfo] = useState(null);
+  const [showAppUpdateModal, setShowAppUpdateModal] = useState(false);
+
+  // Check for in-app OTA updates on launch
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(() => {
+      checkForAppUpdate().then((info) => {
+        if (active && info?.hasUpdate) {
+          setAppUpdateInfo(info);
+          setShowAppUpdateModal(true);
+        }
+      });
+    }, 2500);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, []);
 
   // Activity Feed & Push Notification State
   const [activities, setActivities] = useState(() => {
@@ -2544,6 +2565,10 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         currentProfile={currentProfile}
         members={data.members || []}
         onSaveProfile={handleSaveProfile}
+        onOpenUpdateModal={(info) => {
+          setAppUpdateInfo(info);
+          setShowAppUpdateModal(true);
+        }}
       />
 
       {/* EDIT MEMBER & DEPOSIT UPDATE MODAL (Pinned header/footer, mobile-friendly) */}
@@ -2834,6 +2859,13 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         onClose={() => setShowQuizModal(false)}
         currentUser={currentUser}
         currentProfile={currentProfile}
+      />
+
+      {/* IN-APP OTA APP UPDATER MODAL */}
+      <AppUpdateModal
+        isOpen={showAppUpdateModal}
+        updateInfo={appUpdateInfo}
+        onClose={() => setShowAppUpdateModal(false)}
       />
 
     </div>

@@ -403,6 +403,32 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
         await handlePushApi(req, res, pathname);
         return;
       }
+      if (pathname === '/api/app-version' && (req.method === 'GET' || req.method === 'OPTIONS')) {
+        const headers = corsHeaders(req.headers.origin, allowedOrigins);
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, headers);
+          res.end();
+          return;
+        }
+        let versionData = {
+          versionCode: 3,
+          versionName: '2.1',
+          minVersionCode: 1,
+          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026.apk?v=3',
+          apkSize: '35 MB',
+          releaseNotes: 'নতুন ইন-অ্যাপ ওটিএ (OTA) অটো-আপডেট সিস্টেম, ক্যামেরা ও স্টোরেজ পারমিশন এবং দ্রুত চাঙ্কড রিলস ভিডিও আপলোড।',
+          releasedAt: '2026-10-18T08:35:00Z',
+          forceUpdate: false,
+        };
+        const versionFilePath = path.join(config.distDir, 'version.json');
+        if (fs.existsSync(versionFilePath)) {
+          try {
+            versionData = JSON.parse(fs.readFileSync(versionFilePath, 'utf8'));
+          } catch {}
+        }
+        sendJson(res, 200, versionData, headers);
+        return;
+      }
       if (pathname === '/health') {
         sendJson(res, 200, { status: 'ok' });
         return;

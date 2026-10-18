@@ -37,7 +37,7 @@ const CORS_HEADERS = {
 const REVALIDATE_FILES = new Set(['index.html', 'sw.js', 'manifest.json']);
 
 function cacheControlFor(relativePath) {
-  if (relativePath.endsWith('.apk')) return 'no-cache, no-store, must-revalidate';
+  if (relativePath.endsWith('.apk') || relativePath.endsWith('version.json')) return 'no-cache, no-store, must-revalidate';
   if (REVALIDATE_FILES.has(relativePath)) return 'no-cache';
   if (relativePath.startsWith('assets/')) return 'public, max-age=31536000, immutable';
   return 'public, max-age=86400';
