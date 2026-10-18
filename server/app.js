@@ -21,7 +21,7 @@ function corsHeaders(origin, allowedOrigins) {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': API_METHODS,
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-File-Name, X-Post-Id',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-File-Name, X-Post-Id, X-Upload-Id, X-Chunk-Index, X-Total-Chunks',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin',
   };
@@ -236,6 +236,99 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
 
       const clientName = req.headers['x-file-name'] ? decodeURIComponent(req.headers['x-file-name']) : 'video.mp4';
       const postId = req.headers['x-post-id'] ? decodeURIComponent(req.headers['x-post-id']) : null;
+      const uploadId = req.headers['x-upload-id']
+        ? decodeURIComponent(req.headers['x-upload-id']).replace(/[^a-zA-Z0-9_-]/g, '')
+        : null;
+      const chunkIndexHeader = req.headers['x-chunk-index'];
+      const totalChunksHeader = req.headers['x-total-chunks'];
+
+      // Chunked upload handling (bypasses Cloudflare 100MB body limit & supports resume/progress)
+      if (uploadId && chunkIndexHeader !== undefined && totalChunksHeader !== undefined) {
+        const chunkIndex = parseInt(chunkIndexHeader, 10);
+        const totalChunks = parseInt(totalChunksHeader, 10);
+
+        if (isNaN(chunkIndex) || isNaN(totalChunks) || chunkIndex < 0 || totalChunks <= 0 || chunkIndex >= totalChunks) {
+          sendJson(res, 400, { error: 'Invalid chunk parameters' }, headers);
+          return;
+        }
+
+        const chunkDir = path.join(uploadsDir, `chunks_${uploadId}`);
+        if (!fs.existsSync(chunkDir)) {
+          fs.mkdirSync(chunkDir, { recursive: true });
+        }
+
+        const chunkPath = path.join(chunkDir, `part_${String(chunkIndex).padStart(5, '0')}`);
+        await pipeline(req, fs.createWriteStream(chunkPath));
+
+        // Intermediate chunk: return 200 OK
+        if (chunkIndex < totalChunks - 1) {
+          sendJson(res, 200, {
+            success: true,
+            chunkReceived: chunkIndex,
+            totalChunks,
+            uploadId,
+          }, headers);
+          return;
+        }
+
+        // Final chunk: assemble all parts in numerical order
+        const chunkFiles = [];
+        for (let i = 0; i < totalChunks; i++) {
+          const expected = path.join(chunkDir, `part_${String(i).padStart(5, '0')}`);
+          if (!fs.existsSync(expected)) {
+            sendJson(res, 400, { error: `Missing chunk ${i}` }, headers);
+            return;
+          }
+          chunkFiles.push(expected);
+        }
+
+        const ext = path.extname(clientName) || '.mp4';
+        const randomSuffix = Math.random().toString(36).slice(2, 8);
+        const safeName = `reel_${Date.now()}_${randomSuffix}${ext}`;
+        const rawName = `raw_${Date.now()}_${randomSuffix}${ext}`;
+        const rawPath = path.join(uploadsDir, rawName);
+        const targetPath = path.join(uploadsDir, safeName);
+
+        const destStream = fs.createWriteStream(rawPath);
+        for (const cf of chunkFiles) {
+          const chunkData = await fs.promises.readFile(cf);
+          destStream.write(chunkData);
+        }
+        await new Promise((resolve, reject) => {
+          destStream.end((err) => (err ? reject(err) : resolve()));
+        });
+
+        // Clean up temporary chunks
+        for (const cf of chunkFiles) {
+          await fs.promises.unlink(cf).catch(() => {});
+        }
+        await fs.promises.rmdir(chunkDir).catch(() => {});
+
+        // Compress video to 720p H.264
+        const compResult = await compressVideo(rawPath, targetPath);
+
+        // Register in retention tracker
+        registry.addReel({
+          id: safeName,
+          fileName: safeName,
+          postId,
+          originalSize: compResult.originalSize,
+          compressedSize: compResult.compressedSize,
+          uploadedAt: Date.now(),
+        });
+
+        sendJson(res, 200, {
+          success: true,
+          url: `/uploads/${safeName}`,
+          fileName: safeName,
+          compressed: compResult.compressed,
+          originalSize: compResult.originalSize,
+          compressedSize: compResult.compressedSize,
+        }, headers);
+        return;
+      }
+
+      // Single non-chunked stream fallback
       const ext = path.extname(clientName) || '.mp4';
       const randomSuffix = Math.random().toString(36).slice(2, 8);
       const safeName = `reel_${Date.now()}_${randomSuffix}${ext}`;

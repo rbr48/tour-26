@@ -35,6 +35,7 @@ import ReelsPlayerModal from './ReelsPlayerModal';
 import UserAvatar from './UserAvatar';
 import { formatDuration, PRODUCTION_ORIGIN } from '../utils/videoHelper';
 import { saveLocalVideo } from '../utils/localVideoCache';
+import { uploadReelVideo } from '../utils/reelUploader';
 import { compressImageFile } from '../utils/imageCompressor';
 import {
   getDriveAccessToken,
@@ -240,6 +241,8 @@ export default function InstagramFeed({
   const [manualDriveUploadId, setManualDriveUploadId] = useState(null);
   const [isBatchSyncing, setIsBatchSyncing] = useState(false);
   const [batchSyncProgress, setBatchSyncProgress] = useState('');
+  const [isUploadingReel, setIsUploadingReel] = useState(false);
+  const [reelUploadProgress, setReelUploadProgress] = useState(null);
 
   const handleConnectDrive = async () => {
     try {
@@ -609,61 +612,50 @@ export default function InstagramFeed({
         createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' }),
       };
 
-      // Optimistic instant add
-      onAddPost(newReelPost);
-      setCaption('');
-      setTrimmedReelData(null);
-      setVideoSourceForTrimmer(null);
-      setVideoUrlInput('');
-      setIsCustomLocMode(false);
-      setCustomLocInput('');
-      try {
-        localStorage.removeItem('tour_post_draft_caption');
-      } catch {}
-      setShowCreateModal(false);
-
-      // Background storage & upload for video file if provided
+      // Storage & upload for video file if provided
       const fileToUpload = (trimmedReelData.videoSource instanceof Blob || trimmedReelData.videoSource instanceof File)
         ? trimmedReelData.videoSource
         : null;
 
       if (fileToUpload) {
+        setIsUploadingReel(true);
+        setReelUploadProgress({ percent: 5, stage: 'uploading' });
+
+        // 1. Instantly cache in IndexedDB on this device
+        try {
+          await saveLocalVideo(postId, fileToUpload);
+        } catch (e) {
+          console.warn('Local video save failed:', e);
+        }
+
+        // 2. Upload to server storage using chunked uploader (safe under Cloudflare 100MB body limit)
+        try {
+          const resData = await uploadReelVideo(fileToUpload, {
+            postId,
+            fileName: fileToUpload.name,
+            onProgress: ({ percent, stage }) => {
+              setReelUploadProgress({ percent, stage });
+            },
+          });
+
+          if (resData?.url) {
+            newReelPost.videoUrl = resData.url;
+            newReelPost.vpsVideoUrl = resData.url;
+            newReelPost.storageTier = 'vps_hot';
+          }
+        } catch (uploadErr) {
+          console.error('Server video upload failed:', uploadErr);
+          setPostError('ভিডিও আপলোড সম্পন্ন হতে পারেনি (' + (uploadErr.message || 'ইন্টারনেট সমস্যা') + ')। অনুগ্রহ করে পুনরায় চেষ্টা করুন।');
+          setIsUploadingReel(false);
+          setReelUploadProgress(null);
+          return;
+        }
+
+        setIsUploadingReel(false);
+        setReelUploadProgress(null);
+
+        // 3. Backup to Google Drive if authorized (runs in background)
         (async () => {
-          // 1. Instantly cache in IndexedDB on this device
-          try {
-            await saveLocalVideo(postId, fileToUpload);
-          } catch (e) {
-            console.warn('Local video save failed:', e);
-          }
-
-          // 2. Upload to server storage so all family members can view it
-          try {
-            const uploadApiUrl = Capacitor.isNativePlatform()
-              ? 'https://tour2026.izhaanintellect.fun/api/upload'
-              : '/api/upload';
-            const uploadRes = await fetch(uploadApiUrl, {
-              method: 'POST',
-              headers: {
-                'X-File-Name': encodeURIComponent(fileToUpload.name || `reel_${postId}.mp4`),
-                'X-Post-Id': encodeURIComponent(postId),
-              },
-              body: fileToUpload,
-            });
-            if (uploadRes.ok) {
-              const resData = await uploadRes.json();
-              if (resData?.url) {
-                onUpdatePost?.(postId, {
-                  videoUrl: resData.url,
-                  vpsVideoUrl: resData.url,
-                  storageTier: 'vps_hot',
-                });
-              }
-            }
-          } catch (uploadErr) {
-            console.warn('Server video upload failed, keeping local/blob:', uploadErr);
-          }
-
-          // 3. Backup to Google Drive if authorized
           try {
             const upload = await uploadToGoogleDrive({
               file: fileToUpload,
@@ -682,6 +674,19 @@ export default function InstagramFeed({
           }
         })();
       }
+
+      // Save post to Firestore
+      onAddPost(newReelPost);
+      setCaption('');
+      setTrimmedReelData(null);
+      setVideoSourceForTrimmer(null);
+      setVideoUrlInput('');
+      setIsCustomLocMode(false);
+      setCustomLocInput('');
+      try {
+        localStorage.removeItem('tour_post_draft_caption');
+      } catch {}
+      setShowCreateModal(false);
       return;
     }
 
@@ -2047,6 +2052,31 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                     </div>
                   )}
                 </div>
+                {/* Reel Upload Progress Card */}
+                {isUploadingReel && (
+                  <div className="p-3 bg-pink-50 border border-pink-200 rounded-2xl space-y-2 animate-in fade-in">
+                    <div className="flex items-center justify-between text-xs font-bold text-pink-950">
+                      <span className="flex items-center gap-1.5">
+                        <Loader2 size={13} className="animate-spin text-pink-600" />
+                        {reelUploadProgress?.stage === 'processing'
+                          ? 'সার্ভারে কমপ্রেস ও অপ্টিমাইজ করা হচ্ছে...'
+                          : `ভিডিও সার্ভারে আপলোড হচ্ছে... (${toBnNum(reelUploadProgress?.percent || 0)}%)`}
+                      </span>
+                      <span className="font-mono text-pink-700">{toBnNum(reelUploadProgress?.percent || 0)}%</span>
+                    </div>
+                    <div className="w-full bg-pink-100 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-pink-500 to-rose-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${reelUploadProgress?.percent || 5}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-pink-800">
+                      {reelUploadProgress?.stage === 'processing'
+                        ? '💡 ভিডিওর সাইজ ছোট করা হচ্ছে যাতে পরিবারের সবাই বাফার ছাড়া স্মুথভাবে দেখতে পায়।'
+                        : '⚠️ অনুগ্রহ করে অপেক্ষা করুন, আপলোড শেষ না হওয়া পর্যন্ত অ্যাপ বা স্ক্রিন বন্ধ করবেন না।'}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* PINNED FOOTER */}
@@ -2054,7 +2084,8 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                  disabled={isDriveUploading || isUploadingReel}
+                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
                 >
                   বাতিল
                 </button>
@@ -2065,10 +2096,19 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 )}
                 <button
                   type="submit"
-                  disabled={isDriveUploading}
+                  disabled={isDriveUploading || isUploadingReel}
                   className="px-5 py-2 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-sm active:scale-95"
                 >
-                  {isDriveUploading ? (
+                  {isUploadingReel ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>
+                        {reelUploadProgress?.stage === 'processing'
+                          ? 'এইচডি প্রসেস হচ্ছে...'
+                          : `আপলোড হচ্ছে (${toBnNum(reelUploadProgress?.percent || 0)}%)`}
+                      </span>
+                    </>
+                  ) : isDriveUploading ? (
                     <>
                       <Loader2 size={14} className="animate-spin" /> ড্রাইভে আপলোড হচ্ছে...
                     </>
@@ -2194,6 +2234,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         onAddComment={onAddComment}
         onViewPost={recordPostView}
         onCommentReaction={onCommentReaction}
+        onUpdatePost={onUpdatePost}
       />
 
       {/* EDIT POST / REEL MODAL */}

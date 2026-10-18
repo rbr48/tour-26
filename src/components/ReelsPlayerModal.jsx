@@ -17,9 +17,13 @@ import {
   Music,
   Eye,
   RotateCcw,
+  AlertCircle,
+  UploadCloud,
+  Loader2,
 } from 'lucide-react';
 import { formatDuration, toBnNum, resolveMediaUrl, getDriveEmbedUrl, PRODUCTION_ORIGIN } from '../utils/videoHelper';
-import { getLocalVideoUrl } from '../utils/localVideoCache';
+import { getLocalVideo, getLocalVideoUrl } from '../utils/localVideoCache';
+import { uploadReelVideo } from '../utils/reelUploader';
 import { useBackHandler } from '../utils/backNavigation';
 import UserAvatar from './UserAvatar';
 
@@ -36,6 +40,7 @@ export default function ReelsPlayerModal({
   onAddComment,
   onViewPost,
   onCommentReaction,
+  onUpdatePost,
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -102,6 +107,44 @@ export default function ReelsPlayerModal({
     : (currentReel?.driveFileId ? resolveMediaUrl(null, currentReel.driveFileId) : null);
   const videoSource = localVideoUrl || resolvedRemoteSource;
   const embedUrl = getDriveEmbedUrl(validRawSource, currentReel?.driveFileId);
+
+  const isLocalOnly = Boolean(localVideoUrl && !validRawSource && !currentReel?.driveFileId);
+  const [syncingState, setSyncingState] = useState(null);
+
+  useEffect(() => {
+    setSyncingState(null);
+  }, [currentReel?.id]);
+
+  const handleUploadLocalToServer = async () => {
+    if (!currentReel?.id || syncingState?.status === 'uploading') return;
+    try {
+      setSyncingState({ status: 'uploading', percent: 5, stage: 'uploading' });
+      const blob = await getLocalVideo(currentReel.id);
+      if (!blob) {
+        throw new Error('ডিভাইসে লোকাল ভিডিও ফাইল পাওয়া যায়নি');
+      }
+
+      const resData = await uploadReelVideo(blob, {
+        postId: currentReel.id,
+        fileName: `reel_${currentReel.id}.mp4`,
+        onProgress: ({ percent, stage }) => {
+          setSyncingState({ status: 'uploading', percent, stage });
+        },
+      });
+
+      if (resData?.url) {
+        setSyncingState({ status: 'done', percent: 100 });
+        onUpdatePost?.(currentReel.id, {
+          videoUrl: resData.url,
+          vpsVideoUrl: resData.url,
+          storageTier: 'vps_hot',
+        });
+      }
+    } catch (err) {
+      console.error('Failed to sync local reel to server:', err);
+      setSyncingState({ status: 'error', error: err.message || 'আপলোড ব্যর্থ হয়েছে' });
+    }
+  };
 
   const startTime = Number(currentReel?.startTime) || 0;
   const endTime = Number(currentReel?.endTime) || (Number(currentReel?.duration) || 0);
@@ -332,6 +375,45 @@ export default function ReelsPlayerModal({
           </div>
         </div>
 
+        {/* Local-only Reel Banner (Sync to Server Action) */}
+        {isLocalOnly && (
+          <div className="absolute top-16 inset-x-3 z-30 bg-amber-950/90 border border-amber-500/40 rounded-2xl p-2.5 backdrop-blur-md flex items-center justify-between text-white shadow-xl pointer-events-auto animate-in fade-in">
+            <div className="flex items-center gap-2 min-w-0 pr-2">
+              <AlertCircle size={18} className="text-amber-400 shrink-0" />
+              <div className="text-[11px] leading-tight truncate">
+                {syncingState?.status === 'done' ? (
+                  <p className="font-bold text-emerald-400">✓ সার্ভারে সংরক্ষিত! পরিবারের সবাই এখন দেখতে পাবে</p>
+                ) : (
+                  <>
+                    <p className="font-bold text-amber-200">ভিডিওটি শুধুমাত্র আপনার ফোনে সংরক্ষিত</p>
+                    <p className="text-[10px] text-amber-300/80">সার্ভারে আপলোড না হলে অন্যরা দেখতে পাবেন না</p>
+                  </>
+                )}
+              </div>
+            </div>
+            {syncingState?.status !== 'done' && (
+              <button
+                type="button"
+                onClick={handleUploadLocalToServer}
+                disabled={syncingState?.status === 'uploading'}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 active:scale-95 disabled:opacity-50 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow-md cursor-pointer shrink-0"
+              >
+                {syncingState?.status === 'uploading' ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin text-slate-950" />
+                    <span>{toBnNum(syncingState?.percent || 0)}%</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud size={14} className="text-slate-950" />
+                    <span>সার্ভারে পাঠান</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Video Surface Area */}
         <div
           className="relative w-full h-full flex items-center justify-center bg-black cursor-pointer overflow-hidden"
@@ -388,20 +470,21 @@ export default function ReelsPlayerModal({
                   )}
                 </div>
               ) : null}
-              <p className="text-sm font-medium text-amber-300 mb-1">ভিডিওটি প্রস্তুত হচ্ছে</p>
-              <p className="text-xs text-white/60 mb-3">ক্লিপটি ডিভাইসে সংরক্ষিত থাকলে স্বয়ংক্রিয়ভাবে প্লে হবে</p>
-              {videoLoadError && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setVideoLoadError(false);
-                  }}
-                  className="px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
-                >
-                  <RotateCcw size={13} /> পুনরায় লোড করুন
-                </button>
-              )}
+              <p className="text-sm font-medium text-amber-300 mb-1">ভিডিওটি সার্ভারে প্রস্তুত হচ্ছে</p>
+              <p className="text-xs text-white/60 mb-3">ভিডিওটি মূল আপলোডকারীর ডিভাইসে সংরক্ষিত রয়েছে। সার্ভারে আপলোড সম্পন্ন হলে এখানে স্বয়ংক্রিয়ভাবে প্লে হবে।</p>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setVideoLoadError(false);
+                  if (currentReel?.id) {
+                    getLocalVideoUrl(currentReel.id).then((u) => u && setLocalVideoUrl(u));
+                  }
+                }}
+                className="px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+              >
+                <RotateCcw size={13} /> পুনরায় লোড করুন
+              </button>
             </div>
           )}
 

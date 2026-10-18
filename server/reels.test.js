@@ -150,4 +150,35 @@ describe('Reels Tiered Storage System', () => {
       expect(headers.Location).toBe('https://drive.google.com/uc?export=download&id=drive_xyz');
     });
   });
+
+  describe('chunked upload directory logic', () => {
+    it('creates chunk parts and cleanly assembles them', async () => {
+      const uploadId = 'test_upload_123';
+      const chunkDir = path.join(uploadsDir, `chunks_${uploadId}`);
+      fs.mkdirSync(chunkDir, { recursive: true });
+
+      const part0 = path.join(chunkDir, 'part_00000');
+      const part1 = path.join(chunkDir, 'part_00001');
+
+      fs.writeFileSync(part0, Buffer.from('chunk-part-0-'));
+      fs.writeFileSync(part1, Buffer.from('chunk-part-1'));
+
+      const rawPath = path.join(uploadsDir, 'assembled_raw.mp4');
+      const destStream = fs.createWriteStream(rawPath);
+      for (const cf of [part0, part1]) {
+        const chunkData = await fs.promises.readFile(cf);
+        destStream.write(chunkData);
+      }
+      await new Promise((resolve) => destStream.end(resolve));
+
+      const assembled = fs.readFileSync(rawPath, 'utf8');
+      expect(assembled).toBe('chunk-part-0-chunk-part-1');
+
+      // Cleanup
+      fs.unlinkSync(part0);
+      fs.unlinkSync(part1);
+      fs.rmdirSync(chunkDir);
+      expect(fs.existsSync(chunkDir)).toBe(false);
+    });
+  });
 });
