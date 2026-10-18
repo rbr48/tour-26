@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Heart, Smile } from 'lucide-react';
 import { useBackHandler } from '../utils/backNavigation';
 import { triggerHaptic } from '../utils/haptics';
+import { resolveCommenterName, resolveCommenterAvatar } from '../utils/members';
 import UserAvatar from './UserAvatar';
 import { toBnNum } from './InstagramFeed';
 
@@ -13,6 +14,8 @@ export default function InstagramCommentSheet({
   post,
   currentUser,
   currentProfile,
+  members = [],
+  userProfiles = {},
   onClose,
   onAddComment,
   onCommentReaction,
@@ -52,11 +55,12 @@ export default function InstagramCommentSheet({
     triggerHaptic('success');
     setIsSubmitting(true);
     const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
-    const profilePhoto = currentProfile?.customPhotoURL;
+    const profilePhoto = currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL;
+    const authorEmail = (currentUser?.email || '').toLowerCase() || 'member@tour.family';
     const newCommentObj = {
       id: Date.now(),
       user: authorName,
-      authorEmail: currentUser?.email || 'member@tour.family',
+      authorEmail,
       userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
       text: trimmed,
       time: 'এইমাত্র',
@@ -136,9 +140,9 @@ export default function InstagramCommentSheet({
           ) : (
             comments.map((c, idx) => {
               const commentId = (c && typeof c === 'object' && c.id !== undefined && c.id !== null) ? c.id : idx;
-              const userName = typeof c === 'string' ? 'পরিবারের সদস্য' : (c.user || c.author || 'পরিবারের সদস্য');
+              const userName = resolveCommenterName(c, { userProfiles, members, currentUser, currentProfile });
               const commentText = typeof c === 'string' ? c : (c.text || c.comment || c.message || c.body || '');
-              const userAvatar = typeof c === 'object' ? c.userPhoto : null;
+              const userAvatar = resolveCommenterAvatar(c, { userProfiles, currentUser, currentProfile }) || (typeof c === 'object' ? c.userPhoto : null);
               const timeDisplay = (typeof c === 'object' && (c.time || c.createdAt)) ? (c.time || c.createdAt) : 'এইমাত্র';
               const reactions = (typeof c === 'object' && c.reactions) ? c.reactions : {};
 
@@ -215,8 +219,9 @@ export default function InstagramCommentSheet({
         {/* Sticky Bottom Comment Input Bar */}
         <form onSubmit={handleSubmit} className="p-3 border-t border-slate-100 bg-white flex items-center gap-2.5">
           <UserAvatar
-            photoUrl={currentUser?.photoURL || currentProfile?.photoURL}
-            name={currentUser?.displayName || currentProfile?.displayName || 'আমি'}
+            photoUrl={currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL}
+            name={currentProfile?.displayName || currentUser?.displayName || 'আমি'}
+            fallbackEmoji={currentProfile?.avatarEmoji}
             size="w-8 h-8"
           />
 

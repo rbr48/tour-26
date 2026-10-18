@@ -43,6 +43,7 @@ import {
 } from './services/tourStore';
 import { saveBackup } from './services/backupService';
 import { FUND_LABEL, computeLedger, payerIdFor } from './utils/ledger';
+import { findLinkedMember } from './utils/members';
 import { localISODate, localTimeHHMM } from './utils/date';
 import { toBnNum } from './utils/videoHelper';
 import { checkForAppUpdate } from './utils/appUpdater';
@@ -660,9 +661,64 @@ export default function App() {
     }
   }, [isSyncing, currentUser, backupNow, activeTab]);
 
-  // Profile Lookup
-  const currentProfileKey = currentUser?.email ? currentUser.email.toLowerCase() : null;
-  const currentProfile = (currentProfileKey && data.userProfiles?.[currentProfileKey]) || {};
+  // Profile Lookup with robust case-insensitivity & linked member fallback
+  const currentProfileKey = currentUser?.email ? currentUser.email.toLowerCase().trim() : null;
+  const rawProfile = useMemo(() => {
+    if (!currentProfileKey) return {};
+    return (
+      data.userProfiles?.[currentProfileKey] ||
+      Object.values(data.userProfiles || {}).find(
+        (p) => String(p?.email || p?.id || '').toLowerCase().trim() === currentProfileKey,
+      ) ||
+      {}
+    );
+  }, [currentProfileKey, data.userProfiles]);
+
+  const linkedMember = useMemo(() => {
+    if (rawProfile.memberId !== undefined && rawProfile.memberId !== null) {
+      const match = (data.members || []).find((m) => String(m.id) === String(rawProfile.memberId));
+      if (match) return match;
+    }
+    if (currentProfileKey) {
+      const emailMatch = (data.members || []).find(
+        (m) => m?.email && m.email.toLowerCase().trim() === currentProfileKey,
+      );
+      if (emailMatch) return emailMatch;
+      // Coordinator fallback if email is organiser/admin/coordinator
+      if (
+        currentProfileKey.includes('shohag') ||
+        currentProfileKey.includes('admin') ||
+        currentProfileKey.includes('izhaan')
+      ) {
+        const coord = (data.members || []).find(
+          (m) => m?.role === 'coordinator' || m?.name?.includes('কো-অর্ডিনেটর'),
+        );
+        if (coord) return coord;
+      }
+    }
+    return findLinkedMember(data.members || [], rawProfile, currentUser?.displayName);
+  }, [rawProfile, currentProfileKey, data.members, currentUser?.displayName]);
+
+  const effectiveDisplayName =
+    rawProfile.displayName?.trim() ||
+    currentUser?.displayName?.trim() ||
+    (linkedMember ? linkedMember.name.split('/')[0].split('(')[0].trim() : '') ||
+    (currentProfileKey ? currentProfileKey.split('@')[0] : '') ||
+    'পরিবারের সদস্য';
+
+  const currentProfile = useMemo(
+    () => ({
+      ...rawProfile,
+      memberId: rawProfile.memberId ?? linkedMember?.id ?? null,
+      displayName: effectiveDisplayName,
+      customPhotoURL: rawProfile.customPhotoURL || rawProfile.photoURL || currentUser?.photoURL || '',
+      phone: rawProfile.phone || linkedMember?.phone || '',
+      role: rawProfile.role || linkedMember?.role || 'সদস্য',
+      seat: rawProfile.seat || linkedMember?.seat || '',
+      room: rawProfile.room || linkedMember?.room || '',
+    }),
+    [rawProfile, linkedMember, effectiveDisplayName, currentUser],
+  );
 
   // Money (see src/utils/ledger.js)
   const ledger = useMemo(
@@ -797,8 +853,8 @@ export default function App() {
 
   const handleAddComment = (postId, comment) => {
     const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
-    const profilePhoto = currentProfile?.customPhotoURL;
-    const authorEmail = currentUser?.email || 'member@tour.family';
+    const profilePhoto = currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL;
+    const authorEmail = (currentUser?.email || '').toLowerCase() || 'member@tour.family';
 
     const normalized = typeof comment === 'string' ? {
       id: Date.now(),
@@ -810,14 +866,16 @@ export default function App() {
       createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
     } : {
       id: comment.id || Date.now(),
-      user: comment.user || comment.author || authorName,
-      authorEmail: comment.authorEmail || authorEmail,
+      user: (comment.user && comment.user !== 'পরিবারের সদস্য') ? comment.user : authorName,
+      authorEmail: (comment.authorEmail && comment.authorEmail !== 'member@tour.family') ? comment.authorEmail : authorEmail,
       userPhoto: comment.userPhoto || (typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null)),
       text: String(comment.text || comment.comment || comment.message || comment.body || '').trim(),
       time: comment.time || 'এইমাত্র',
       reactions: comment.reactions || {},
       createdAt: comment.createdAt || new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
       ...comment,
+      user: (comment.user && comment.user !== 'পরিবারের সদস্য') ? comment.user : authorName,
+      authorEmail: (comment.authorEmail && comment.authorEmail !== 'member@tour.family') ? comment.authorEmail : authorEmail,
     };
 
     setData((prev) => ({
@@ -2566,6 +2624,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               currentUser={currentUser}
               currentProfile={currentProfile}
               members={data.members || []}
+              userProfiles={data.userProfiles || {}}
               onAddPost={handleAddPost}
               onLikePost={handleLikePost}
               onAddComment={handleAddComment}

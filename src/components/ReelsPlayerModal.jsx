@@ -26,6 +26,7 @@ import { getLocalVideo, getLocalVideoUrl } from '../utils/localVideoCache';
 import { uploadReelVideo } from '../utils/reelUploader';
 import { useBackHandler } from '../utils/backNavigation';
 import { triggerHaptic } from '../utils/haptics';
+import { resolveCommenterName } from '../utils/members';
 import UserAvatar from './UserAvatar';
 
 const COMMENT_REACTIONS = ['❤️', '👍', '😂', '🔥', '👏'];
@@ -36,6 +37,8 @@ export default function ReelsPlayerModal({
   isOpen,
   currentUser,
   currentProfile,
+  members = [],
+  userProfiles = {},
   onClose,
   onLikePost,
   onAddComment,
@@ -307,11 +310,11 @@ export default function ReelsPlayerModal({
     if (!trimmed || !currentReel) return;
 
     const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
-    const profilePhoto = currentProfile?.customPhotoURL;
+    const profilePhoto = currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL;
     onAddComment?.(currentReel.id, {
       id: Date.now(),
       user: authorName,
-      authorEmail: currentUser?.email || 'member@tour.family',
+      authorEmail: (currentUser?.email || '').toLowerCase() || 'member@tour.family',
       userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
       text: trimmed,
       time: 'এইমাত্র',
@@ -673,7 +676,7 @@ export default function ReelsPlayerModal({
                 ) : (
                   commentsList.map((c, idx) => {
                     const commentId = (c && typeof c === 'object' && c.id !== undefined && c.id !== null) ? c.id : idx;
-                    const userName = typeof c === 'string' ? 'পরিবারের সদস্য' : (c.user || c.author || 'পরিবারের সদস্য');
+                    const userName = resolveCommenterName(c, { userProfiles, members, currentUser, currentProfile });
                     const commentText = typeof c === 'string' ? c : (c.text || c.comment || c.message || c.body || '');
                     const timeDisplay = (typeof c === 'object' && (c.time || c.createdAt)) ? (c.time || c.createdAt) : 'এইমাত্র';
                     const reactions = (typeof c === 'object' && c.reactions) ? c.reactions : {};

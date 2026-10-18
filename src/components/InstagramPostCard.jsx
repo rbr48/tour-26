@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { triggerHaptic } from '../utils/haptics';
 import { formatDuration } from '../utils/videoHelper';
+import { resolveCommenterName } from '../utils/members';
 import UserAvatar from './UserAvatar';
 import { toBnNum, getPostImages, photoSource, getFilterCss } from './InstagramFeed';
 
@@ -30,6 +31,8 @@ export default function InstagramPostCard({
   post,
   currentUser,
   currentProfile,
+  members = [],
+  userProfiles = {},
   onLikePost,
   onOpenComments,
   onShareMedia,
@@ -432,13 +435,6 @@ export default function InstagramPostCard({
           </div>
         </div>
 
-        {/* If Reel: Display authentic Instagram "দেখা হয়েছে X বার" */}
-        {postIsReel && (
-          <p className="text-slate-600 font-medium text-[11px]">
-            দেখা হয়েছে <span className="font-bold text-slate-900">{toBnNum(post.views || 0)}</span> বার
-          </p>
-        )}
-
         {/* Caption */}
         {post.caption && (
           <div className="text-[13px] text-slate-900 leading-snug">
@@ -464,7 +460,7 @@ export default function InstagramPostCard({
         {commentCount > 0 && (
           <div className="space-y-0.5 pt-0.5">
             {(Array.isArray(post.comments) ? post.comments : []).slice(-2).map((c, idx) => {
-              const userName = typeof c === 'string' ? '' : (c.user || c.author || '');
+              const userName = resolveCommenterName(c, { userProfiles, members, currentUser, currentProfile });
               const commentText = typeof c === 'string' ? c : (c.text || c.comment || c.message || '');
               return (
                 <div

@@ -147,6 +147,7 @@ export default function InstagramFeed({
   currentUser = null,
   currentProfile = {},
   members = [],
+  userProfiles = {},
   onAddPost,
   onLikePost,
   onAddComment,
@@ -895,12 +896,15 @@ export default function InstagramFeed({
     if (!text || !text.trim()) return;
 
     const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
+    const profilePhoto = currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL;
 
     onAddComment(postId, {
       id: Date.now(),
       user: authorName,
+      authorEmail: (currentUser?.email || '').toLowerCase() || 'member@tour.family',
+      userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
       text: text.trim(),
-      time: 'এইমাত্র'
+      time: 'এইমাত্র',
     });
 
     setCommentInputs({ ...commentInputs, [postId]: '' });
@@ -1392,6 +1396,8 @@ export default function InstagramFeed({
                       post={post}
                       currentUser={currentUser}
                       currentProfile={currentProfile}
+                      members={members}
+                      userProfiles={userProfiles}
                       onLikePost={onLikePost}
                       onViewPost={recordPostView}
                       onOpenComments={(p) => {
@@ -1671,6 +1677,8 @@ export default function InstagramFeed({
                         post={post}
                         currentUser={currentUser}
                         currentProfile={currentProfile}
+                        members={members}
+                        userProfiles={userProfiles}
                         onLikePost={onLikePost}
                         onViewPost={recordPostView}
                         onOpenComments={(p) => {
@@ -2448,6 +2456,8 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         isOpen={reelsPlayer.isOpen}
         currentUser={currentUser}
         currentProfile={currentProfile}
+        members={members}
+        userProfiles={userProfiles}
         onClose={handleCloseReelsPlayer}
         onLikePost={onLikePost}
         onAddComment={onAddComment}
@@ -2554,6 +2564,8 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         post={posts.find((p) => String(p.id) === String(activeCommentPost?.id)) || activeCommentPost}
         currentUser={currentUser}
         currentProfile={currentProfile}
+        members={members}
+        userProfiles={userProfiles}
         onClose={() => setActiveCommentPost(null)}
         onAddComment={onAddComment}
         onCommentReaction={onCommentReaction}
@@ -2570,6 +2582,8 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         onViewPost={recordPostView}
         currentUser={currentUser}
         currentProfile={currentProfile}
+        members={members}
+        userProfiles={userProfiles}
       />
     </div>
   );

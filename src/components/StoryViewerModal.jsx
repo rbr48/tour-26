@@ -17,6 +17,8 @@ export default function StoryViewerModal({
   onViewPost,
   currentUser,
   currentProfile,
+  members = [],
+  userProfiles = {},
 }) {
   const [memberIndex, setMemberIndex] = useState(initialMemberIndex);
   const [storyIndex, setStoryIndex] = useState(0);
@@ -114,11 +116,11 @@ export default function StoryViewerModal({
     if (!trimmed || !onAddComment) return;
     triggerHaptic('success');
     const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
-    const profilePhoto = currentProfile?.customPhotoURL;
+    const profilePhoto = currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL;
     const commentObj = {
       id: Date.now(),
       user: authorName,
-      authorEmail: currentUser?.email || 'member@tour.family',
+      authorEmail: (currentUser?.email || '').toLowerCase() || 'member@tour.family',
       userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
       text: trimmed,
       time: 'এইমাত্র',
