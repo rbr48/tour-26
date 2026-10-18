@@ -325,13 +325,69 @@ export default function DiscordDiscussion({
 
                     <div className={`flex items-center gap-1 ${isMe ? 'flex-row-reverse' : ''}`}>
                       <div
-                        className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl text-xs sm:text-[13px] leading-relaxed text-left inline-block shadow-2xs ${
+                        className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl text-xs sm:text-[13px] leading-relaxed text-left inline-flex flex-wrap items-center gap-1.5 shadow-2xs max-w-full ${
                           isMe
                             ? 'bg-gradient-to-r from-teal-700 to-teal-800 text-white rounded-tr-xs'
                             : 'bg-white text-slate-800 rounded-tl-xs border border-slate-200/90'
                         }`}
                       >
-                        {msg.text}
+                        <span className="break-words">{msg.text}</span>
+
+                        {/* Active Reactions Inline at the Bottom Right of the Message */}
+                        {activeReactions.length > 0 && (
+                          <span className={`inline-flex items-center gap-1 ${isMe ? 'ml-auto' : ''}`}>
+                            {activeReactions.map((emoji) => {
+                              const voters = Array.isArray(msg.reactions?.[emoji]) ? msg.reactions[emoji] : [];
+                              const count = voters.length;
+                              const myIdentifier = (
+                                currentUser?.email ||
+                                currentProfile?.displayName ||
+                                currentUser?.displayName ||
+                                'user'
+                              ).toLowerCase();
+                              const reactedByMe =
+                                Boolean(myIdentifier) && voters.some((v) => String(v).toLowerCase() === myIdentifier);
+
+                              return (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  aria-pressed={reactedByMe}
+                                  onClick={() => onAddReaction(activeChannelId, msg.id, emoji)}
+                                  className={`px-1.5 py-0.2 rounded-md text-[10px] inline-flex items-center gap-0.5 transition cursor-pointer select-none border ${
+                                    isMe
+                                      ? reactedByMe
+                                        ? 'bg-amber-400 text-teal-950 border-amber-300 font-bold shadow-2xs'
+                                        : 'bg-teal-900/80 text-teal-100 border-teal-600/70'
+                                      : reactedByMe
+                                        ? 'bg-amber-100 text-amber-900 border-amber-400 font-bold shadow-2xs'
+                                        : 'bg-slate-100 text-slate-700 border-slate-200'
+                                  }`}
+                                  title={reactedByMe ? `${emoji} রিঅ্যাকশন বাতিল করুন` : `${emoji} রিঅ্যাক্ট করুন`}
+                                >
+                                  <span>{emoji}</span>
+                                  <span className="font-bold font-mono text-[9px]">{toBnNum(count)}</span>
+                                </button>
+                              );
+                            })}
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReactionPickerMsgId(reactionPickerMsgId === msg.id ? null : msg.id);
+                              }}
+                              className={`w-4 h-4 rounded-md text-[9px] transition cursor-pointer inline-flex items-center justify-center border ${
+                                isMe
+                                  ? 'text-teal-200 hover:text-white bg-teal-900/60 border-teal-600/50 hover:bg-teal-900'
+                                  : 'text-slate-400 hover:text-slate-700 bg-slate-50 border-slate-200 hover:bg-slate-100'
+                              }`}
+                              title="আরো রিঅ্যাকশন যুক্ত করুন"
+                            >
+                              <Plus size={10} />
+                            </button>
+                          </span>
+                        )}
                       </div>
 
                       {/* Quick Reaction Trigger Button */}
@@ -348,54 +404,6 @@ export default function DiscordDiscussion({
                         <Smile size={13} />
                       </button>
                     </div>
-
-                    {/* Active Reactions Pills Bar (Shown ONLY when count > 0) */}
-                    {activeReactions.length > 0 && (
-                      <div className={`flex items-center flex-wrap gap-1 pt-0.5 ${isMe ? 'justify-end' : ''}`}>
-                        {activeReactions.map((emoji) => {
-                          const voters = Array.isArray(msg.reactions?.[emoji]) ? msg.reactions[emoji] : [];
-                          const count = voters.length;
-                          const myIdentifier = (
-                            currentUser?.email ||
-                            currentProfile?.displayName ||
-                            currentUser?.displayName ||
-                            'user'
-                          ).toLowerCase();
-                          const reactedByMe =
-                            Boolean(myIdentifier) && voters.some((v) => String(v).toLowerCase() === myIdentifier);
-
-                          return (
-                            <button
-                              key={emoji}
-                              type="button"
-                              aria-pressed={reactedByMe}
-                              onClick={() => onAddReaction(activeChannelId, msg.id, emoji)}
-                              className={`px-1.5 py-0.2 rounded-md text-[10px] flex items-center gap-0.5 transition cursor-pointer select-none border ${
-                                reactedByMe
-                                  ? 'bg-amber-100 text-amber-900 border-amber-400 font-bold scale-105 shadow-2xs'
-                                  : 'bg-indigo-50/80 text-indigo-900 border-indigo-200 font-medium'
-                              }`}
-                              title={reactedByMe ? `${emoji} রিঅ্যাকশন বাতিল করুন` : `${emoji} রিঅ্যাক্ট করুন`}
-                            >
-                              <span>{emoji}</span>
-                              <span className="font-bold font-mono text-[9px]">{toBnNum(count)}</span>
-                            </button>
-                          );
-                        })}
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setReactionPickerMsgId(reactionPickerMsgId === msg.id ? null : msg.id);
-                          }}
-                          className="px-1 py-0.5 rounded-md text-[9px] text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-slate-200/60 transition cursor-pointer flex items-center justify-center"
-                          title="আরো রিঅ্যাকশন যুক্ত করুন"
-                        >
-                          <Plus size={10} />
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </div>
               );
