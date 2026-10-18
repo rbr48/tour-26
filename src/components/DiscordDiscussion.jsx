@@ -40,7 +40,7 @@ const CHANNELS = [
   },
   {
     id: 'emergency',
-    name: 'জরুরি-হেল্প-ও-লোケーション',
+    name: 'জরুরি-হেল্প-ও-লোকেশন',
     title: 'জরুরি হেল্প',
     icon: ShieldAlert,
     desc: 'মিটিং পয়েন্ট, লস্ট অ্যান্ড ফাউন্ড ও তাৎক্ষণিক সহায়তা',
@@ -72,7 +72,8 @@ export default function DiscordDiscussion({
     try {
       const stored = localStorage.getItem('tour_discussion_channel');
       if (stored === 'plans') return 'sightseeing';
-      return stored || 'general';
+      if (CHANNELS.some((c) => c.id === stored)) return stored;
+      return 'general';
     } catch {
       return 'general';
     }
@@ -91,7 +92,12 @@ export default function DiscordDiscussion({
   // Phone back button handlers
   useBackHandler(showQuickPrompts, () => setShowQuickPrompts(false), 20);
 
-  const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+
+  // Ensure window starts at the top when entering discussion tab
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
 
   // Close quick prompts on Escape key
   useEffect(() => {
@@ -124,10 +130,12 @@ export default function DiscordDiscussion({
   const activeChannel = CHANNELS.find((c) => c.id === activeChannelId) || CHANNELS[0];
   const channelMessages = discussions[activeChannelId] || [];
 
-  // Scroll to bottom on channel switch or when new messages arrive
+  // Scroll only the internal messages container to bottom (never hijacks page window)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [channelMessages.length, activeChannelId]);
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  }, [activeChannelId, channelMessages.length]);
 
   const handleSend = (e) => {
     e.preventDefault();
@@ -154,6 +162,13 @@ export default function DiscordDiscussion({
     try {
       localStorage.removeItem('tour_discussion_draft');
     } catch {}
+
+    // Scroll internal messages container to latest message
+    setTimeout(() => {
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      }
+    }, 50);
   };
 
   return (
@@ -258,8 +273,11 @@ export default function DiscordDiscussion({
           </div>
         </div>
 
-        {/* Messages Feed (In-Page Vertical Flow) */}
-        <div className="p-4 sm:p-6 space-y-4 min-h-[320px] bg-slate-50/40">
+        {/* Messages Feed (Contained Scroll Container - Never Scrolls the Window) */}
+        <div
+          ref={messagesContainerRef}
+          className="p-4 sm:p-5 space-y-4 max-h-[460px] md:max-h-[500px] overflow-y-auto bg-slate-50/40 scroll-smooth"
+        >
           {channelMessages.length > 0 ? (
             channelMessages.map((msg) => {
               const myEmail = currentUser?.email?.toLowerCase();
@@ -347,7 +365,7 @@ export default function DiscordDiscussion({
               );
             })
           ) : (
-            <div className="py-12 flex flex-col items-center justify-center text-center p-6 space-y-2">
+            <div className="py-8 sm:py-10 flex flex-col items-center justify-center text-center p-6 space-y-2">
               <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl border border-indigo-100">
                 💬
               </div>
@@ -359,7 +377,6 @@ export default function DiscordDiscussion({
               </p>
             </div>
           )}
-          <div ref={messagesEndRef} />
         </div>
 
         {/* Message Input & Quick Shortcuts (Clean In-Page Section) */}
