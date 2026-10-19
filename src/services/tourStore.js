@@ -149,8 +149,10 @@ export function subscribeToTour({ onUpdate, onError, onChange }) {
   };
 
   const handleListenerError = (sourceName, err) => {
-    state.loaded.add(sourceName);
-    publish();
+    if (err?.code !== 'permission-denied') {
+      state.loaded.add(sourceName);
+      publish();
+    }
     onError?.(err);
   };
 

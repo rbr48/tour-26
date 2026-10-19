@@ -79,7 +79,7 @@ export const signInWithGoogle = async () => {
       let idToken = result?.credential?.idToken || result?.idToken;
       if (!idToken) {
         try {
-          const tokenRes = await FirebaseAuthentication.getIdToken();
+          const tokenRes = await FirebaseAuthentication.getIdToken({ forceRefresh: true });
           idToken = tokenRes?.token;
         } catch (tokenErr) {
           console.warn('Failed to retrieve token from FirebaseAuthentication plugin:', tokenErr);
@@ -90,6 +90,9 @@ export const signInWithGoogle = async () => {
         const credential = GoogleAuthProvider.credential(idToken);
         const userCredential = await signInWithCredential(auth, credential);
         return userCredential.user;
+      }
+      if (auth.currentUser) {
+        return auth.currentUser;
       }
       if (result?.user) {
         return result.user;

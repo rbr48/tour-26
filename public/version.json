@@ -1,10 +1,10 @@
 {
-  "versionCode": 13,
-  "versionName": "2.11",
+  "versionCode": 14,
+  "versionName": "2.12",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v13.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v14.apk",
   "apkSize": "8.2 MB",
-  "releaseNotes": "নতুন আপডেট v2.11: চ্যাট সেকশনে স্মার্ট মেসেজ গ্রুপিং, স্ক্রোলেবল আনট্রাংকেটেড চ্যানেল বার, ক্যালেন্ডার ডেট ডিভাইডার এবং ফ্লোটিং অ্যাকশন বার ওভারহোল।",
-  "releasedAt": "2026-10-19T05:55:00Z",
+  "releaseNotes": "নতুন আপডেট v2.12: নতুন ইউজার সাইন-ইনের পর ব্ল্যাঙ্ক স্ক্রিন ফিক্স, অথেন্টিকেটেড ফায়ারস্টোর লাইভ সিঙ্ক অপ্টিমাইজেশন এবং ড্যাশবোর্ড ইনস্ট্যান্ট লোডিং।",
+  "releasedAt": "2026-10-19T06:45:00Z",
   "forceUpdate": false
 }

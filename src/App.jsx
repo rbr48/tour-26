@@ -523,6 +523,8 @@ export default function App() {
   // 2. Live trip data. Each change in Firestore arrives here, and the app announces what
   //    other people added. Writes made on this device are not announced.
   useEffect(() => {
+    if (!uid) return undefined;
+
     const announce = ({ title, body, tab, type }) => {
       sendPushNotification({ title, body, tab, onClick: () => setActiveTab(tab) });
       addActivity({ id: newId(), type, title, body, tab, time: 'এইমাত্র' });
@@ -530,7 +532,7 @@ export default function App() {
 
     const stopTour = subscribeToTour({
       onUpdate: ({ data: next, tourExists: exists, legacy, raw }) => {
-        const hasAnything = LIST_KEYS.some((key) => next[key].length > 0);
+        const hasAnything = LIST_KEYS.some((key) => next[key]?.length > 0);
         setData({
           ...next,
           tourInfo: next.tourInfo ?? SEED_DATA.tourInfo,
@@ -541,7 +543,7 @@ export default function App() {
         setSyncStatus('ফায়ারবেস লাইভ সিঙ্ক');
         setLastSyncedTime(nowLabel());
 
-        if (!exists && !hasAnything && !seedingRef.current) {
+        if (!exists && !hasAnything && !seedingRef.current && isAdmin) {
           seedingRef.current = true;
           seedTour(SEED_DATA).catch((err) => {
             seedingRef.current = false;
@@ -549,7 +551,7 @@ export default function App() {
           });
         }
 
-        if (legacy && !upgradingRef.current) {
+        if (legacy && !upgradingRef.current && isAdmin) {
           upgradingRef.current = true;
           setUpgradeNotice('তথ্য নতুন ব্যবস্থায় আপগ্রেড হচ্ছে...');
           migrateLegacyTour(raw, {
@@ -610,14 +612,15 @@ export default function App() {
     return () => {
       stopTour();
     };
-  }, [addActivity]);
+  }, [uid, addActivity, isAdmin]);
 
   // 3. Keep this device's copy for instant display on the next visit.
   useEffect(() => {
-    if (remoteReady) {
+    const hasData = LIST_KEYS.some((key) => Array.isArray(data[key]) && data[key].length > 0);
+    if (remoteReady && (tourExists || hasData)) {
       writeCache(data);
     }
-  }, [data, remoteReady]);
+  }, [data, remoteReady, tourExists]);
 
   // 4. Server backup: a short pause after the last change, so bursts of edits send once.
   const backupNow = useCallback(async () => {
@@ -2894,46 +2897,54 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       </nav>
 
       {/* GLOBAL COMMAND PALETTE (Ctrl+K) */}
-      <CommandPalette
-        isOpen={isCommandOpen}
-        onClose={setIsCommandOpen}
-        members={data.members || []}
-        isAdmin={isAdmin}
-        onSelectTab={(tabId) => {
-          setActiveTab(tabId);
-          setIsCommandOpen(false);
-        }}
-        onOpenExpenseModal={() => {
-          setActiveTab('expenses');
-          setIsCommandOpen(false);
-        }}
-        onOpenPrintModal={() => {
-          setShowPrintReport(true);
-          setIsCommandOpen(false);
-        }}
-        onOpenProfileModal={() => {
-          setShowProfileModal(true);
-          setIsCommandOpen(false);
-        }}
-        onTriggerSOS={() => {
-          setActiveTab('notices');
-          setIsCommandOpen(false);
-        }}
-      />
+      {isCommandOpen && (
+        <Suspense fallback={null}>
+          <CommandPalette
+            isOpen={isCommandOpen}
+            onClose={setIsCommandOpen}
+            members={data.members || []}
+            isAdmin={isAdmin}
+            onSelectTab={(tabId) => {
+              setActiveTab(tabId);
+              setIsCommandOpen(false);
+            }}
+            onOpenExpenseModal={() => {
+              setActiveTab('expenses');
+              setIsCommandOpen(false);
+            }}
+            onOpenPrintModal={() => {
+              setShowPrintReport(true);
+              setIsCommandOpen(false);
+            }}
+            onOpenProfileModal={() => {
+              setShowProfileModal(true);
+              setIsCommandOpen(false);
+            }}
+            onTriggerSOS={() => {
+              setActiveTab('notices');
+              setIsCommandOpen(false);
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* USER PROFILE MODAL */}
-      <UserProfileModal
-        isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-        currentUser={currentUser}
-        currentProfile={currentProfile}
-        members={data.members || []}
-        onSaveProfile={handleSaveProfile}
-        onOpenUpdateModal={(info) => {
-          setAppUpdateInfo(info);
-          setShowAppUpdateModal(true);
-        }}
-      />
+      {showProfileModal && (
+        <Suspense fallback={null}>
+          <UserProfileModal
+            isOpen={showProfileModal}
+            onClose={() => setShowProfileModal(false)}
+            currentUser={currentUser}
+            currentProfile={currentProfile}
+            members={data.members || []}
+            onSaveProfile={handleSaveProfile}
+            onOpenUpdateModal={(info) => {
+              setAppUpdateInfo(info);
+              setShowAppUpdateModal(true);
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* EDIT MEMBER & DEPOSIT UPDATE MODAL (Pinned header/footer, mobile-friendly) */}
       {isAdmin && editingMember && (() => {
@@ -3207,30 +3218,42 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       )}
 
       {/* SUPERPOWER MODALS */}
-      <FamilySafetyHub
-        isOpen={showSafetyHubModal}
-        onClose={() => setShowSafetyHubModal(false)}
-        currentUser={currentUser}
-        currentProfile={currentProfile}
-        familyLocations={data.familyLocations || {}}
-        members={data.members || []}
-        onShareLocation={handleShareLocation}
-        onClearLocation={handleClearLocation}
-      />
+      {showSafetyHubModal && (
+        <Suspense fallback={null}>
+          <FamilySafetyHub
+            isOpen={showSafetyHubModal}
+            onClose={() => setShowSafetyHubModal(false)}
+            currentUser={currentUser}
+            currentProfile={currentProfile}
+            familyLocations={data.familyLocations || {}}
+            members={data.members || []}
+            onShareLocation={handleShareLocation}
+            onClearLocation={handleClearLocation}
+          />
+        </Suspense>
+      )}
 
-      <TourQuizModal
-        isOpen={showQuizModal}
-        onClose={() => setShowQuizModal(false)}
-        currentUser={currentUser}
-        currentProfile={currentProfile}
-      />
+      {showQuizModal && (
+        <Suspense fallback={null}>
+          <TourQuizModal
+            isOpen={showQuizModal}
+            onClose={() => setShowQuizModal(false)}
+            currentUser={currentUser}
+            currentProfile={currentProfile}
+          />
+        </Suspense>
+      )}
 
       {/* IN-APP OTA APP UPDATER MODAL */}
-      <AppUpdateModal
-        isOpen={showAppUpdateModal}
-        updateInfo={appUpdateInfo}
-        onClose={() => setShowAppUpdateModal(false)}
-      />
+      {showAppUpdateModal && (
+        <Suspense fallback={null}>
+          <AppUpdateModal
+            isOpen={showAppUpdateModal}
+            updateInfo={appUpdateInfo}
+            onClose={() => setShowAppUpdateModal(false)}
+          />
+        </Suspense>
+      )}
 
     </div>
     <ConfirmDialog request={confirmRequest} onCancel={closeConfirm} />
