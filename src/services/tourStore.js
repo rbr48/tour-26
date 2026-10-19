@@ -418,6 +418,39 @@ export function subscribeActiveGameRooms(onUpdate) {
   );
 }
 
+/**
+ * Updates the shared journey highway milestone.
+ */
+export function saveJourneyMilestone(milestoneData) {
+  const actor = currentActor();
+  const ref = itemRef(['meta'], 'journey_status');
+  return setDoc(
+    ref,
+    {
+      ...milestoneData,
+      updatedAt: Date.now(),
+      updatedBy: actor.name,
+      updatedByEmail: actor.email,
+    },
+    { merge: true },
+  );
+}
+
+/**
+ * Subscribes to live journey milestone status updates.
+ */
+export function subscribeJourneyMilestone(onUpdate) {
+  return onSnapshot(
+    itemRef(['meta'], 'journey_status'),
+    (snap) => {
+      onUpdate(snap.exists() ? snap.data() : null);
+    },
+    () => {
+      onUpdate(null);
+    },
+  );
+}
+
 export function saveProfile(profile) {
   const actor = currentActor();
   return setDoc(

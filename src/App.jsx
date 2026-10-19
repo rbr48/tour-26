@@ -62,6 +62,9 @@ const FamilySafetyHub = lazy(() => import('./components/FamilySafetyHub'));
 const TourQuizModal = lazy(() => import('./components/TourQuizModal'));
 const AppUpdateModal = lazy(() => import('./components/AppUpdateModal'));
 const GameZoneHub = lazy(() => import('./components/GameZone/GameZoneHub'));
+const JourneyTrackerModal = lazy(() => import('./components/JourneyTrackerModal'));
+const BeachGuideModal = lazy(() => import('./components/BeachGuideModal'));
+const TourScrapbookModal = lazy(() => import('./components/TourScrapbookModal'));
 
 export const APP_LOGO_URL = '/logo.png?v=20261019';
 const VALID_TABS = ['dashboard', 'itinerary', 'expenses', 'seats_rooms', 'feed', 'discussions', 'notices', 'checklist', 'games'];
@@ -207,6 +210,9 @@ export default function App() {
   // Feature Modals
   const [showSafetyHubModal, setShowSafetyHubModal] = useState(false);
   const [showQuizModal, setShowQuizModal] = useState(false);
+  const [showJourneyModal, setShowJourneyModal] = useState(false);
+  const [showBeachGuideModal, setShowBeachGuideModal] = useState(false);
+  const [showScrapbookModal, setShowScrapbookModal] = useState(false);
   const [confirmRequest, setConfirmRequest] = useState(null);
   const [appUpdateInfo, setAppUpdateInfo] = useState(null);
   const [showAppUpdateModal, setShowAppUpdateModal] = useState(false);
@@ -383,6 +389,9 @@ export default function App() {
   useBackHandler(Boolean(previewImage), () => setPreviewImage(null), 50);
   useBackHandler(showSafetyHubModal, () => setShowSafetyHubModal(false), 20);
   useBackHandler(showQuizModal, () => setShowQuizModal(false), 20);
+  useBackHandler(showJourneyModal, () => setShowJourneyModal(false), 20);
+  useBackHandler(showBeachGuideModal, () => setShowBeachGuideModal(false), 20);
+  useBackHandler(showScrapbookModal, () => setShowScrapbookModal(false), 20);
   useBackHandler(showProfileModal, () => setShowProfileModal(false), 20);
   useBackHandler(showPrintReport, () => setShowPrintReport(false), 20);
   useBackHandler(isCommandOpen, () => setIsCommandOpen(false), 20);
@@ -1675,6 +1684,45 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setShowJourneyModal(true)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-teal-800 to-amber-950 hover:from-teal-700 hover:to-amber-900 text-teal-100 hover:text-white transition cursor-pointer border border-amber-500/40 shadow-xs"
+            >
+              <div className="flex items-center gap-2.5 truncate">
+                <Bus size={15} className="text-amber-400 shrink-0" />
+                <span className="truncate">হাইওয়ে ট্র্যাকার</span>
+              </div>
+              <span className="text-[9px] bg-amber-400 text-slate-950 font-bold px-1.5 py-0.5 rounded shrink-0">
+                ৮২০ কিমি
+              </span>
+            </button>
+
+            <button
+              onClick={() => setShowBeachGuideModal(true)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-teal-800 to-cyan-950 hover:from-teal-700 hover:to-cyan-900 text-teal-100 hover:text-white transition cursor-pointer border border-cyan-500/40 shadow-xs"
+            >
+              <div className="flex items-center gap-2.5 truncate">
+                <Waves size={15} className="text-cyan-400 shrink-0" />
+                <span className="truncate">সৈকত ও খাবার গাইড</span>
+              </div>
+              <span className="text-[9px] bg-cyan-400 text-slate-950 font-bold px-1.5 py-0.5 rounded shrink-0">
+                সেফটি
+              </span>
+            </button>
+
+            <button
+              onClick={() => setShowScrapbookModal(true)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-teal-800 to-rose-950 hover:from-teal-700 hover:to-rose-900 text-teal-100 hover:text-white transition cursor-pointer border border-rose-500/40 shadow-xs"
+            >
+              <div className="flex items-center gap-2.5 truncate">
+                <Sparkles size={15} className="text-rose-400 shrink-0" />
+                <span className="truncate">ডিজিটাল স্ক্র্যাপবুক</span>
+              </div>
+              <span className="text-[9px] bg-rose-400 text-slate-950 font-bold px-1.5 py-0.5 rounded shrink-0">
+                PDF
+              </span>
+            </button>
+
+            <button
               onClick={() => setShowQuizModal(true)}
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-teal-800 to-amber-950 hover:from-teal-700 hover:to-amber-900 text-teal-100 hover:text-white transition cursor-pointer border border-amber-600/40 shadow-xs"
             >
@@ -1894,6 +1942,45 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                     <Compass size={14} className="text-rose-400" /> ফ্যামিলি সুরক্ষা ও বিচ কম্পাস
                   </span>
                   <span className="text-[9px] bg-rose-500 text-white font-bold px-1.5 py-0.5 rounded">GPS</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsMobileSidebarOpen(false);
+                    setShowJourneyModal(true);
+                  }}
+                  className="w-full py-2 px-3 bg-gradient-to-r from-teal-900 to-amber-950 hover:bg-teal-800 text-teal-100 rounded-xl text-xs font-semibold flex items-center justify-between border border-amber-600/50 transition cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Bus size={14} className="text-amber-400" /> হাইওয়ে জার্নি ট্র্যাকার
+                  </span>
+                  <span className="text-[9px] bg-amber-400 text-slate-950 font-bold px-1.5 py-0.5 rounded">৮২০ কিমি</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsMobileSidebarOpen(false);
+                    setShowBeachGuideModal(true);
+                  }}
+                  className="w-full py-2 px-3 bg-gradient-to-r from-teal-900 to-cyan-950 hover:bg-teal-800 text-teal-100 rounded-xl text-xs font-semibold flex items-center justify-between border border-cyan-600/50 transition cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Waves size={14} className="text-cyan-400" /> সৈকত ও খাবার গাইড
+                  </span>
+                  <span className="text-[9px] bg-cyan-400 text-slate-950 font-bold px-1.5 py-0.5 rounded">সেফটি</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsMobileSidebarOpen(false);
+                    setShowScrapbookModal(true);
+                  }}
+                  className="w-full py-2 px-3 bg-gradient-to-r from-teal-900 to-rose-950 hover:bg-teal-800 text-teal-100 rounded-xl text-xs font-semibold flex items-center justify-between border border-rose-600/50 transition cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles size={14} className="text-rose-400" /> ডিজিটাল স্ক্র্যাপবুক
+                  </span>
+                  <span className="text-[9px] bg-rose-400 text-slate-950 font-bold px-1.5 py-0.5 rounded">PDF</span>
                 </button>
 
                 <button
@@ -2175,17 +2262,70 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   <h4 className="font-bold text-xs sm:text-sm text-slate-800">হোটেল সি মুন</h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">১০টি রুমের ফ্লোর প্ল্যান</p>
                 </button>
+
+                <button
+                  onClick={() => setShowJourneyModal(true)}
+                  className="p-3.5 bg-gradient-to-br from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 border border-amber-200 rounded-3xl text-left transition shadow-xs group cursor-pointer"
+                >
+                  <div className="w-9 h-9 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center mb-2 group-hover:scale-110 transition shadow-2xs">
+                    <Bus size={18} />
+                  </div>
+                  <h4 className="font-bold text-xs sm:text-sm text-slate-800">হাইওয়ে ট্র্যাকার 🛣️</h4>
+                  <p className="text-[11px] text-amber-800 mt-0.5">৮২০ কিমি লাইভ অগ্রগতি ও GPS</p>
+                </button>
+
+                <button
+                  onClick={() => setShowBeachGuideModal(true)}
+                  className="p-3.5 bg-gradient-to-br from-cyan-50 to-teal-50 hover:from-cyan-100 hover:to-teal-100 border border-cyan-200 rounded-3xl text-left transition shadow-xs group cursor-pointer"
+                >
+                  <div className="w-9 h-9 rounded-2xl bg-cyan-600 text-white flex items-center justify-center mb-2 group-hover:scale-110 transition shadow-2xs">
+                    <Waves size={18} />
+                  </div>
+                  <h4 className="font-bold text-xs sm:text-sm text-slate-800">সৈকত ও খাবার 🌊</h4>
+                  <p className="text-[11px] text-cyan-800 mt-0.5">জোয়ার-ভাটা সুইম ও রেস্তোরাঁ</p>
+                </button>
+
+                <button
+                  onClick={() => setShowScrapbookModal(true)}
+                  className="p-3.5 bg-gradient-to-br from-rose-50 to-pink-50 hover:from-rose-100 hover:to-pink-100 border border-rose-200 rounded-3xl text-left transition shadow-xs group cursor-pointer"
+                >
+                  <div className="w-9 h-9 rounded-2xl bg-rose-600 text-white flex items-center justify-center mb-2 group-hover:scale-110 transition shadow-2xs">
+                    <Sparkles size={18} />
+                  </div>
+                  <h4 className="font-bold text-xs sm:text-sm text-slate-800">ডিজিটাল ম্যাগাজিন 📖</h4>
+                  <p className="text-[11px] text-rose-800 mt-0.5">স্ক্র্যাপবুক ও প্রিন্টযোগ্য PDF</p>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('games')}
+                  className="p-3.5 bg-gradient-to-br from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 border border-purple-200 rounded-3xl text-left transition shadow-xs group cursor-pointer"
+                >
+                  <div className="w-9 h-9 rounded-2xl bg-purple-600 text-white flex items-center justify-center mb-2 group-hover:scale-110 transition shadow-2xs">
+                    <Gamepad2 size={18} />
+                  </div>
+                  <h4 className="font-bold text-xs sm:text-sm text-slate-800">গেম জোন ♟️</h4>
+                  <p className="text-[11px] text-purple-800 mt-0.5">দাবা এআই বট, ৩ পাত্তি ও লুডো</p>
+                </button>
               </div>
 
               {/* Route Progress & Milestone Timeline */}
               <div className="bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-100 space-y-3.5">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <h3 className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-2">
                     <Bus size={17} className="text-teal-700" /> যাত্রাপথ ও সম্ভাব্য সময়সূচি (রংপুর ➔ কক্সবাজার)
                   </h3>
-                  <span className="text-[10px] sm:text-xs bg-teal-50 text-teal-800 font-bold px-2.5 py-0.5 rounded-full border border-teal-200">
-                    এভারগ্রীন এসি বাস
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowJourneyModal(true)}
+                      className="text-[11px] font-bold px-2.5 py-1 bg-amber-400 hover:bg-amber-500 text-slate-950 rounded-xl shadow-xs flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <Bus size={13} />
+                      <span>লাইভ ট্র্যাকার</span>
+                    </button>
+                    <span className="text-[10px] sm:text-xs bg-teal-50 text-teal-800 font-bold px-2.5 py-0.5 rounded-full border border-teal-200">
+                      এভারগ্রীন এসি বাস
+                    </span>
+                  </div>
                 </div>
 
                 {/* Milestone Stepper */}
@@ -2924,6 +3064,18 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               setActiveTab('notices');
               setIsCommandOpen(false);
             }}
+            onOpenJourneyModal={() => {
+              setShowJourneyModal(true);
+              setIsCommandOpen(false);
+            }}
+            onOpenBeachModal={() => {
+              setShowBeachGuideModal(true);
+              setIsCommandOpen(false);
+            }}
+            onOpenScrapbookModal={() => {
+              setShowScrapbookModal(true);
+              setIsCommandOpen(false);
+            }}
           />
         </Suspense>
       )}
@@ -3240,6 +3392,44 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
             onClose={() => setShowQuizModal(false)}
             currentUser={currentUser}
             currentProfile={currentProfile}
+          />
+        </Suspense>
+      )}
+
+      {/* 820 KM HIGHWAY JOURNEY TRACKER MODAL */}
+      {showJourneyModal && (
+        <Suspense fallback={null}>
+          <JourneyTrackerModal
+            isOpen={showJourneyModal}
+            onClose={() => setShowJourneyModal(false)}
+            currentUser={currentUser}
+            currentProfile={currentProfile}
+            members={data.members || []}
+            coordinatorPhone={data.members?.find((m) => m.role === 'coordinator')?.phone || '01712345678'}
+          />
+        </Suspense>
+      )}
+
+      {/* BEACH SAFETY & FOOD GUIDE MODAL */}
+      {showBeachGuideModal && (
+        <Suspense fallback={null}>
+          <BeachGuideModal
+            isOpen={showBeachGuideModal}
+            onClose={() => setShowBeachGuideModal(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* DIGITAL FAMILY SCRAPBOOK & BOOKLET MODAL */}
+      {showScrapbookModal && (
+        <Suspense fallback={null}>
+          <TourScrapbookModal
+            isOpen={showScrapbookModal}
+            onClose={() => setShowScrapbookModal(false)}
+            members={data.members || []}
+            expenses={data.expenses || []}
+            posts={data.posts || []}
+            itinerary={data.itinerary || []}
           />
         </Suspense>
       )}

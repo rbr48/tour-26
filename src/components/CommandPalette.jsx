@@ -30,7 +30,10 @@ export default function CommandPalette({
   onOpenExpenseModal,
   onOpenPrintModal,
   onOpenProfileModal,
-  onTriggerSOS
+  onTriggerSOS,
+  onOpenJourneyModal,
+  onOpenBeachModal,
+  onOpenScrapbookModal,
 }) {
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
@@ -70,6 +73,39 @@ export default function CommandPalette({
         onOpenExpenseModal();
       }
     }] : []),
+    {
+      id: 'cmd-journey',
+      title: 'হাইওয়ে জার্নি ট্র্যাকার ও মাইলস্টোন (৮২০ কিমি)',
+      shortcut: '/journey',
+      icon: Bus,
+      color: 'text-amber-600 bg-amber-50',
+      action: () => {
+        onClose(false);
+        if (typeof onOpenJourneyModal === 'function') onOpenJourneyModal();
+      }
+    },
+    {
+      id: 'cmd-beach',
+      title: 'কক্সবাজার সৈকত ও খাবার গাইড (সুইম সেফটি ও রেস্তোরাঁ)',
+      shortcut: '/beach',
+      icon: Waves,
+      color: 'text-teal-600 bg-teal-50',
+      action: () => {
+        onClose(false);
+        if (typeof onOpenBeachModal === 'function') onOpenBeachModal();
+      }
+    },
+    {
+      id: 'cmd-scrapbook',
+      title: 'ডিজিটাল ফ্যামিলি স্ক্র্যাপবুক ও ম্যাগাজিন (প্রিন্ট/PDF)',
+      shortcut: '/scrapbook',
+      icon: Sparkles,
+      color: 'text-rose-600 bg-rose-50',
+      action: () => {
+        onClose(false);
+        if (typeof onOpenScrapbookModal === 'function') onOpenScrapbookModal();
+      }
+    },
     {
       id: 'cmd-split',
       title: 'স্মার্ট স্প্লিটওয়াইজ ও হিসাব সেটেলমেন্ট',
