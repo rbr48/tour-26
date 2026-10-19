@@ -1,10 +1,10 @@
 {
-  "versionCode": 14,
-  "versionName": "2.12",
+  "versionCode": 15,
+  "versionName": "2.15",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v14.apk",
-  "apkSize": "8.2 MB",
-  "releaseNotes": "নতুন আপডেট v2.12: নতুন ইউজার সাইন-ইনের পর ব্ল্যাঙ্ক স্ক্রিন ফিক্স, অথেন্টিকেটেড ফায়ারস্টোর লাইভ সিঙ্ক অপ্টিমাইজেশন এবং ড্যাশবোর্ড ইনস্ট্যান্ট লোডিং।",
-  "releasedAt": "2026-10-19T06:45:00Z",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v15.apk",
+  "apkSize": "8.8 MB",
+  "releaseNotes": "নতুন মেগা আপডেট v2.15: দাবা এআই বট ও পাস-অ্যান্ড-প্লে মোড, ৮২০ কিমি লাইভ হাইওয়ে রোডম্যাপ ও জিপিএস স্পিডোমিটার, কক্সবাজার সুইম সেফটি ও রেস্তোরাঁ গাইড, এবং ডিজিটাল ফ্যামিলি স্ক্র্যাপবুক ম্যাগাজিন।",
+  "releasedAt": "2026-10-19T08:58:00Z",
   "forceUpdate": false
 }
