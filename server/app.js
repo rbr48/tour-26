@@ -151,8 +151,9 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
       try {
         const result = push.subscribe({
           subscription: body.subscription,
+          fcmToken: body.fcmToken,
           userEmail: user.email,
-          deviceName: body.deviceName || 'Web Device',
+          deviceName: body.deviceName || (body.fcmToken ? 'Android Phone' : 'Web Device'),
         });
         sendJson(res, 200, { status: 'subscribed', ...result }, headers);
       } catch (err) {
@@ -172,7 +173,7 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
         }
         throw err;
       }
-      const result = push.unsubscribe({ endpoint: body.endpoint });
+      const result = push.unsubscribe({ endpoint: body.endpoint, fcmToken: body.fcmToken });
       sendJson(res, 200, { status: 'unsubscribed', ...result }, headers);
       return;
     }
@@ -199,6 +200,7 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
         badge: body.badge || '/icons/icon-192.png?v=20261019',
         url: body.url || '/',
         tag: body.tag || 'tour_update',
+        tab: body.tab,
         excludeEmail: body.excludeSender === false ? undefined : (body.excludeEmail || user.email),
       });
       sendJson(res, 200, { status: 'sent', ...result }, headers);
@@ -206,7 +208,15 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
     }
 
     if (pathname === '/api/push/test' && req.method === 'POST') {
-      const result = await push.sendTest({ userEmail: user.email });
+      let body = {};
+      try {
+        body = await readJsonBody(req, 4096);
+      } catch {}
+      const result = await push.sendTest({
+        userEmail: user.email,
+        fcmToken: body?.fcmToken,
+        endpoint: body?.endpoint,
+      });
       sendJson(res, 200, { status: 'tested', ...result }, headers);
       return;
     }

@@ -1,10 +1,10 @@
 {
-  "versionCode": 11,
-  "versionName": "2.9",
+  "versionCode": 12,
+  "versionName": "2.10",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v11.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v12.apk",
   "apkSize": "8.2 MB",
-  "releaseNotes": "নতুন আপডেট v2.9: PWA আইকন ও হোমস্ক্রিন মাস্কিং আপডেট, গেমিং জোনে লাইভ রিঅ্যাকশন মেনু এবং ফ্লোটিং ডায়ালগ বাবল ফিক্স।",
-  "releasedAt": "2026-10-19T01:45:00Z",
+  "releaseNotes": "নতুন আপডেট v2.10: অ্যাপ বন্ধ বা ফোন লক থাকা অবস্থায় ব্যাকগ্রাউন্ড পুশ নোটিফিকেশন ডেলিভারি (FCM HTTP v1) ও নোটিফিকেশন চ্যানেল ফিক্স।",
+  "releasedAt": "2026-10-19T03:45:00Z",
   "forceUpdate": false
 }

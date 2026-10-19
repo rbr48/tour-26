@@ -91,38 +91,37 @@ export default function NotificationCenter({
     setFeedback({ type: 'info', text: '📡 টেস্ট নোটিফিকেশন পাঠানো হচ্ছে...' });
     playNotificationSound();
     try {
-      if (Capacitor.isNativePlatform()) {
-        sendPushNotification({
-          title: '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
-          body: 'টেস্ট নোটিফিকেশন সফল! নতুন কোনো অ্যাক্টিভিটি হলে আপনার ফোনের নোটিফিকেশন বারে এভাবে অ্যালার্ট আসবে।',
-          tab: 'feed',
-          onClick: () => {
-            if (onNavigate) onNavigate('feed');
-          },
-        });
+      const res = await sendTestPush();
+      if (res.success && res.sent > 0) {
         setFeedback({ type: 'success', text: '🔔 টেস্ট সফল! ফোনের স্ট্যাটাস বার চেক করুন।' });
         return;
       }
-      const res = await sendTestPush();
-      if (res.success) {
-        setFeedback({ type: 'success', text: '🔔 টেস্ট সফল! ফোনের স্ট্যাটাস বার চেক করুন।' });
-      } else {
+
+      if (res.total === 0 || !res.success) {
+        // Fallback: trigger local notification so user gets instant visual confirmation
         sendPushNotification({
           title: '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
-          body: 'টেস্ট নোটিফিকেশন সফল! নতুন কোনো অ্যাক্টিভিটি হলে এভাবে তাৎক্ষণিক নোটিফিকেশন আসবে।',
+          body: 'লোকাল টেস্ট সফল! রিমোট পুশের জন্য প্রথমে "অনুমতি দিন" চাপুন।',
           tab: 'feed',
           onClick: () => {
             window.focus();
             if (onNavigate) onNavigate('feed');
           },
         });
-        setFeedback({ type: 'info', text: res.error ? `সার্ভার: ${res.error}` : 'লোকাল টেস্ট সম্পন্ন হয়েছে।' });
+        setFeedback({
+          type: 'info',
+          text: res.message || res.error || 'ডিভাইস রেজিস্টার করা হয়নি। আগে পুশ চালু করুন।',
+        });
+        return;
       }
+
+      setFeedback({ type: 'success', text: '🔔 টেস্ট সফল! ফোনের স্ট্যাটাস বার চেক করুন।' });
     } catch {
       sendPushNotification({
         title: '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬',
         body: 'টেস্ট সম্পন্ন!',
       });
+      setFeedback({ type: 'info', text: 'লোকাল টেস্ট সম্পন্ন হয়েছে।' });
     }
   };
 

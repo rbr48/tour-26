@@ -7,6 +7,42 @@ export const API_BASE = Capacitor.isNativePlatform()
 
 export const NOTIFICATION_CHANNEL_ID = 'tour_2026_channel';
 
+let cachedFcmToken = null;
+try {
+  cachedFcmToken = typeof window !== 'undefined' ? localStorage.getItem('tour_fcm_token') : null;
+} catch {}
+
+// Helper: Send FCM Token to VPS Server
+export const sendFcmTokenToServer = async (fcmToken, currentUser) => {
+  const user = currentUser || auth.currentUser;
+  if (!user || !fcmToken) return { success: false, error: 'User or token missing' };
+  try {
+    const idToken = await user.getIdToken();
+    const res = await fetch(`${API_BASE}/api/push/subscribe`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fcmToken,
+        deviceName: typeof navigator !== 'undefined' && navigator.userAgent?.includes('Mobile') ? 'Android Mobile' : 'Android Device',
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { success: false, error: err.error || 'FCM registration failed' };
+    }
+    try {
+      localStorage.setItem('tour_push_active', 'true');
+    } catch {}
+    return await res.json();
+  } catch (err) {
+    console.warn('Failed to send FCM token to server:', err);
+    return { success: false, error: err.message };
+  }
+};
+
 // Helper: Convert URL-safe base64 string to Uint8Array for PushManager
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -141,6 +177,23 @@ export const initNativePushListeners = async (onNavigate) => {
       }
     }).catch(() => {});
 
+    // Action when FCM registration delivers device token
+    await PushNotifications.addListener('registration', async ({ value: token }) => {
+      cachedFcmToken = token;
+      try {
+        localStorage.setItem('tour_fcm_token', token);
+      } catch {}
+      const user = auth.currentUser;
+      if (user) {
+        await sendFcmTokenToServer(token, user);
+      }
+    }).catch(() => {});
+
+    // Action on registration error
+    await PushNotifications.addListener('registrationError', (err) => {
+      console.warn('Native push registration error:', err);
+    }).catch(() => {});
+
     // Action when user taps remote push notification
     await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
       const tab = action.notification?.data?.tab;
@@ -164,6 +217,12 @@ export const initNativePushListeners = async (onNavigate) => {
         ],
       }).catch(() => {});
     }).catch(() => {});
+
+    // Auto-register if permission was already granted previously
+    const pushPerm = await PushNotifications.checkPermissions().catch(() => ({ receive: 'prompt' }));
+    if (pushPerm.receive === 'granted') {
+      await PushNotifications.register().catch(() => {});
+    }
   } catch (err) {
     console.warn('Native notification listener setup failed:', err);
   }
@@ -194,11 +253,53 @@ export const subscribeToPushNotifications = async (currentUser) => {
         pushPerm = await PushNotifications.requestPermissions().catch(() => ({ receive: 'denied' }));
       }
 
-      if (pushPerm.receive === 'granted') {
-        await PushNotifications.register().catch(() => {});
+      if (pushPerm.receive !== 'granted' && localPerm.display !== 'granted') {
+        return { success: false, error: 'নোটিফিকেশন পারমিশন বাতিল করা হয়েছে' };
       }
 
-      localStorage.setItem('tour_push_active', 'true');
+      // Check existing cached token
+      let token = cachedFcmToken || (typeof window !== 'undefined' ? localStorage.getItem('tour_fcm_token') : null);
+
+      // Register with FCM and wait for token if needed
+      const tokenPromise = new Promise((resolve) => {
+        let done = false;
+        const timer = setTimeout(() => {
+          if (!done) {
+            done = true;
+            resolve(cachedFcmToken || localStorage.getItem('tour_fcm_token'));
+          }
+        }, 5000);
+
+        PushNotifications.addListener('registration', (t) => {
+          if (!done) {
+            done = true;
+            clearTimeout(timer);
+            resolve(t.value);
+          }
+        }).catch(() => {});
+      });
+
+      await PushNotifications.register().catch(() => {});
+
+      if (!token) {
+        token = await tokenPromise;
+      }
+
+      if (token) {
+        cachedFcmToken = token;
+        try {
+          localStorage.setItem('tour_fcm_token', token);
+        } catch {}
+        const serverResult = await sendFcmTokenToServer(token, user);
+        try {
+          localStorage.setItem('tour_push_active', 'true');
+        } catch {}
+        return { success: true, fcmToken: token, ...serverResult };
+      }
+
+      try {
+        localStorage.setItem('tour_push_active', 'true');
+      } catch {}
       return { success: true };
     } catch (err) {
       console.warn('Native push registration error:', err);
@@ -300,19 +401,23 @@ export const sendTestPush = async (currentUser) => {
 
   try {
     const idToken = await user.getIdToken();
+    const token = cachedFcmToken || (typeof window !== 'undefined' ? localStorage.getItem('tour_fcm_token') : null);
     const res = await fetch(`${API_BASE}/api/push/test`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${idToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        fcmToken: token || undefined,
+      }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       return { success: false, error: err.error || 'টেস্ট নোটিফিকেশন পাঠানো যায়নি' };
     }
-    return await res.json();
+    const data = await res.json();
+    return { success: data.sent > 0, ...data };
   } catch (err) {
     return { success: false, error: err.message };
   }
