@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ChessPieceSvg from './ChessPieceSvg';
 import {
   INITIAL_CHESS_BOARD,
