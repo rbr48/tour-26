@@ -8,6 +8,10 @@ import {
   HAND_NAMES_BN,
 } from './pokerEvaluator';
 import { updateGameRoom } from '../../services/tourStore';
+import { gameAudio } from '../../utils/gameAudio';
+import { triggerHaptic } from '../../utils/haptics';
+import GameReactions from './GameReactions';
+import GameTurnTimer from './GameTurnTimer';
 import UserAvatar from '../UserAvatar';
 import {
   Coins,
@@ -20,6 +24,8 @@ import {
   Sparkles,
   Swords,
   Trophy,
+  Volume2,
+  VolumeX,
   X,
   Zap,
 } from 'lucide-react';
@@ -47,6 +53,16 @@ export default function TeenPattiGame({
     room.status === 'playing' &&
     room.state?.turnIndex !== undefined &&
     room.players?.[room.state.turnIndex]?.email?.toLowerCase() === myEmail;
+
+  const [isMuted, setIsMuted] = useState(gameAudio.getMuted());
+
+  // Sound cue on turn
+  useEffect(() => {
+    if (isMyTurn) {
+      gameAudio.playTurn();
+      triggerHaptic('light');
+    }
+  }, [isMyTurn]);
 
   // Local state for seeing cards - synced with player's actual seen state & round status
   const [hasSeenCardsLocally, setHasSeenCardsLocally] = useState(Boolean(myPlayer?.seen));
@@ -113,6 +129,8 @@ export default function TeenPattiGame({
     const dealerIndex = ((room.state?.dealerIndex ?? -1) + 1) % updatedPlayers.length;
     const firstTurnIndex = getNextTurnIndex(updatedPlayers, dealerIndex);
 
+    gameAudio.playCard();
+    triggerHaptic('medium');
     updateGameRoom(room.id, {
       status: 'playing',
       state: {
@@ -131,6 +149,8 @@ export default function TeenPattiGame({
 
   // See Cards Action
   const handleSeeCards = () => {
+    gameAudio.playCard();
+    triggerHaptic('light');
     setHasSeenCardsLocally(true);
     const updatedPlayers = (room.players || []).map((p) =>
       p.email?.toLowerCase() === myEmail ? { ...p, seen: true } : p
@@ -147,6 +167,8 @@ export default function TeenPattiGame({
   // Chaal / Bet Action
   const handleBet = (isDouble = false) => {
     if (!isMyTurn) return;
+    gameAudio.playCard();
+    triggerHaptic('light');
 
     let betAmount = room.state?.currentStake || DEFAULT_BOOT;
 
@@ -195,6 +217,7 @@ export default function TeenPattiGame({
   // Fold / Pack Action
   const handleFold = () => {
     if (!isMyTurn) return;
+    triggerHaptic('light');
 
     const updatedPlayers = room.players.map((p) =>
       p.email?.toLowerCase() === myEmail ? { ...p, folded: true } : p
@@ -204,6 +227,8 @@ export default function TeenPattiGame({
 
     // If only 1 player remains, they win immediately!
     if (remaining.length === 1) {
+      gameAudio.playWin();
+      triggerHaptic('medium');
       const winner = remaining[0];
       const winPot = room.state?.pot || 0;
       const finalPlayers = updatedPlayers.map((p) =>
@@ -244,6 +269,8 @@ export default function TeenPattiGame({
   // Showdown Action (When 2 players remain)
   const handleShowdown = () => {
     if (!isMyTurn) return;
+    gameAudio.playWin();
+    triggerHaptic('medium');
 
     const remaining = getRemainingActivePlayers(room.players || []);
     if (remaining.length !== 2) return;
@@ -315,12 +342,23 @@ export default function TeenPattiGame({
 
   // Replenish free chips if user is broke
   const handleFreeChips = () => {
+    gameAudio.playWin();
+    triggerHaptic('medium');
     const updatedPlayers = (room.players || []).map((p) =>
       p.email?.toLowerCase() === myEmail ? { ...p, chips: (p.chips || 0) + 1000 } : p
     );
     updateGameRoom(room.id, {
       players: updatedPlayers,
+      state: {
+        ...room.state,
+        lastAction: `${myName} ১,০০০ ফ্রি চিপস রিফিল নিয়েছেন!`,
+      },
     });
+  };
+
+  const handleToggleMute = () => {
+    const nextMuted = gameAudio.toggleMute();
+    setIsMuted(nextMuted);
   };
 
   const remainingActive = getRemainingActivePlayers(room.players || []);
@@ -355,13 +393,16 @@ export default function TeenPattiGame({
             🃏
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <h3 className="font-extrabold text-xs sm:text-sm text-amber-300 truncate">
                 {room.title || '৩ পাত্তি টেবিল'}
               </h3>
               <span className="text-[10px] font-mono bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded border border-slate-700">
                 {room.id}
               </span>
+              {isMyTurn && (
+                <GameTurnTimer isMyTurn={isMyTurn} turnKey={`${room.state?.turnIndex}_${room.state?.pot}`} onTimeout={handleFold} />
+              )}
             </div>
             <p className="text-[10px] text-slate-400">
               হোস্ট: {room.hostName || 'পরিবার'} • {toBnNum(room.players?.length || 0)} জন খেলোয়াড়
@@ -369,7 +410,21 @@ export default function TeenPattiGame({
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Sound Toggle */}
+          <button
+            type="button"
+            onClick={handleToggleMute}
+            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+            title={isMuted ? 'সাউন্ড আনমিউট করুন' : 'সাউন্ড মিউট করুন'}
+          >
+            {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          </button>
+
+          {/* Floating Reactions */}
+          <GameReactions room={room} currentUser={currentUser} currentProfile={currentProfile} />
+
+          {/* Leave Button */}
           <button
             type="button"
             onClick={onLeave}

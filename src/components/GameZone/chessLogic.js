@@ -202,8 +202,9 @@ export function isInCheck(board, color) {
 
 /**
  * Generates all pseudo-legal moves for a piece at (r, c).
+ * Supports castling if castlingRights are provided.
  */
-export function getPseudoLegalMoves(board, r, c) {
+export function getPseudoLegalMoves(board, r, c, castlingRights = null) {
   const piece = board[r][c];
   if (!piece) return [];
   const color = getColor(piece);
@@ -296,19 +297,68 @@ export function getPseudoLegalMoves(board, r, c) {
         addMoveIfValid(r + dr, c + dc);
       }
     }
+
+    // Castling
+    const enemyColor = color === 'w' ? 'b' : 'w';
+    const rights = castlingRights || {
+      wK: true, wRh: true, wRa: true,
+      bK: true, bRh: true, bRa: true,
+    };
+
+    if (color === 'w' && r === 7 && c === 4 && rights.wK && !isInCheck(board, 'w')) {
+      // King-side (O-O)
+      if (rights.wRh && board[7][7] === 'wR' && !board[7][5] && !board[7][6]) {
+        if (!isSquareAttacked(board, 7, 5, enemyColor) && !isSquareAttacked(board, 7, 6, enemyColor)) {
+          moves.push({ r: 7, c: 6, isCastling: true });
+        }
+      }
+      // Queen-side (O-O-O)
+      if (rights.wRa && board[7][0] === 'wR' && !board[7][1] && !board[7][2] && !board[7][3]) {
+        if (!isSquareAttacked(board, 7, 3, enemyColor) && !isSquareAttacked(board, 7, 2, enemyColor)) {
+          moves.push({ r: 7, c: 2, isCastling: true });
+        }
+      }
+    } else if (color === 'b' && r === 0 && c === 4 && rights.bK && !isInCheck(board, 'b')) {
+      // King-side (O-O)
+      if (rights.bRh && board[0][7] === 'bR' && !board[0][5] && !board[0][6]) {
+        if (!isSquareAttacked(board, 0, 5, enemyColor) && !isSquareAttacked(board, 0, 6, enemyColor)) {
+          moves.push({ r: 0, c: 6, isCastling: true });
+        }
+      }
+      // Queen-side (O-O-O)
+      if (rights.bRa && board[0][0] === 'bR' && !board[0][1] && !board[0][2] && !board[0][3]) {
+        if (!isSquareAttacked(board, 0, 3, enemyColor) && !isSquareAttacked(board, 0, 2, enemyColor)) {
+          moves.push({ r: 0, c: 2, isCastling: true });
+        }
+      }
+    }
   }
 
   return moves;
 }
 
 /**
+ * Derives castling rights from move history.
+ */
+export function getCastlingRightsFromHistory(history = []) {
+  return {
+    wK: !history.some((m) => m.from === 'e1'),
+    wRh: !history.some((m) => m.from === 'h1'),
+    wRa: !history.some((m) => m.from === 'a1'),
+    bK: !history.some((m) => m.from === 'e8'),
+    bRh: !history.some((m) => m.from === 'h8'),
+    bRa: !history.some((m) => m.from === 'a8'),
+  };
+}
+
+/**
  * Returns strictly legal moves (moves that do not result in King being in check).
  */
-export function getLegalMoves(board, r, c) {
+export function getLegalMoves(board, r, c, castlingRights = null) {
   const piece = board[r][c];
   if (!piece) return [];
   const color = getColor(piece);
-  const pseudoMoves = getPseudoLegalMoves(board, r, c);
+  const pseudoMoves = getPseudoLegalMoves(board, r, c, castlingRights);
 
   return pseudoMoves.filter((move) => {
     // Simulate move
@@ -337,7 +387,7 @@ export function hasLegalMoves(board, color) {
 
 /**
  * Applies a move from (fromR, fromC) to (toR, toC).
- * Handles capture, pawn promotion (automatically to Queen), and returns the new board state.
+ * Handles capture, castling, pawn promotion (automatically to Queen), and returns the new board state.
  */
 export function executeMove(board, fromR, fromC, toR, toC) {
   const piece = board[fromR][fromC];
@@ -348,6 +398,24 @@ export function executeMove(board, fromR, fromC, toR, toC) {
 
   const newBoard = cloneBoard(board);
   newBoard[fromR][fromC] = null;
+
+  // Handle Castling
+  let isCastling = false;
+  let castlingType = '';
+  if (type === 'K' && Math.abs(toC - fromC) === 2) {
+    isCastling = true;
+    if (toC === 6) {
+      // King-side
+      castlingType = 'O-O';
+      newBoard[toR][5] = newBoard[toR][7];
+      newBoard[toR][7] = null;
+    } else if (toC === 2) {
+      // Queen-side
+      castlingType = 'O-O-O';
+      newBoard[toR][3] = newBoard[toR][0];
+      newBoard[toR][0] = null;
+    }
+  }
 
   // Pawn Promotion: reaches end row
   const isPawnPromotion = type === 'P' && (toR === 0 || toR === 7);
@@ -365,12 +433,16 @@ export function executeMove(board, fromR, fromC, toR, toC) {
     status = enemyInCheck ? 'checkmate' : 'stalemate';
   }
 
-  const notation = `${type !== 'P' ? type : ''}${captured ? 'x' : ''}${toSq}${enemyInCheck ? (status === 'checkmate' ? '#' : '+') : ''}`;
+  const checkSuffix = enemyInCheck ? (status === 'checkmate' ? '#' : '+') : '';
+  const notation = isCastling
+    ? `${castlingType}${checkSuffix}`
+    : `${type !== 'P' ? type : ''}${captured ? (type === 'P' ? fromSq[0] + 'x' : 'x') : ''}${toSq}${checkSuffix}`;
 
   return {
     board: newBoard,
     capturedPiece: captured,
     isPawnPromotion,
+    isCastling,
     notation,
     fromSq,
     toSq,

@@ -12,6 +12,10 @@ import {
   getGlobalTrackIndex,
 } from './ludoLogic';
 import { updateGameRoom } from '../../services/tourStore';
+import { gameAudio } from '../../utils/gameAudio';
+import { triggerHaptic } from '../../utils/haptics';
+import GameReactions from './GameReactions';
+import GameTurnTimer from './GameTurnTimer';
 import UserAvatar from '../UserAvatar';
 import {
   Crown,
@@ -22,6 +26,8 @@ import {
   Sparkles,
   Trophy,
   Users,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 const toBnNum = (n) => String(n ?? 0).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[d]);
@@ -52,17 +58,30 @@ export default function LudoGame({
   const hasRolled = gameState.hasRolled || false;
   const tokens = gameState.tokens || initializeLudoTokens(room.players?.length || 4);
 
+  const [isMuted, setIsMuted] = useState(gameAudio.getMuted());
+
+  // Sound cue on my turn
+  useEffect(() => {
+    if (isMyTurn) {
+      gameAudio.playTurn();
+      triggerHaptic('light');
+    }
+  }, [isMyTurn]);
+
   // Start Ludo Game (Host only)
   const handleStartGame = () => {
     const playerCount = Math.max(2, Math.min(4, (room.players || []).length));
     const initTokens = initializeLudoTokens(playerCount);
 
+    gameAudio.playDice();
+    triggerHaptic('medium');
     updateGameRoom(room.id, {
       status: 'playing',
       state: {
         turnIndex: 0,
         diceValue: 6,
         hasRolled: false,
+        consecutiveSixes: 0,
         tokens: initTokens,
         winners: [],
         lastAction: `লুডো খেলা শুরু হয়েছে! ${room.players[0]?.name || 'লাল'}-এর চাল।`,
@@ -74,10 +93,32 @@ export default function LudoGame({
   const handleRollDice = () => {
     if (!isMyTurn || hasRolled || isRolling) return;
 
+    gameAudio.playDice();
+    triggerHaptic('medium');
     setIsRolling(true);
     setTimeout(() => {
       const roll = rollDice();
       setIsRolling(false);
+
+      const prevSixes = gameState.consecutiveSixes || 0;
+      const newSixes = roll === 6 ? prevSixes + 1 : 0;
+
+      // Rule: 3 consecutive sixes forfeits the turn!
+      if (newSixes >= 3) {
+        const nextTurn = (currentTurn + 1) % (room.players?.length || 4);
+        triggerHaptic('heavy');
+        updateGameRoom(room.id, {
+          state: {
+            ...gameState,
+            diceValue: 6,
+            hasRolled: false,
+            consecutiveSixes: 0,
+            turnIndex: nextTurn,
+            lastAction: `⚠️ ${myName} পরপর ৩টি ছক্কা পেয়েছেন! নিয়ম অনুযায়ী চাল বাতিল। এখন ${room.players[nextTurn]?.name}-এর চাল।`,
+          },
+        });
+        return;
+      }
 
       const myTokens = tokens[myIndex] || [-1, -1, -1, -1];
       const movable = getMovableTokens(myIndex, myTokens, roll);
@@ -90,6 +131,7 @@ export default function LudoGame({
             ...gameState,
             diceValue: roll,
             hasRolled: false,
+            consecutiveSixes: 0,
             turnIndex: nextTurn,
             lastAction: `${myName} ${toBnNum(roll)} রোল করেছেন (কোনো গুটি চালার সুযোগ নেই)। এখন ${room.players[nextTurn]?.name}-এর চাল।`,
           },
@@ -97,12 +139,13 @@ export default function LudoGame({
         return;
       }
 
-      // If only 1 token can move, can auto-move or let user click
+      // If tokens can move, wait for player to tap token
       updateGameRoom(room.id, {
         state: {
           ...gameState,
           diceValue: roll,
           hasRolled: true,
+          consecutiveSixes: newSixes,
           lastAction: `${myName} ${toBnNum(roll)} রোল করেছেন! গুটিতে ট্যাপ করে চাল দিন।`,
         },
       });
@@ -123,11 +166,24 @@ export default function LudoGame({
       diceValue
     );
 
+    // Audio & haptic feedback for token action
+    if (capturedToken) {
+      gameAudio.playCapture();
+      triggerHaptic('medium');
+    } else if (reachedHome) {
+      gameAudio.playWin();
+      triggerHaptic('medium');
+    } else {
+      gameAudio.playCard();
+      triggerHaptic('light');
+    }
+
     // Check if player has won!
     const won = hasPlayerWon(newTokens[myIndex]);
     let winners = [...(gameState.winners || [])];
     if (won && !winners.includes(myIndex)) {
       winners.push(myIndex);
+      gameAudio.playWin();
     }
 
     // Grant bonus turn on rolling a 6, capturing, or reaching home
@@ -157,9 +213,25 @@ export default function LudoGame({
         ...gameState,
         tokens: newTokens,
         hasRolled: false,
+        consecutiveSixes: diceValue === 6 ? (gameState.consecutiveSixes || 0) : 0,
         turnIndex: nextTurn,
         winners,
         lastAction: actionText,
+      },
+    });
+  };
+
+  // Auto-pass on timer expiry
+  const handleAutoPass = () => {
+    if (!isMyTurn) return;
+    const nextTurn = (currentTurn + 1) % (room.players?.length || 4);
+    updateGameRoom(room.id, {
+      state: {
+        ...gameState,
+        hasRolled: false,
+        consecutiveSixes: 0,
+        turnIndex: nextTurn,
+        lastAction: `সময় পার হওয়ায় ${myName}-এর চাল পাস হয়েছে।`,
       },
     });
   };
@@ -234,13 +306,16 @@ export default function LudoGame({
             🎲
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <h3 className="font-extrabold text-xs sm:text-sm text-emerald-300 truncate">
                 {room.title || 'লুডো ক্লাব টেবিল'}
               </h3>
               <span className="text-[10px] font-mono bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded border border-slate-700">
                 {room.id}
               </span>
+              {isMyTurn && (
+                <GameTurnTimer isMyTurn={isMyTurn} turnKey={`${currentTurn}_${hasRolled}`} onTimeout={handleAutoPass} />
+              )}
             </div>
             <p className="text-[10px] text-slate-400">
               {toBnNum(room.players?.length || 0)} জন খেলোয়াড় •{' '}
@@ -249,14 +324,30 @@ export default function LudoGame({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onLeave}
-          className="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/80 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-        >
-          <LogOut size={13} />
-          <span className="hidden sm:inline">বের হন</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Sound Toggle */}
+          <button
+            type="button"
+            onClick={() => setIsMuted(gameAudio.toggleMute())}
+            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+            title={isMuted ? 'সাউন্ড আনমিউট করুন' : 'সাউন্ড মিউট করুন'}
+          >
+            {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          </button>
+
+          {/* Floating Reactions */}
+          <GameReactions room={room} currentUser={currentUser} currentProfile={currentProfile} />
+
+          {/* Leave Button */}
+          <button
+            type="button"
+            onClick={onLeave}
+            className="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/80 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+          >
+            <LogOut size={13} />
+            <span className="hidden sm:inline">বের হন</span>
+          </button>
+        </div>
       </div>
 
       {/* 2. Main Game Arena */}

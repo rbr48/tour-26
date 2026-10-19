@@ -8,6 +8,7 @@ import {
   getColor,
   getType,
   getLegalMoves,
+  getCastlingRightsFromHistory,
   executeMove,
   findKing,
   isInCheck,
@@ -15,6 +16,10 @@ import {
   RANKS,
 } from './chessLogic';
 import { updateGameRoom } from '../../services/tourStore';
+import { gameAudio } from '../../utils/gameAudio';
+import { triggerHaptic } from '../../utils/haptics';
+import GameReactions from './GameReactions';
+import GameTurnTimer from './GameTurnTimer';
 import UserAvatar from '../UserAvatar';
 import {
   ArrowLeft,
@@ -26,6 +31,8 @@ import {
   Swords,
   Trophy,
   Users,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 const toBnNum = (n) => String(n ?? 0).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[d]);
@@ -64,6 +71,16 @@ export default function ChessGame({
 
   const isMyTurn = myColor === turn && (status === 'active' || (status === 'waiting' && players.length >= 2));
 
+  const [isMuted, setIsMuted] = useState(gameAudio.getMuted());
+
+  // Sound cue on turn
+  useEffect(() => {
+    if (isMyTurn) {
+      gameAudio.playTurn();
+      triggerHaptic('light');
+    }
+  }, [isMyTurn]);
+
   // Determine if King is in check
   const kingInCheck = useMemo(() => {
     return {
@@ -72,14 +89,15 @@ export default function ChessGame({
     };
   }, [board]);
 
-  // Calculate legal moves for selected piece
+  // Calculate legal moves for selected piece (including castling rights from history)
   const legalMoves = useMemo(() => {
     if (!selectedCoord) return [];
     if (!isMyTurn) return [];
     const piece = board[selectedCoord.r][selectedCoord.c];
     if (!piece || getColor(piece) !== myColor) return [];
-    return getLegalMoves(board, selectedCoord.r, selectedCoord.c);
-  }, [selectedCoord, board, isMyTurn, myColor]);
+    const rights = getCastlingRightsFromHistory(history);
+    return getLegalMoves(board, selectedCoord.r, selectedCoord.c, rights);
+  }, [selectedCoord, board, isMyTurn, myColor, history]);
 
   // Handle Square Click
   const handleSquareClick = async (r, c) => {
@@ -105,6 +123,21 @@ export default function ChessGame({
         // Execute the move
         const moveResult = executeMove(board, selectedCoord.r, selectedCoord.c, r, c);
         if (!moveResult) return;
+
+        // Sound cues for chess actions
+        if (moveResult.isCheckmate) {
+          gameAudio.playWin();
+          triggerHaptic('heavy');
+        } else if (moveResult.inCheck) {
+          gameAudio.playCheck();
+          triggerHaptic('medium');
+        } else if (moveResult.capturedPiece) {
+          gameAudio.playCapture();
+          triggerHaptic('medium');
+        } else {
+          gameAudio.playCard();
+          triggerHaptic('light');
+        }
 
         const nextTurn = turn === 'w' ? 'b' : 'w';
         const newCaptured = { ...captured };
@@ -222,11 +255,14 @@ export default function ChessGame({
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-base font-black text-amber-300">♟️ দাবার আসর</span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 bg-amber-400/20 text-amber-300 rounded border border-amber-400/30">
                 {room.id}
               </span>
+              {isMyTurn && (
+                <GameTurnTimer isMyTurn={isMyTurn} duration={60} turnKey={`${turn}_${history.length}`} />
+              )}
             </div>
             <p className="text-[11px] text-slate-400 truncate max-w-[180px] sm:max-w-xs">
               {room.title || 'অনলাইন দাবা ম্যাচ'}
@@ -234,7 +270,21 @@ export default function ChessGame({
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Sound Toggle */}
+          <button
+            type="button"
+            onClick={() => setIsMuted(gameAudio.toggleMute())}
+            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+            title={isMuted ? 'সাউন্ড আনমিউট করুন' : 'সাউন্ড মিউট করুন'}
+          >
+            {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          </button>
+
+          {/* Floating Reactions */}
+          <GameReactions room={room} currentUser={currentUser} currentProfile={currentProfile} />
+
+          {/* Flip Board */}
           <button
             onClick={() => setFlipBoard(!flipBoard)}
             className="px-2 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 flex items-center gap-1"
@@ -243,6 +293,8 @@ export default function ChessGame({
             <RotateCcw className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">ঘোরান</span>
           </button>
+
+          {/* Resign Button */}
           {myColor && status === 'active' && (
             <button
               onClick={handleResign}

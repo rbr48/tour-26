@@ -3,6 +3,7 @@ import TeenPattiGame from './TeenPattiGame';
 import Card29Game from './Card29Game';
 import LudoGame from './LudoGame';
 import ChessGame from './ChessGame';
+import { initializeLudoTokens } from './ludoLogic';
 import { INITIAL_CHESS_FLAT } from './chessLogic';
 import {
   createGameRoom,
@@ -159,17 +160,35 @@ export default function GameZoneHub({
         colorIndex: 0,
       };
       initialState = {
-        tokens: {
-          red: [-1, -1, -1, -1],
-          green: [-1, -1, -1, -1],
-          yellow: [-1, -1, -1, -1],
-          blue: [-1, -1, -1, -1],
-        },
+        tokens: initializeLudoTokens(4),
         turnIndex: 0,
         diceValue: null,
         hasRolled: false,
+        consecutiveSixes: 0,
         status: 'waiting',
         lastAction: 'লুডো টেবিল তৈরি হয়েছে। অন্য খেলোয়াড়দের জন্য অপেক্ষা করুন।',
+      };
+    } else if (selectedGameType === 'card_29') {
+      initialState = {
+        phase: 'waiting',
+        dealerIndex: -1,
+        bidTurnIndex: 0,
+        highestBid: 15,
+        highestBidderIndex: -1,
+        consecutivePasses: 0,
+        trumpCard: null,
+        trumpSuit: null,
+        isTrumpRevealed: false,
+        leadSuit: null,
+        currentTrick: [],
+        resolvingTrick: false,
+        lastTrick: null,
+        team1Points: 0,
+        team2Points: 0,
+        matchScore1: 0,
+        matchScore2: 0,
+        status: 'waiting',
+        lastAction: '২৯ কার্ড টেবিল তৈরি হয়েছে। ৪ জন খেলোয়াড়ের জন্য অপেক্ষা করুন।',
       };
     } else if (selectedGameType === 'chess') {
       initialPlayer = {

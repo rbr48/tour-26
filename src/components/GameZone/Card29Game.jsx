@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PlayingCard, { SUIT_NAMES, SUIT_SYMBOLS } from './PlayingCard';
 import {
   create29Deck,
@@ -8,16 +8,24 @@ import {
 } from './card29Logic';
 import { shuffleDeck } from './pokerEvaluator';
 import { updateGameRoom } from '../../services/tourStore';
+import { gameAudio } from '../../utils/gameAudio';
+import { triggerHaptic } from '../../utils/haptics';
+import GameReactions from './GameReactions';
+import GameTurnTimer from './GameTurnTimer';
 import UserAvatar from '../UserAvatar';
 import {
   Crown,
   Eye,
+  History,
   LogOut,
   Play,
   RotateCcw,
   Shield,
   Trophy,
   Users,
+  Volume2,
+  VolumeX,
+  X,
 } from 'lucide-react';
 
 const toBnNum = (n) => String(n ?? 0).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[d]);
@@ -28,6 +36,9 @@ export default function Card29Game({
   currentProfile,
   onLeave,
 }) {
+  const [showLastTrickModal, setShowLastTrickModal] = useState(false);
+  const [isMuted, setIsMuted] = useState(gameAudio.getMuted());
+
   const myEmail = (currentUser?.email || '').toLowerCase();
   const myName = currentProfile?.displayName || currentUser?.displayName || 'খেলোয়াড়';
 
@@ -39,21 +50,117 @@ export default function Card29Game({
 
   const gameState = room.state || {};
   const phase = gameState.phase || 'waiting'; // 'waiting' | 'bidding' | 'select_trump' | 'playing' | 'round_ended'
-  const isMyTurn = phase === 'playing' && gameState.turnIndex === myIndex;
+  const isMyTurn = phase === 'playing' && gameState.turnIndex === myIndex && !gameState.resolvingTrick;
   const isMyBidTurn = phase === 'bidding' && gameState.bidTurnIndex === myIndex;
 
-  // Local state for bidding input
-  const [customBid, setCustomBid] = useState(16);
+  // Sound cue when it becomes my turn
+  useEffect(() => {
+    if (isMyTurn || isMyBidTurn) {
+      gameAudio.playTurn();
+      triggerHaptic('light');
+    }
+  }, [isMyTurn, isMyBidTurn]);
 
-  // Start 29 Hand
+  // Host effect: 2.2-second pause after 4th card played before collecting the trick
+  useEffect(() => {
+    if (!isHost || !gameState.resolvingTrick || (gameState.currentTrick || []).length !== 4) return;
+
+    const timer = setTimeout(() => {
+      const currentTrick = gameState.currentTrick;
+      const trickResult = determineTrickWinner(
+        currentTrick,
+        gameState.trumpSuit,
+        gameState.isTrumpRevealed
+      );
+      const winnerIdx = trickResult.winnerIndex;
+      const winnerPlayer = room.players[winnerIdx];
+      const isTeam1 = winnerIdx === 0 || winnerIdx === 2;
+
+      const tricksPlayed = (gameState.tricksPlayed || 0) + 1;
+      const extraPoint = tricksPlayed === 8 ? 1 : 0; // 1 extra point for 8th trick
+
+      const newTeam1Points = (gameState.team1Points || 0) + (isTeam1 ? trickResult.trickPoints + extraPoint : 0);
+      const newTeam2Points = (gameState.team2Points || 0) + (!isTeam1 ? trickResult.trickPoints + extraPoint : 0);
+
+      const lastTrickData = {
+        cards: currentTrick,
+        winnerIndex: winnerIdx,
+        winnerName: winnerPlayer?.name || 'খেলোয়াড়',
+        points: trickResult.trickPoints + extraPoint,
+      };
+
+      if (tricksPlayed === 8) {
+        // Round ended
+        gameAudio.playWin();
+        const bidderTeamIs1 = gameState.highestBidderIndex === 0 || gameState.highestBidderIndex === 2;
+        const bidderPoints = bidderTeamIs1 ? newTeam1Points : newTeam2Points;
+        const bidTarget = gameState.highestBid || 16;
+        const bidMade = bidderPoints >= bidTarget;
+
+        let newMatchScore1 = gameState.matchScore1 || 0;
+        let newMatchScore2 = gameState.matchScore2 || 0;
+
+        if (bidderTeamIs1) {
+          newMatchScore1 += bidMade ? 1 : -1;
+        } else {
+          newMatchScore2 += bidMade ? 1 : -1;
+        }
+
+        updateGameRoom(room.id, {
+          status: 'round_ended',
+          state: {
+            ...gameState,
+            phase: 'round_ended',
+            resolvingTrick: false,
+            lastTrick: lastTrickData,
+            currentTrick: [],
+            team1Points: newTeam1Points,
+            team2Points: newTeam2Points,
+            matchScore1: newMatchScore1,
+            matchScore2: newMatchScore2,
+            isTrumpRevealed: true,
+            winner: {
+              name: bidMade
+                ? (bidderTeamIs1 ? 'টিম ১ (সাউথ ও নর্থ)' : 'টিম ২ (ইস্ট ও ওয়েস্ট)')
+                : (bidderTeamIs1 ? 'টিম ২ (ইস্ট ও ওয়েস্ট)' : 'টিম ১ (সাউথ ও নর্থ)'),
+              text: bidMade
+                ? `বিডার টিম ${toBnNum(bidTarget)} পয়েন্টের লক্ষ্য অর্জন করেছে!`
+                : `বিডার টিম লক্ষ্য অর্জনে ব্যর্থ হয়েছে!`,
+            },
+            lastAction: `৮ম হাত সম্পন্ন! রাউন্ড সমাপ্ত।`,
+          },
+        });
+      } else {
+        // Next trick begins
+        updateGameRoom(room.id, {
+          state: {
+            ...gameState,
+            resolvingTrick: false,
+            lastTrick: lastTrickData,
+            currentTrick: [],
+            leadSuit: null,
+            turnIndex: winnerIdx,
+            tricksPlayed,
+            team1Points: newTeam1Points,
+            team2Points: newTeam2Points,
+            lastAction: `${winnerPlayer?.name} হাতটি জিতেছেন (+${toBnNum(trickResult.trickPoints)} পয়েন্ট)। পরবর্তী হাত শুরু!`,
+          },
+        });
+      }
+    }, 2200);
+
+    return () => clearTimeout(timer);
+  }, [isHost, gameState.resolvingTrick, gameState.currentTrick]);
+
+  // Start 29 Hand (Host only)
   const handleStartHand = () => {
     if ((room.players || []).length !== 4) {
-      alert('২৯ কার্ড গেম খেলতে ৪ জন খেলোয়াড় প্রয়োজন (২ জন বনাম ২ জন পার্টনারশিপ)!');
+      alert('২৯ কার্ড গেম খেলতে ঠিক ৪ জন খেলোয়াড় প্রয়োজন (২ জন বনাম ২ জন পার্টনারশিপ)!');
       return;
     }
 
+    gameAudio.playCard();
     const deck = shuffleDeck(create29Deck());
-    // Deal first 4 cards to each player
     const updatedPlayers = room.players.map((p) => {
       const first4 = [deck.pop(), deck.pop(), deck.pop(), deck.pop()];
       return {
@@ -81,7 +188,9 @@ export default function Card29Game({
         trumpSuit: null,
         isTrumpRevealed: false,
         leadSuit: null,
-        currentTrick: [], // array of { playerIndex, card }
+        currentTrick: [],
+        resolvingTrick: false,
+        lastTrick: null,
         team1Points: gameState.team1Points || 0,
         team2Points: gameState.team2Points || 0,
         matchScore1: gameState.matchScore1 || 0,
@@ -95,6 +204,7 @@ export default function Card29Game({
   // Handle Bidding (Bid or Pass)
   const handleBid = (bidVal) => {
     if (!isMyBidTurn) return;
+    triggerHaptic('light');
 
     const nextBidder = (gameState.bidTurnIndex + 1) % 4;
     const passes = bidVal === 'pass' ? (gameState.consecutivePasses || 0) + 1 : 0;
@@ -103,14 +213,13 @@ export default function Card29Game({
 
     // If 3 players pass after at least 1 bid, or 4 pass
     if (passes >= 3 && newHighestBidder !== -1) {
-      // Bidding finished! Highest bidder selects trump
       updateGameRoom(room.id, {
         state: {
           ...gameState,
           phase: 'select_trump',
           highestBid: newHighestBid,
           highestBidderIndex: newHighestBidder,
-          lastAction: `${room.players[newHighestBidder].name} ${toBnNum(newHighestBid)} পয়েন্টে বিড জিতেছেন! এখন তুরুপ (Trump) নির্বাচন করুন।`,
+          lastAction: `${room.players[newHighestBidder]?.name} ${toBnNum(newHighestBid)} পয়েন্টে বিড জিতেছেন! এখন তুরুপ (Trump) নির্বাচন করুন।`,
         },
       });
       return;
@@ -134,6 +243,8 @@ export default function Card29Game({
   // Highest bidder selects trump card from their hand
   const handleSelectTrump = (selectedCard) => {
     if (gameState.highestBidderIndex !== myIndex) return;
+    gameAudio.playCard();
+    triggerHaptic('medium');
 
     const parsed = parse29Card(selectedCard);
     const trumpSuit = parsed.suit;
@@ -161,6 +272,7 @@ export default function Card29Game({
         isTrumpRevealed: false,
         turnIndex: leadPlayerIndex,
         currentTrick: [],
+        resolvingTrick: false,
         leadSuit: null,
         tricksPlayed: 0,
         lastAction: `${myName} তুরুপ নির্বাচন করেছেন এবং সবার মাঝে বাকি ৪টি কার্ড বণ্টন হয়েছে। খেলা শুরু!`,
@@ -170,7 +282,7 @@ export default function Card29Game({
 
   // Play a card into the current trick
   const handlePlayCard = (cardStr) => {
-    if (!isMyTurn) return;
+    if (!isMyTurn || gameState.resolvingTrick) return;
 
     const currentTrick = gameState.currentTrick || [];
     const leadSuit = currentTrick.length === 0 ? parse29Card(cardStr).suit : gameState.leadSuit;
@@ -181,6 +293,9 @@ export default function Card29Game({
       return;
     }
 
+    gameAudio.playCard();
+    triggerHaptic('light');
+
     // Remove card from player hand
     const remainingCards = myPlayer.cards.filter((c) => c !== cardStr);
     const updatedPlayers = room.players.map((p, idx) =>
@@ -189,77 +304,25 @@ export default function Card29Game({
 
     const newTrick = [...currentTrick, { playerIndex: myIndex, card: cardStr }];
 
-    // If trick is complete (4 cards played)
+    // If trick is complete (4 cards played) -> pause to let all players see the 4th card!
     if (newTrick.length === 4) {
       const trickResult = determineTrickWinner(
         newTrick,
         gameState.trumpSuit,
         gameState.isTrumpRevealed
       );
-      const winnerIdx = trickResult.winnerIndex;
-      const winnerPlayer = room.players[winnerIdx];
-      const isTeam1 = winnerIdx === 0 || winnerIdx === 2;
+      const winnerPlayer = room.players[trickResult.winnerIndex];
 
-      const tricksPlayed = (gameState.tricksPlayed || 0) + 1;
-      let extraPoint = tricksPlayed === 8 ? 1 : 0; // 1 extra point for 8th trick
-
-      const newTeam1Points = (gameState.team1Points || 0) + (isTeam1 ? trickResult.trickPoints + extraPoint : 0);
-      const newTeam2Points = (gameState.team2Points || 0) + (!isTeam1 ? trickResult.trickPoints + extraPoint : 0);
-
-      // Check if all 8 tricks are done
-      if (tricksPlayed === 8) {
-        const bidderTeamIs1 = gameState.highestBidderIndex === 0 || gameState.highestBidderIndex === 2;
-        const bidderPoints = bidderTeamIs1 ? newTeam1Points : newTeam2Points;
-        const bidTarget = gameState.highestBid || 16;
-        const bidMade = bidderPoints >= bidTarget;
-
-        let newMatchScore1 = gameState.matchScore1 || 0;
-        let newMatchScore2 = gameState.matchScore2 || 0;
-
-        if (bidderTeamIs1) {
-          newMatchScore1 += bidMade ? 1 : -1;
-        } else {
-          newMatchScore2 += bidMade ? 1 : -1;
-        }
-
-        updateGameRoom(room.id, {
-          players: updatedPlayers,
-          status: 'round_ended',
-          state: {
-            ...gameState,
-            phase: 'round_ended',
-            currentTrick: [],
-            team1Points: newTeam1Points,
-            team2Points: newTeam2Points,
-            matchScore1: newMatchScore1,
-            matchScore2: newMatchScore2,
-            isTrumpRevealed: true,
-            winner: {
-              name: bidMade
-                ? (bidderTeamIs1 ? 'টিম ১ (সাউথ ও নর্থ)' : 'টিম ২ (ইস্ট ও ওয়েস্ট)')
-                : (bidderTeamIs1 ? 'টিম ২ (ইস্ট ও ওয়েস্ট)' : 'টিম ১ (সাউথ ও নর্থ)'),
-              text: bidMade
-                ? `বিডার টিম ${toBnNum(bidTarget)} পয়েন্টের লক্ষ্য অর্জন করেছে!`
-                : `বিডার টিম লক্ষ্য অর্জনে ব্যর্থ হয়েছে!`,
-            },
-            lastAction: `৮ম হাত সম্পন্ন! রাউন্ড শেষ।`,
-          },
-        });
-        return;
-      }
-
-      // Next trick starts with winner
       updateGameRoom(room.id, {
         players: updatedPlayers,
         state: {
           ...gameState,
-          currentTrick: [],
-          leadSuit: null,
-          turnIndex: winnerIdx,
-          tricksPlayed,
-          team1Points: newTeam1Points,
-          team2Points: newTeam2Points,
-          lastAction: `${winnerPlayer.name} এই হাত জিতেছেন (${toBnNum(trickResult.trickPoints)} পয়েন্ট)।`,
+          currentTrick: newTrick,
+          leadSuit,
+          resolvingTrick: true,
+          trickWinnerIndex: trickResult.winnerIndex,
+          trickPoints: trickResult.trickPoints,
+          lastAction: `🎉 ${winnerPlayer?.name} এই হাত জিতেছেন (${toBnNum(trickResult.trickPoints)} পয়েন্ট)!`,
         },
       });
       return;
@@ -282,13 +345,20 @@ export default function Card29Game({
   // Reveal Trump Card action
   const handleRevealTrump = () => {
     if (gameState.isTrumpRevealed) return;
+    triggerHaptic('medium');
+    gameAudio.playTurn();
     updateGameRoom(room.id, {
       state: {
         ...gameState,
         isTrumpRevealed: true,
-        lastAction: `তুরুপ উন্মোচিত হয়েছে! তুরুপ স্যুট হলো: ${SUIT_NAMES[gameState.trumpSuit] || gameState.trumpSuit} (${SUIT_SYMBOLS[gameState.trumpSuit]})`,
+        lastAction: `তুরুপ উন্মোচিত হয়েছে! তুরুপ স্যুট: ${SUIT_NAMES[gameState.trumpSuit] || gameState.trumpSuit} (${SUIT_SYMBOLS[gameState.trumpSuit]})`,
       },
     });
+  };
+
+  const handleToggleMute = () => {
+    const nextMuted = gameAudio.toggleMute();
+    setIsMuted(nextMuted);
   };
 
   return (
@@ -300,13 +370,16 @@ export default function Card29Game({
             ♠️
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <h3 className="font-extrabold text-xs sm:text-sm text-indigo-300 truncate">
                 {room.title || '২৯ কার্ড গেম টেবিল'}
               </h3>
               <span className="text-[10px] font-mono bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded border border-slate-700">
                 {room.id}
               </span>
+              {isMyTurn && (
+                <GameTurnTimer isMyTurn={isMyTurn} turnKey={`${gameState.tricksPlayed}_${gameState.currentTrick?.length}`} />
+              )}
             </div>
             <p className="text-[10px] text-slate-400">
               টিম ১ (সাউথ-নর্থ): {toBnNum(gameState.team1Points || 0)} পয়েন্ট • টিম ২ (ইস্ট-ওয়েস্ট): {toBnNum(gameState.team2Points || 0)} পয়েন্ট
@@ -314,14 +387,42 @@ export default function Card29Game({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onLeave}
-          className="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/80 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-        >
-          <LogOut size={13} />
-          <span className="hidden sm:inline">বের হন</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Last Trick Review Button */}
+          {gameState.lastTrick && (
+            <button
+              type="button"
+              onClick={() => setShowLastTrickModal(true)}
+              className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 transition"
+              title="পূর্ববর্তী হাত দেখুন"
+            >
+              <History size={15} />
+            </button>
+          )}
+
+          {/* Sound Toggle */}
+          <button
+            type="button"
+            onClick={handleToggleMute}
+            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+            title={isMuted ? 'সাউন্ড আনমিউট করুন' : 'সাউন্ড মিউট করুন'}
+          >
+            {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          </button>
+
+          {/* Floating Reactions */}
+          <GameReactions room={room} currentUser={currentUser} currentProfile={currentProfile} />
+
+          {/* Leave Button */}
+          <button
+            type="button"
+            onClick={onLeave}
+            className="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/80 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+          >
+            <LogOut size={13} />
+            <span className="hidden sm:inline">বের হন</span>
+          </button>
+        </div>
       </div>
 
       {/* 2. Playing Arena (4-Seat Cross Partnership Table) */}
@@ -332,7 +433,9 @@ export default function Card29Game({
         {/* Top Player (North - Partner of South) */}
         <div className="relative z-10 flex flex-col items-center">
           {room.players?.[2] ? (
-            <div className="flex flex-col items-center p-1.5 bg-black/40 rounded-xl border border-white/10">
+            <div className={`flex flex-col items-center p-1.5 rounded-xl border transition-all ${
+              gameState.turnIndex === 2 ? 'bg-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/50' : 'bg-black/40 border-white/10'
+            }`}>
               <UserAvatar
                 photoUrl={room.players[2].photoURL}
                 name={room.players[2].name}
@@ -357,7 +460,9 @@ export default function Card29Game({
           {/* Left Player (West) */}
           <div className="flex flex-col items-center">
             {room.players?.[3] ? (
-              <div className="flex flex-col items-center p-1.5 bg-black/40 rounded-xl border border-white/10">
+              <div className={`flex flex-col items-center p-1.5 rounded-xl border transition-all ${
+                gameState.turnIndex === 3 ? 'bg-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/50' : 'bg-black/40 border-white/10'
+              }`}>
                 <UserAvatar
                   photoUrl={room.players[3].photoURL}
                   name={room.players[3].name}
@@ -406,22 +511,37 @@ export default function Card29Game({
             </div>
 
             {/* Current Trick Cards */}
-            <div className="flex items-center gap-1 min-h-[60px] justify-center">
+            <div className="flex items-center gap-1 min-h-[64px] justify-center relative">
               {(gameState.currentTrick || []).length > 0 ? (
-                gameState.currentTrick.map((play, idx) => (
-                  <div key={idx} className="flex flex-col items-center">
-                    <PlayingCard card={play.card} size="sm" />
-                    <span className="text-[8px] text-slate-400 mt-0.5">
-                      {room.players?.[play.playerIndex]?.name}
-                    </span>
-                  </div>
-                ))
+                gameState.currentTrick.map((play, idx) => {
+                  const isWinningCard = gameState.resolvingTrick && gameState.trickWinnerIndex === play.playerIndex;
+                  return (
+                    <div key={idx} className={`flex flex-col items-center transition-all ${isWinningCard ? 'scale-110 -translate-y-1' : ''}`}>
+                      <PlayingCard
+                        card={play.card}
+                        size="sm"
+                        className={isWinningCard ? 'ring-2 ring-amber-400 shadow-xl' : ''}
+                      />
+                      <span className={`text-[8px] mt-0.5 ${isWinningCard ? 'font-black text-amber-300' : 'text-slate-400'}`}>
+                        {room.players?.[play.playerIndex]?.name}
+                        {isWinningCard ? ' 👑' : ''}
+                      </span>
+                    </div>
+                  );
+                })
               ) : (
                 <span className="text-[10px] text-slate-500 italic py-3">
                   কার্ড চালার জন্য অপেক্ষা...
                 </span>
               )}
             </div>
+
+            {/* Resolution Banner */}
+            {gameState.resolvingTrick && (
+              <div className="px-2.5 py-0.5 rounded-full bg-amber-400 text-teal-950 font-black text-[10px] shadow-lg animate-bounce">
+                🎉 {room.players?.[gameState.trickWinnerIndex]?.name} এই হাত জিতেছেন!
+              </div>
+            )}
 
             <p className="text-[10px] text-amber-200/90 font-medium">
               {gameState.lastAction || 'খেলার জন্য প্রস্তুত'}
@@ -431,7 +551,9 @@ export default function Card29Game({
           {/* Right Player (East) */}
           <div className="flex flex-col items-center">
             {room.players?.[1] ? (
-              <div className="flex flex-col items-center p-1.5 bg-black/40 rounded-xl border border-white/10">
+              <div className={`flex flex-col items-center p-1.5 rounded-xl border transition-all ${
+                gameState.turnIndex === 1 ? 'bg-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/50' : 'bg-black/40 border-white/10'
+              }`}>
                 <UserAvatar
                   photoUrl={room.players[1].photoURL}
                   name={room.players[1].name}
@@ -457,8 +579,8 @@ export default function Card29Game({
           {/* My Cards */}
           {myPlayer && (
             <div className="flex flex-col items-center space-y-1">
-              <span className="text-[10px] font-bold text-indigo-300">
-                আপনার কার্ড ({myName} - সাউথ):
+              <span className={`text-[10px] font-bold ${isMyTurn ? 'text-amber-300 animate-pulse' : 'text-indigo-300'}`}>
+                {isMyTurn ? '👉 আপনার চাল দিন' : `আপনার কার্ড (${myName} - সাউথ)`}:
               </span>
               <div className="flex items-center -space-x-3 sm:-space-x-4 flex-wrap justify-center">
                 {(myPlayer.cards || []).map((c, idx) => (
@@ -539,6 +661,53 @@ export default function Card29Game({
           )}
         </div>
       </div>
+
+      {/* Last Trick Review Modal */}
+      {showLastTrickModal && gameState.lastTrick && (
+        <div
+          onClick={() => setShowLastTrickModal(false)}
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-slate-900 border border-slate-700 rounded-3xl p-4 max-w-sm w-full space-y-3 text-white shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-1.5 font-bold text-sm text-indigo-300">
+                <History size={16} />
+                <span>পূর্ববর্তী হাত (Last Trick)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLastTrickModal(false)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 py-3">
+              {(gameState.lastTrick.cards || []).map((c, i) => (
+                <div key={i} className="flex flex-col items-center">
+                  <PlayingCard card={c.card} size="sm" />
+                  <span className="text-[9px] text-slate-300 mt-1">
+                    {room.players?.[c.playerIndex]?.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-indigo-950/60 border border-indigo-700/60 text-center text-xs">
+              <p className="font-bold text-amber-300">
+                জয়ী: {gameState.lastTrick.winnerName}
+              </p>
+              <p className="text-[11px] text-slate-300 mt-0.5">
+                অর্জিত পয়েন্ট: {toBnNum(gameState.lastTrick.points || 0)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -141,4 +141,30 @@ describe('chessLogic', () => {
     expect(deserialized[0].length).toBe(8);
     expect(deserialized).toEqual(INITIAL_CHESS_BOARD);
   });
+
+  it('allows King-side (O-O) and Queen-side (O-O-O) castling when path is clear', () => {
+    // Clear path between e1 and h1/a1
+    const board = [
+      ['bR', null, null, null, 'bK', null, null, 'bR'],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      ['wR', null, null, null, 'wK', null, null, 'wR'],
+    ];
+
+    const whiteKingMoves = getLegalMoves(board, 7, 4);
+    expect(whiteKingMoves).toContainEqual({ r: 7, c: 6, isCastling: true }); // O-O
+    expect(whiteKingMoves).toContainEqual({ r: 7, c: 2, isCastling: true }); // O-O-O
+
+    // Execute King-side castling
+    const castled = executeMove(board, 7, 4, 7, 6);
+    expect(castled.isCastling).toBe(true);
+    expect(castled.notation).toBe('O-O');
+    expect(castled.board[7][6]).toBe('wK');
+    expect(castled.board[7][5]).toBe('wR'); // Rook jumped to f1
+    expect(castled.board[7][7]).toBeNull();
+  });
 });
