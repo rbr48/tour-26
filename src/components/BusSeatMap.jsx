@@ -67,6 +67,7 @@ const getFamilyColor = (name) => {
 export default function BusSeatMap({
   members = [],
   seats: externalSeats,
+  isAdmin = false,
   onUpdateSeats,
   onUpdateMember,
 }) {
@@ -544,17 +545,19 @@ export default function BusSeatMap({
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-slate-500 font-medium">স্লিপার</span>
                         {/* Quick Delete button like Hotel Room */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteSeat(s);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition shadow-xs cursor-pointer"
-                          title="এই সিটটি মুছুন"
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSeat(s);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-md bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition shadow-xs cursor-pointer"
+                            title="এই সিটটি মুছুন"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div>
@@ -629,17 +632,19 @@ export default function BusSeatMap({
                       <div className="flex items-center gap-1">
                         <Armchair size={13} className="opacity-60" />
                         {/* Quick Delete button like Hotel Room */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteSeat(s);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition shadow-xs cursor-pointer"
-                          title="এই সিটটি মুছুন"
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSeat(s);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-md bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition shadow-xs cursor-pointer"
+                            title="এই সিটটি মুছুন"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div>
@@ -701,7 +706,7 @@ export default function BusSeatMap({
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] text-slate-400 font-medium">বরাদ্দকৃত সদস্য / পরিবার:</p>
-                  {!isEditingSeat && (
+                  {isAdmin && !isEditingSeat && (
                     <button
                       type="button"
                       onClick={() => {

@@ -121,10 +121,12 @@ export default function InstagramPostCard({
   const likeCount = (post.likes || []).length;
   const commentCount = (post.comments || []).length;
 
+  const isAdmin = (currentUser?.email || '').toLowerCase().trim() === 'rajbrur@gmail.com';
   const isAuthor = Boolean(
     (currentUser?.email && post.authorEmail && post.authorEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
     (!post.authorEmail && (currentProfile?.displayName || currentUser?.displayName) && post.author === (currentProfile?.displayName || currentUser?.displayName))
   );
+  const canManagePost = isAdmin || isAuthor;
 
   // Toggle Save to Favorites
   const handleToggleSave = () => {
@@ -597,7 +599,7 @@ export default function InstagramPostCard({
             className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl divide-y divide-slate-100 text-xs font-semibold text-center select-none"
             onClick={(e) => e.stopPropagation()}
           >
-            {isAuthor && onStartEditPost && (
+            {canManagePost && onStartEditPost && (
               <button
                 type="button"
                 onClick={() => {
@@ -611,7 +613,7 @@ export default function InstagramPostCard({
               </button>
             )}
 
-            {isAuthor && onDeletePost && (
+            {canManagePost && onDeletePost && (
               <button
                 type="button"
                 onClick={() => {

@@ -2,13 +2,24 @@ rules_version = '2';
 
 // Tour 2026 Firestore Security Rules
 // Protects database from unauthenticated access, enforces field constraints,
-// and ensures numerical sanity for ledger and tour records.
+// and restricts administrative management (expenses, members, itinerary, checklist, notices)
+// strictly to the admin (rajbrur@gmail.com and config/access admins).
+// General users can read tour data and only create/update/delete their own
+// feed posts, reactions, comments, profile, and chat messages.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function isAuthenticated() {
       return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email.lower() == 'rajbrur@gmail.com' ||
+        (exists(/databases/$(database)/documents/config/access) &&
+         request.auth.token.email.lower() in get(/databases/$(database)/documents/config/access).data.admins)
+      );
     }
 
     function fits(maxFields) {
@@ -33,8 +44,8 @@ service cloud.firestore {
 
     match /tours/{tourId} {
       allow read: if isAuthenticated();
-      // Allow updates to tour info from authenticated family users, reject legacy array injection
-      allow create, update: if isAuthenticated()
+      // Allow updates to tour info from admin only, reject legacy array injection
+      allow create, update: if isAdmin()
         && fits(20)
         && !('expenses' in request.resource.data)
         && !('discussions' in request.resource.data)
@@ -43,41 +54,41 @@ service cloud.firestore {
 
       match /itinerary/{itemId} {
         allow read: if isAuthenticated();
-        allow create, update: if isAuthenticated() && fits(25) && textWithin('notes', 2000);
-        allow delete: if isAuthenticated();
+        allow create, update: if isAdmin() && fits(25) && textWithin('notes', 2000);
+        allow delete: if isAdmin();
       }
 
       match /members/{memberId} {
         allow read: if isAuthenticated();
-        allow create, update: if isAuthenticated()
+        allow create, update: if isAdmin()
           && fits(25)
           && isPositiveBoundedNumber('deposit', 10000000);
-        allow delete: if isAuthenticated();
+        allow delete: if isAdmin();
       }
 
       match /expenses/{expenseId} {
         allow read: if isAuthenticated();
-        allow create: if isAuthenticated()
+        allow create: if isAdmin()
           && fits(25)
           && isPositiveBoundedNumber('amount', 10000000)
           && textWithin('title', 300);
-        allow update: if isAuthenticated()
+        allow update: if isAdmin()
           && fits(25)
           && isPositiveBoundedNumber('amount', 10000000)
           && textWithin('title', 300);
-        allow delete: if isAuthenticated();
+        allow delete: if isAdmin();
       }
 
       match /checklist/{itemId} {
         allow read: if isAuthenticated();
-        allow create, update: if isAuthenticated() && fits(15) && textWithin('text', 500);
-        allow delete: if isAuthenticated();
+        allow create, update: if isAdmin() && fits(15) && textWithin('text', 500);
+        allow delete: if isAdmin();
       }
 
       match /notices/{noticeId} {
         allow read: if isAuthenticated();
-        allow create, update: if isAuthenticated() && fits(20) && textWithin('content', 4000);
-        allow delete: if isAuthenticated();
+        allow create, update: if isAdmin() && fits(20) && textWithin('content', 4000);
+        allow delete: if isAdmin();
       }
 
       match /posts/{postId} {
@@ -88,8 +99,17 @@ service cloud.firestore {
           && textWithin('caption', 1000);
         allow update: if isAuthenticated()
           && fits(35)
-          && textWithin('thumb', 200000);
-        allow delete: if isAuthenticated();
+          && textWithin('thumb', 200000)
+          && (
+            isAdmin() ||
+            (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower()) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comments', 'views'])
+          );
+        allow delete: if isAuthenticated()
+          && (
+            isAdmin() ||
+            (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower())
+          );
       }
 
       match /channels/{channelId}/messages/{messageId} {
@@ -100,14 +120,28 @@ service cloud.firestore {
           && textWithin('text', 4000);
         allow update: if isAuthenticated()
           && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans']
-          && fits(20);
-        allow delete: if isAuthenticated();
+          && fits(20)
+          && (
+            isAdmin() ||
+            (resource.data.senderEmail != null && request.auth.token.email.lower() == resource.data.senderEmail.lower()) ||
+            (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower()) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+          );
+        allow delete: if isAuthenticated()
+          && (
+            isAdmin() ||
+            (resource.data.senderEmail != null && request.auth.token.email.lower() == resource.data.senderEmail.lower()) ||
+            (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower())
+          );
       }
 
       match /locations/{email} {
         allow read: if isAuthenticated();
-        allow create, update: if isAuthenticated() && fits(20);
-        allow delete: if isAuthenticated();
+        allow create, update: if isAuthenticated()
+          && (isAdmin() || request.auth.token.email.lower() == email.lower())
+          && fits(20);
+        allow delete: if isAuthenticated()
+          && (isAdmin() || request.auth.token.email.lower() == email.lower());
       }
 
       match /meta/{docId} {
@@ -118,9 +152,11 @@ service cloud.firestore {
       match /profiles/{email} {
         allow read: if isAuthenticated();
         allow create, update: if isAuthenticated()
+          && (isAdmin() || request.auth.token.email.lower() == email.lower())
           && fits(25)
           && textWithin('customPhotoURL', 200000);
-        allow delete: if isAuthenticated();
+        allow delete: if isAuthenticated()
+          && (isAdmin() || request.auth.token.email.lower() == email.lower());
       }
     }
 

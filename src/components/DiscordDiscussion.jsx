@@ -505,8 +505,8 @@ export default function DiscordDiscussion({
                           <Smile size={13} />
                         </button>
 
-                        {/* Edit Button (Author only) */}
-                        {isMe && onEditMessage && (
+                        {/* Edit Button (Author or Admin) */}
+                        {(isMe || isAdmin) && onEditMessage && (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -523,8 +523,8 @@ export default function DiscordDiscussion({
                           </button>
                         )}
 
-                        {/* Delete Button (Author only) */}
-                        {isMe && onDeleteMessage && (
+                        {/* Delete Button (Author or Admin) */}
+                        {(isMe || isAdmin) && onDeleteMessage && (
                           <button
                             type="button"
                             onClick={(e) => {

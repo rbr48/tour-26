@@ -5,11 +5,13 @@ import { useBackHandler } from '../utils/backNavigation';
 export default function NoticeBoard({
   notices = [],
   meetingPoint = {},
+  isAdmin = false,
   canDelete = false,
   onAddNotice,
   onDeleteNotice,
   onUpdateMeetingPoint
 }) {
+  const isAdministrator = isAdmin || canDelete;
   const [showAddModal, setShowAddModal] = useState(false);
   const [newNotice, setNewNotice] = useState({ title: '', content: '', author: '', urgent: false });
   const [isEditingMeeting, setIsEditingMeeting] = useState(false);
@@ -69,12 +71,14 @@ export default function NoticeBoard({
             >
               <Navigation size={15} /> গুগল ম্যাপসে ডিরেকশন
             </a>
-            <button
-              onClick={() => setIsEditingMeeting(!isEditingMeeting)}
-              className="px-3 py-2 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
-            >
-              মিটিং স্পট পরিবর্তন
-            </button>
+            {isAdministrator && (
+              <button
+                onClick={() => setIsEditingMeeting(!isEditingMeeting)}
+                className="px-3 py-2 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
+              >
+                মিটিং স্পট পরিবর্তন
+              </button>
+            )}
           </div>
         </div>
 
@@ -127,12 +131,14 @@ export default function NoticeBoard({
             </h3>
             <p className="text-xs text-slate-500">ট্যুর লিডার ও সদস্যদের জরুরি নোটিশ</p>
           </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-xs"
-          >
-            <Plus size={15} /> নতুন নোটিশ দিন
-          </button>
+          {isAdministrator && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+            >
+              <Plus size={15} /> নতুন নোটিশ দিন
+            </button>
+          )}
         </div>
 
         {/* Notices Cards Grid */}
