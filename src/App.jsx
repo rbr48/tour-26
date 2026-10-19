@@ -3,7 +3,7 @@ import {
   Calendar, Wallet, CheckSquare, PhoneCall, Trash2, CheckCircle2, Circle, RefreshCw, Bus, Hotel,
   Navigation, Eye, ShieldCheck, Clock, LogOut, Flame, Megaphone, Printer, Edit3, Save, X,
   Camera, MessageSquare, Menu, Smartphone, Sparkles, Compass, Plus, ExternalLink, Users,
-  ImageIcon, Terminal, AlertTriangle, MapPin, HardDrive, RotateCcw, Gamepad2,
+  ImageIcon, Terminal, AlertTriangle, MapPin, HardDrive, RotateCcw, Gamepad2, Waves,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
