@@ -40,11 +40,16 @@ export function resolveCommenterName(
 
   const authorEmail = typeof comment === 'object' ? String(comment.authorEmail || comment.email || '').toLowerCase().trim() : '';
   const myEmail = String(currentUser?.email || '').toLowerCase().trim();
+  const rawUser = typeof comment === 'string' ? String(comment).trim() : String(comment.user || comment.author || '').trim();
 
-  // 1. Current user match
-  if (myEmail && authorEmail && authorEmail === myEmail) {
-    if (currentProfile?.displayName?.trim()) return currentProfile.displayName.trim();
-    if (currentUser?.displayName?.trim()) return currentUser.displayName.trim();
+  // 1. members list match by email or coordinator fallback (highest priority for family name consistency)
+  if (authorEmail && Array.isArray(members)) {
+    const matchedMember = members.find((m) => m?.email && m.email.toLowerCase().trim() === authorEmail);
+    if (matchedMember?.name) return matchedMember.name.split('/')[0].split('(')[0].trim();
+    if (authorEmail.includes('shohag') || authorEmail.includes('admin') || authorEmail.includes('izhaan')) {
+      const coord = members.find((m) => m?.role === 'coordinator' || m?.name?.includes('কো-অর্ডিনেটর'));
+      if (coord?.name) return coord.name.split('/')[0].split('(')[0].trim();
+    }
   }
 
   // 2. userProfiles match by authorEmail
@@ -60,28 +65,34 @@ export function resolveCommenterName(
     }
   }
 
-  // 3. members list match by email or coordinator fallback
-  if (authorEmail && Array.isArray(members)) {
-    const matchedMember = members.find((m) => m?.email && m.email.toLowerCase().trim() === authorEmail);
-    if (matchedMember?.name) return matchedMember.name.split('/')[0].split('(')[0].trim();
-    if (authorEmail.includes('shohag') || authorEmail.includes('admin') || authorEmail.includes('izhaan')) {
-      const coord = members.find((m) => m?.role === 'coordinator' || m?.name?.includes('কো-অর্ডিনেটর'));
-      if (coord?.name) return coord.name.split('/')[0].split('(')[0].trim();
-    }
+  // 3. Match rawUser against member names (e.g. "Shohag Rana" matches "মো: সোহাগ রানা / Shohag Rana")
+  if (rawUser && rawUser !== 'পরিবারের সদস্য' && rawUser !== 'সদস্য' && Array.isArray(members)) {
+    const matchedByName = members.find((m) => {
+      if (!m?.name) return false;
+      const mName = m.name.toLowerCase();
+      const rName = rawUser.toLowerCase();
+      return mName.includes(rName) || rName.includes(mName) || (rName.includes('shohag') && mName.includes('সোহাগ'));
+    });
+    if (matchedByName?.name) return matchedByName.name.split('/')[0].split('(')[0].trim();
   }
 
-  // 4. Stored user name on comment object (if not the default fallback)
-  const rawUser = typeof comment === 'string' ? '' : String(comment.user || comment.author || '').trim();
+  // 4. Current user match
+  if (myEmail && authorEmail && authorEmail === myEmail) {
+    if (currentProfile?.displayName?.trim()) return currentProfile.displayName.trim();
+    if (currentUser?.displayName?.trim()) return currentUser.displayName.trim();
+  }
+
+  // 5. Stored user name on comment object (if not the default fallback)
   if (rawUser && rawUser !== 'পরিবারের সদস্য' && rawUser !== 'সদস্য') {
     return rawUser;
   }
 
-  // 5. If posted by current user with fallback user name
+  // 6. If posted by current user with fallback user name
   if ((!authorEmail || (myEmail && authorEmail === myEmail)) && currentProfile?.displayName?.trim()) {
     return currentProfile.displayName.trim();
   }
 
-  // 6. Readable name from authorEmail
+  // 7. Readable name from authorEmail
   if (authorEmail && authorEmail !== 'member@tour.family') {
     const prefix = authorEmail.split('@')[0].replace(/[._-]/g, ' ');
     return prefix.charAt(0).toUpperCase() + prefix.slice(1);

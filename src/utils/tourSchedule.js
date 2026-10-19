@@ -112,8 +112,15 @@ export function getCurrentTourDay(date = new Date()) {
  * Matches post.tourDay, post.date, or post.createdAt.
  */
 export function getPostTourDay(post) {
-  if (!post) return 'day1';
-  if (post.tourDay) return typeof post.tourDay === 'object' ? post.tourDay?.id || 'day1' : post.tourDay;
+  if (!post) return null;
+  if (post.tourDay === 'off_tour' || post.tourDay === 'none') return null;
+  if (post.tourDay) return typeof post.tourDay === 'object' ? post.tourDay?.id || null : post.tourDay;
+
+  // If the location is explicitly an off-tour destination
+  const loc = String(post.location || '').toLowerCase();
+  if (loc.includes('বান্দরবান') || loc.includes('সাজেক') || loc.includes('সিলেট') || loc.includes('শ্রীমঙ্গল')) {
+    return null;
+  }
 
   const dateStr = post.date || post.createdAtDate || '';
   if (dateStr) {
@@ -129,8 +136,7 @@ export function getPostTourDay(post) {
     }
   }
 
-  // Fallback to day 1
-  return 'day1';
+  return null;
 }
 
 /**

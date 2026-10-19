@@ -1921,33 +1921,36 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       <div className={`flex-1 flex flex-col min-w-0 min-h-0 ${activeTab === 'discussions' ? 'overflow-hidden' : ''}`}>
         {/* Top Header with Mobile Hamburger Menu */}
         <header className="shrink-0 sticky top-0 z-30 bg-gradient-to-r from-teal-900/95 via-teal-800/95 to-cyan-900/95 backdrop-blur-md text-white px-3 py-3 md:px-8 md:py-4 shadow-md border-b border-teal-700/50 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
               {/* Mobile Hamburger Drawer Button */}
               <button
                 onClick={() => setIsMobileSidebarOpen(true)}
-                className="md:hidden p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+                className="md:hidden p-1.5 sm:p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer shrink-0"
                 title="মেন্যু ও সাইডবার খুলুন"
               >
-                <Menu size={20} />
+                <Menu size={19} />
               </button>
 
               <img
                 src={APP_LOGO_URL}
                 alt="App Logo"
-                className="w-9 h-9 md:w-11 md:h-11 rounded-xl object-contain bg-white p-0.5 ring-2 ring-amber-400 shadow-md md:hidden"
+                className="w-8 h-8 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-xl object-contain bg-white p-0.5 ring-2 ring-amber-400 shadow-md md:hidden shrink-0"
               />
 
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="px-2 py-0.5 text-[9px] md:text-[10px] bg-amber-400 text-teal-950 font-extrabold rounded-full whitespace-nowrap">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5">
+                  <span className="px-1.5 sm:px-2 py-0.5 text-[8.5px] sm:text-[9px] md:text-[10px] bg-amber-400 text-teal-950 font-extrabold rounded-full whitespace-nowrap">
                     {data.tourInfo.duration}
                   </span>
                   <span className="hidden sm:inline-flex items-center gap-1 text-[10px] bg-white/20 px-2 py-0.5 rounded-full text-teal-100 whitespace-nowrap">
                     <Bus size={10} /> {data.tourInfo.busName}
                   </span>
                 </div>
-                <h2 className="text-sm md:text-lg font-bold leading-tight truncate">{data.tourInfo.title}</h2>
+                <h2 className="text-xs sm:text-sm md:text-lg font-bold leading-tight truncate">
+                  <span className="sm:hidden">কক্সবাজার ফ্যামিলি ট্যুর ২০২৬</span>
+                  <span className="hidden sm:inline">{data.tourInfo.title}</span>
+                </h2>
               </div>
             </div>
 

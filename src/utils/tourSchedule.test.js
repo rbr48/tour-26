@@ -37,7 +37,8 @@ describe('tourSchedule', () => {
     expect(getPostTourDay({ tourDay: 'day2' })).toBe('day2');
     expect(getPostTourDay({ tourDay: { id: 'day4' } })).toBe('day4');
     expect(getPostTourDay({ date: '2026-10-21' })).toBe('day3');
-    expect(getPostTourDay({ caption: 'ইনানী বিচে দারুণ সময় কাটালাম' })).toBe('day1');
+    expect(getPostTourDay({ caption: '১ম দিন ইনানী বিচে দারুণ সময় কাটালাম' })).toBe('day1');
+    expect(getPostTourDay({ location: 'বান্দরবান' })).toBe(null);
   });
 
   it('suggests location spot based on day and time', () => {

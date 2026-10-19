@@ -98,7 +98,9 @@ export default function StoryViewerModal({
 
   if (!isOpen || !currentStory) return null;
 
-  const tourDayId = (typeof currentStory.tourDay === 'object' ? currentStory.tourDay?.id : currentStory.tourDay) || getPostTourDay(currentStory);
+  const storyLoc = String(currentStory.location || '').toLowerCase();
+  const isOffTour = currentStory.tourDay === 'off_tour' || currentStory.tourDay === 'none' || storyLoc.includes('বান্দরবান') || storyLoc.includes('সাজেক') || storyLoc.includes('সিলেট');
+  const tourDayId = isOffTour ? null : ((typeof currentStory.tourDay === 'object' ? currentStory.tourDay?.id : currentStory.tourDay) || getPostTourDay(currentStory));
   const tourDayInfo = tourDayId ? getTourDayById(tourDayId) : null;
 
   const mediaUrl = photoSource(currentStory);

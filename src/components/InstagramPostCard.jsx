@@ -101,7 +101,9 @@ export default function InstagramPostCard({
   const currentMediaSrc = postImages[activeImageIdx] || photoSource(post);
   const postIsReel = Boolean(post.isReel || post.reel || post.videoUrl || post.video || post.type === 'reel');
 
-  const tourDayId = (typeof post.tourDay === 'object' ? post.tourDay?.id : post.tourDay) || getPostTourDay(post);
+  const loc = String(post.location || '').toLowerCase();
+  const isOffTour = post.tourDay === 'off_tour' || post.tourDay === 'none' || loc.includes('বান্দরবান') || loc.includes('সাজেক') || loc.includes('সিলেট');
+  const tourDayId = isOffTour ? null : ((typeof post.tourDay === 'object' ? post.tourDay?.id : post.tourDay) || getPostTourDay(post));
   const tourDayInfo = tourDayId ? getTourDayById(tourDayId) : null;
 
   const myIdentifier = (
@@ -291,10 +293,10 @@ export default function InstagramPostCard({
 
             <div
               onClick={() => onOpenReel?.(post)}
-              className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/35 transition cursor-pointer z-10 group"
+              className="absolute inset-0 flex items-center justify-center bg-black/15 hover:bg-black/30 transition cursor-pointer z-10 group"
             >
-              <div className="w-16 h-16 rounded-full bg-pink-600/90 text-white flex items-center justify-center shadow-2xl backdrop-blur-xs group-hover:scale-110 transition duration-300 border border-white/20">
-                <Play size={28} className="ml-1 fill-white" />
+              <div className="w-14 h-14 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center shadow-2xl backdrop-blur-md border border-white/30 group-hover:scale-110 active:scale-95 transition-all duration-300">
+                <Play size={24} className="ml-1 fill-white text-white drop-shadow-md" />
               </div>
             </div>
           </>
@@ -478,35 +480,44 @@ export default function InstagramPostCard({
 
       {/* 4. Engagement & Caption Details */}
       <div className="px-3.5 pb-3 space-y-1.5 text-xs">
-        {/* Likes and Views Count Row */}
+        {/* Engagement Row (Native Instagram Style) */}
         <div className="flex items-center justify-between pt-0.5">
-          <div className="flex items-center gap-2">
-            {likeCount > 0 ? (
-              <p className="font-extrabold text-[13px] text-slate-900">
-                {toBnNum(likeCount)}টি লাইক
-              </p>
+          <div className="flex items-center gap-1.5 text-[13px] font-bold text-slate-900">
+            {postIsReel ? (
+              <>
+                <span className="flex items-center gap-1 text-slate-900 font-extrabold">
+                  <Play size={11} className="fill-slate-800 text-slate-800" />
+                  <span>{toBnNum(post.views || 0)} ভিউ</span>
+                </span>
+                <span className="text-slate-300 font-normal">•</span>
+                <span className="text-slate-700 font-semibold">{toBnNum(likeCount)}টি লাইক</span>
+              </>
             ) : (
-              <p className="text-slate-400 font-medium text-[12px]">
-                প্রথম লাইক দিন
-              </p>
+              <>
+                {likeCount > 0 ? (
+                  <span className="font-extrabold text-slate-900">{toBnNum(likeCount)}টি লাইক</span>
+                ) : (
+                  <span className="text-slate-400 font-medium text-[12px]">প্রথম লাইক দিন</span>
+                )}
+                {Number(post.views || 0) > 0 && (
+                  <>
+                    <span className="text-slate-300 font-normal">•</span>
+                    <span className="text-slate-500 font-normal text-[12px] flex items-center gap-1">
+                      <Eye size={12} className="text-slate-400" />
+                      <span>{toBnNum(post.views || 0)} ভিউ</span>
+                    </span>
+                  </>
+                )}
+              </>
             )}
-          </div>
-
-          {/* View Count Badge */}
-          <div
-            className="flex items-center gap-1.5 text-slate-500 text-[11px] font-semibold bg-slate-50 hover:bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200/80 transition-colors select-none"
-            title="মোট ভিউ সংখ্যা"
-          >
-            <Eye size={13} className="text-teal-600" />
-            <span className="font-mono">{toBnNum(post.views || 0)} ভিউ</span>
           </div>
         </div>
 
         {/* Caption */}
         {post.caption && (
-          <div className="text-[13px] text-slate-900 leading-snug">
-            <span className="font-extrabold mr-1.5">{post.author}</span>
-            <span>
+          <div className="text-[13px] leading-snug pt-0.5">
+            <span className="font-extrabold text-slate-900 mr-2">{post.author}</span>
+            <span className="text-slate-800 font-normal break-words">
               {isCaptionExpanded || post.caption.length <= 110
                 ? post.caption
                 : `${post.caption.slice(0, 110)}...`}
@@ -515,7 +526,7 @@ export default function InstagramPostCard({
               <button
                 type="button"
                 onClick={() => setIsCaptionExpanded(true)}
-                className="text-slate-500 font-medium ml-1 hover:text-slate-800 cursor-pointer"
+                className="text-slate-500 font-medium ml-1.5 hover:text-slate-800 cursor-pointer"
               >
                 আরও
               </button>
@@ -533,7 +544,7 @@ export default function InstagramPostCard({
 
         {/* Recent Comments Preview (Authentic Instagram Style) */}
         {commentCount > 0 && (
-          <div className="space-y-0.5 pt-0.5">
+          <div className="space-y-1 pt-1 border-t border-slate-100/60">
             {(Array.isArray(post.comments) ? post.comments : []).slice(-2).map((c, idx) => {
               const userName = resolveCommenterName(c, { userProfiles, members, currentUser, currentProfile });
               const commentText = typeof c === 'string' ? c : (c.text || c.comment || c.message || '');
@@ -541,34 +552,34 @@ export default function InstagramPostCard({
                 <div
                   key={idx}
                   onClick={() => onOpenComments?.(post)}
-                  className="text-[12px] text-slate-800 leading-snug cursor-pointer line-clamp-2"
+                  className="text-[12px] leading-snug cursor-pointer line-clamp-2 flex items-baseline gap-1.5 hover:opacity-80 transition-opacity"
                 >
-                  {userName && <span className="font-bold mr-1.5">{userName}</span>}
-                  <span className="text-slate-700">{commentText}</span>
+                  <span className="font-bold text-slate-800 shrink-0">{userName}</span>
+                  <span className="text-slate-600 break-words">{commentText}</span>
                 </div>
               );
             })}
           </div>
         )}
 
-        {/* View All Comments Trigger */}
-        {commentCount > 0 ? (
+        {/* View All Comments Trigger: Only shown when there are 2 or more comments */}
+        {commentCount > 1 ? (
           <button
             type="button"
             onClick={() => onOpenComments?.(post)}
-            className="text-slate-500 text-[12px] font-medium pt-0.5 hover:text-slate-800 cursor-pointer block"
+            className="text-slate-400 hover:text-slate-600 text-[12px] font-medium pt-0.5 cursor-pointer block transition-colors"
           >
             সবগুলো {toBnNum(commentCount)}টি মন্তব্য দেখুন
           </button>
-        ) : (
+        ) : commentCount === 0 ? (
           <button
             type="button"
             onClick={() => onOpenComments?.(post)}
-            className="text-slate-400 text-[12px] font-medium pt-0.5 hover:text-slate-600 cursor-pointer block"
+            className="text-slate-400 hover:text-slate-600 text-[12px] font-medium pt-0.5 cursor-pointer block transition-colors"
           >
             একটি মন্তব্য লিখুন...
           </button>
-        )}
+        ) : null}
 
         {/* Post Timestamp */}
         <p className="text-[10px] text-slate-400 uppercase tracking-wide pt-1">
