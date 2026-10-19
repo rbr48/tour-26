@@ -1,8 +1,9 @@
 import React from 'react';
 
 /**
- * High-definition SVG Chess Pieces
- * Scalable, high-contrast pieces that render with pristine clarity on all mobile screens.
+ * Luxury 3D-Shaded SVG Chess Pieces (Staunton Championship Style)
+ * Uses procedural gradients, specular highlights, and drop-shadows
+ * for realistic polished ivory and obsidian stone finish.
  */
 export default function ChessPieceSvg({ piece, className = 'w-full h-full' }) {
   if (!piece) return null;
@@ -10,37 +11,68 @@ export default function ChessPieceSvg({ piece, className = 'w-full h-full' }) {
   const type = piece[1]; // 'P', 'R', 'N', 'B', 'Q', 'K'
 
   const isWhite = color === 'w';
-  const fillColor = isWhite ? '#ffffff' : '#1e293b';
-  const strokeColor = isWhite ? '#0f172a' : '#f8fafc';
-  const accentColor = isWhite ? '#cbd5e1' : '#475569';
+  const idPrefix = isWhite ? 'w_chess' : 'b_chess';
+
+  // Dynamic gradient and stroke colors
+  const fillColor = `url(#${idPrefix}_grad)`;
+  const strokeColor = isWhite ? '#1e293b' : '#f8fafc';
+  const accentColor = isWhite ? '#94a3b8' : '#64748b';
+
+  const renderDefs = () => (
+    <defs>
+      {/* 3D Gradient for White Pieces (Porcelain Ivory) */}
+      <linearGradient id="w_chess_grad" x1="0.2" y1="0" x2="0.8" y2="1">
+        <stop offset="0%" stopColor="#ffffff" />
+        <stop offset="50%" stopColor="#f8fafc" />
+        <stop offset="100%" stopColor="#cbd5e1" />
+      </linearGradient>
+
+      {/* 3D Gradient for Black Pieces (Polished Obsidian) */}
+      <linearGradient id="b_chess_grad" x1="0.2" y1="0" x2="0.8" y2="1">
+        <stop offset="0%" stopColor="#475569" />
+        <stop offset="45%" stopColor="#1e293b" />
+        <stop offset="100%" stopColor="#090d16" />
+      </linearGradient>
+
+      {/* Soft Ambient Piece Shadow */}
+      <filter id="chess_drop_shadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="2" stdDeviation="1.5" floodColor="#000000" floodOpacity="0.45" />
+      </filter>
+    </defs>
+  );
 
   switch (type) {
     case 'P': // Pawn
       return (
         <svg viewBox="0 0 45 45" className={className}>
-          <path
-            d="m 22.5,9 c -2.21,0 -4,1.79 -4,4 0,0.89 0.29,1.71 0.78,2.38 C 17.33,16.5 16,18.59 16,21 c 0,2.03 0.94,3.84 2.41,5.03 C 15.41,27.09 11,31.58 11,39.5 l 23,0 c 0,-7.92 -4.41,-12.41 -7.41,-13.47 1.47,-1.19 2.41,-3 2.41,-5.03 0,-2.41 -1.33,-4.5 -3.28,-5.62 C 26.21,14.71 26.5,13.89 26.5,13 c 0,-2.21 -1.79,-4 -4,-4 z"
-            fill={fillColor}
-            stroke={strokeColor}
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-          <path
-            d="m 12,36 c 7,-1 14,-1 21,0"
-            fill="none"
-            stroke={strokeColor}
-            strokeWidth="1.2"
-          />
+          {renderDefs()}
+          <g filter="url(#chess_drop_shadow)">
+            <path
+              d="m 22.5,9 c -2.21,0 -4,1.79 -4,4 0,0.89 0.29,1.71 0.78,2.38 C 17.33,16.5 16,18.59 16,21 c 0,2.03 0.94,3.84 2.41,5.03 C 15.41,27.09 11,31.58 11,39.5 l 23,0 c 0,-7.92 -4.41,-12.41 -7.41,-13.47 1.47,-1.19 2.41,-3 2.41,-5.03 0,-2.41 -1.33,-4.5 -3.28,-5.62 C 26.21,14.71 26.5,13.89 26.5,13 c 0,-2.21 -1.79,-4 -4,-4 z"
+              fill={fillColor}
+              stroke={strokeColor}
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+            <path
+              d="m 12,36 c 7,-1 14,-1 21,0"
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth="1.3"
+            />
+          </g>
         </svg>
       );
 
     case 'R': // Rook
       return (
         <svg viewBox="0 0 45 45" className={className}>
+          {renderDefs()}
           <g
+            filter="url(#chess_drop_shadow)"
             fill={fillColor}
             stroke={strokeColor}
-            strokeWidth="1.5"
+            strokeWidth="1.6"
             strokeLinecap="round"
             strokeLinejoin="round"
           >
@@ -59,16 +91,18 @@ export default function ChessPieceSvg({ piece, className = 'w-full h-full' }) {
     case 'N': // Knight
       return (
         <svg viewBox="0 0 45 45" className={className}>
+          {renderDefs()}
           <g
+            filter="url(#chess_drop_shadow)"
             fill={fillColor}
             stroke={strokeColor}
-            strokeWidth="1.5"
+            strokeWidth="1.6"
             strokeLinecap="round"
             strokeLinejoin="round"
           >
             <path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18" />
             <path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,7.4 17.5,7 17.5,7 C 17.5,7 19.5,8 20,10.5 L 22,10 z" />
-            <circle cx="15" cy="14" r="1.5" fill={isWhite ? '#0f172a' : '#ffffff'} />
+            <circle cx="15" cy="14" r="1.6" fill={isWhite ? '#0f172a' : '#ffffff'} />
           </g>
         </svg>
       );
@@ -76,10 +110,12 @@ export default function ChessPieceSvg({ piece, className = 'w-full h-full' }) {
     case 'B': // Bishop
       return (
         <svg viewBox="0 0 45 45" className={className}>
+          {renderDefs()}
           <g
+            filter="url(#chess_drop_shadow)"
             fill={fillColor}
             stroke={strokeColor}
-            strokeWidth="1.5"
+            strokeWidth="1.6"
             strokeLinecap="round"
             strokeLinejoin="round"
           >
@@ -95,10 +131,12 @@ export default function ChessPieceSvg({ piece, className = 'w-full h-full' }) {
     case 'Q': // Queen
       return (
         <svg viewBox="0 0 45 45" className={className}>
+          {renderDefs()}
           <g
+            filter="url(#chess_drop_shadow)"
             fill={fillColor}
             stroke={strokeColor}
-            strokeWidth="1.5"
+            strokeWidth="1.6"
             strokeLinecap="round"
             strokeLinejoin="round"
           >
@@ -117,15 +155,17 @@ export default function ChessPieceSvg({ piece, className = 'w-full h-full' }) {
     case 'K': // King
       return (
         <svg viewBox="0 0 45 45" className={className}>
+          {renderDefs()}
           <g
+            filter="url(#chess_drop_shadow)"
             fill={fillColor}
             stroke={strokeColor}
-            strokeWidth="1.5"
+            strokeWidth="1.6"
             strokeLinecap="round"
             strokeLinejoin="round"
           >
             {/* Cross */}
-            <path d="M 22.5,11.5 L 22.5,4.5 M 19,8 L 26,8" stroke={strokeColor} strokeWidth="1.5" />
+            <path d="M 22.5,11.5 L 22.5,4.5 M 19,8 L 26,8" stroke={strokeColor} strokeWidth="1.6" />
             {/* Crown */}
             <path d="M 11.5,37 C 17,40.5 28,40.5 33.5,37 C 36.5,32 38.5,25 36.5,18 C 30,17 28.5,23.5 22.5,23.5 C 16.5,23.5 15,17 8.5,18 C 6.5,25 8.5,32 11.5,37 z" />
             <path d="M 11.5,30 C 17,27 28,27 33.5,30" fill="none" stroke={accentColor} strokeWidth="1" />

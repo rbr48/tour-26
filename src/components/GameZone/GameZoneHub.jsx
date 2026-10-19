@@ -409,29 +409,37 @@ export default function GameZoneHub({
       </div>
 
       {/* 3. Featured Card Games Selection */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-3.5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
         {GAME_TYPES.map((game) => (
           <div
             key={game.id}
-            className={`p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl border border-slate-200 bg-white shadow-xs flex flex-col justify-between hover:shadow-md transition`}
+            className="group relative overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-950 p-4 sm:p-5 shadow-xs hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col justify-between"
           >
-            <div className="space-y-2">
+            {/* Top decorative gradient sheen */}
+            <div className={`absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r ${game.gradient}`} />
+
+            <div className="space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-2xl">{game.icon}</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${game.badgeColor}`}>
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-3xl shadow-inner group-hover:scale-110 transition-transform duration-300">
+                  {game.icon}
+                </div>
+                <span className={`text-[10px] font-black px-2.5 py-1 rounded-full shadow-xs ${game.badgeColor}`}>
                   {game.badge}
                 </span>
               </div>
-              <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
-                {game.name}
-              </h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                {game.desc}
-              </p>
+              <div>
+                <h3 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-amber-400 transition-colors">
+                  {game.name}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-1">
+                  {game.desc}
+                </p>
+              </div>
             </div>
 
-            <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400 font-medium">
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
+                <Users size={13} className="text-slate-400" />
                 সর্বোচ্চ {toBnNum(game.maxPlayers)} জন
               </span>
               <button
@@ -440,9 +448,9 @@ export default function GameZoneHub({
                   setSelectedGameType(game.id);
                   setShowCreateModal(true);
                 }}
-                className="px-3.5 py-1.5 bg-slate-900 hover:bg-teal-950 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1"
+                className={`px-4 py-1.5 bg-gradient-to-r ${game.gradient} text-white text-xs font-black rounded-xl shadow-md hover:brightness-110 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95`}
               >
-                <Plus size={13} />
+                <Plus size={14} />
                 টেবিল খুলুন
               </button>
             </div>

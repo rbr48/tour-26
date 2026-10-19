@@ -394,9 +394,9 @@ export default function ChessGame({
         </div>
       </div>
 
-      {/* 5. The Chess Board */}
-      <div className="relative mx-auto w-full aspect-square max-w-[420px] bg-slate-950 p-2 rounded-2xl shadow-2xl border-4 border-slate-800 select-none">
-        <div className="w-full h-full grid grid-cols-8 grid-rows-8 rounded-lg overflow-hidden border border-slate-700/60">
+      {/* 5. The Chess Board with Luxury Tournament Wood Rim */}
+      <div className="relative mx-auto w-full aspect-square max-w-[430px] bg-gradient-to-br from-stone-900 via-amber-950 to-stone-950 p-2.5 sm:p-3.5 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.85),inset_0_2px_4px_rgba(255,255,255,0.15)] border-4 border-amber-800/70 select-none">
+        <div className="w-full h-full grid grid-cols-8 grid-rows-8 rounded-xl overflow-hidden border-2 border-stone-800/90 shadow-2xl">
           {rows.map((r) =>
             cols.map((c) => {
               const isDark = (r + c) % 2 === 1;
@@ -410,28 +410,30 @@ export default function ChessGame({
                 getType(piece) === 'K' &&
                 kingInCheck[getColor(piece)];
 
-              // Base square colors (wood/emerald theme)
-              let squareBg = isDark ? 'bg-[#779556]' : 'bg-[#ebecd0]';
+              // Base square colors (rich tournament emerald & maple buff with subtle gradient)
+              let squareBg = isDark
+                ? 'bg-gradient-to-br from-[#779556] to-[#637d45]'
+                : 'bg-gradient-to-br from-[#f2f3df] to-[#e4e5ce]';
 
               if (isSelected) {
-                squareBg = 'bg-[#baca44] ring-2 ring-amber-400 ring-inset';
+                squareBg = 'bg-gradient-to-br from-[#c9db4d] to-[#b3c437] ring-2 ring-amber-400 ring-inset shadow-[inset_0_0_12px_rgba(245,158,11,0.5)]';
               } else if (isLastMoveFrom || isLastMoveTo) {
-                squareBg = isDark ? 'bg-[#baca44]' : 'bg-[#f5f682]';
+                squareBg = isDark ? 'bg-[#b6c747]' : 'bg-[#e9ebb2]';
               } else if (isKingChecked) {
-                squareBg = 'bg-rose-500/90 animate-pulse';
+                squareBg = 'bg-gradient-to-br from-rose-600 to-red-700 text-white animate-pulse shadow-[inset_0_0_15px_rgba(225,29,72,0.8)]';
               }
 
               return (
                 <div
                   key={`${r}-${c}`}
                   onClick={() => handleSquareClick(r, c)}
-                  className={`relative flex items-center justify-center cursor-pointer transition-colors ${squareBg}`}
+                  className={`relative flex items-center justify-center cursor-pointer transition-colors duration-150 ${squareBg}`}
                 >
                   {/* File & Rank Coordinates for outer edges */}
                   {(isBoardFlipped ? r === 0 : r === 7) && (
                     <span
-                      className={`absolute bottom-0.5 right-1 text-[8px] font-bold pointer-events-none select-none ${
-                        isDark ? 'text-[#ebecd0]' : 'text-[#779556]'
+                      className={`absolute bottom-0.5 right-1 text-[8px] font-black pointer-events-none select-none opacity-80 ${
+                        isDark ? 'text-[#f2f3df]' : 'text-[#637d45]'
                       }`}
                     >
                       {FILES[c]}
@@ -439,8 +441,8 @@ export default function ChessGame({
                   )}
                   {(isBoardFlipped ? c === 7 : c === 0) && (
                     <span
-                      className={`absolute top-0.5 left-1 text-[8px] font-bold pointer-events-none select-none ${
-                        isDark ? 'text-[#ebecd0]' : 'text-[#779556]'
+                      className={`absolute top-0.5 left-1 text-[8px] font-black pointer-events-none select-none opacity-80 ${
+                        isDark ? 'text-[#f2f3df]' : 'text-[#637d45]'
                       }`}
                     >
                       {RANKS[r]}
@@ -449,17 +451,17 @@ export default function ChessGame({
 
                   {/* Piece */}
                   {piece && (
-                    <div className="w-[82%] h-[82%] relative z-10 transition-transform active:scale-95 drop-shadow">
+                    <div className="w-[86%] h-[86%] relative z-10 transition-transform hover:scale-105 active:scale-95 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
                       <ChessPieceSvg piece={piece} />
                     </div>
                   )}
 
                   {/* Legal Move Indicators */}
                   {isLegal && !piece && (
-                    <div className="w-3.5 h-3.5 rounded-full bg-slate-900/35 pointer-events-none z-20 shadow-sm" />
+                    <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-slate-900/30 border border-slate-900/40 shadow-inner pointer-events-none z-20 backdrop-blur-xs" />
                   )}
                   {isLegal && piece && (
-                    <div className="absolute inset-0 ring-4 ring-rose-500/70 ring-inset rounded-sm pointer-events-none z-20" />
+                    <div className="absolute inset-1 rounded-full border-4 border-rose-500/80 shadow-[0_0_10px_rgba(244,63,94,0.5)] pointer-events-none z-20 animate-pulse" />
                   )}
                 </div>
               );

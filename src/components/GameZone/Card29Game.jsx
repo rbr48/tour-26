@@ -381,9 +381,16 @@ export default function Card29Game({
                 <GameTurnTimer isMyTurn={isMyTurn} turnKey={`${gameState.tricksPlayed}_${gameState.currentTrick?.length}`} />
               )}
             </div>
-            <p className="text-[10px] text-slate-400">
-              টিম ১ (সাউথ-নর্থ): {toBnNum(gameState.team1Points || 0)} পয়েন্ট • টিম ২ (ইস্ট-ওয়েস্ট): {toBnNum(gameState.team2Points || 0)} পয়েন্ট
-            </p>
+            <div className="flex items-center gap-2 text-[10px] mt-0.5">
+              <span className="px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-200 font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                টিম ১ (সাউথ-নর্থ): {toBnNum(gameState.team1Points || 0)}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-amber-950/80 border border-amber-500/40 text-amber-200 font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                টিম ২ (ইস্ট-ওয়েস্ট): {toBnNum(gameState.team2Points || 0)}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -426,25 +433,38 @@ export default function Card29Game({
       </div>
 
       {/* 2. Playing Arena (4-Seat Cross Partnership Table) */}
-      <div className="flex-1 min-h-[380px] p-2 sm:p-4 flex flex-col justify-between relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-950 via-slate-900 to-slate-950 overflow-hidden">
-        {/* Table Oval Border */}
-        <div className="absolute inset-2 sm:inset-4 rounded-[40px] sm:rounded-[60px] border-4 border-indigo-500/20 pointer-events-none shadow-[inset_0_0_80px_rgba(0,0,0,0.8)]" />
+      <div className="flex-1 min-h-[390px] p-2 sm:p-4 flex flex-col justify-between relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#0d1730] via-[#090d1a] to-[#04060b] overflow-hidden">
+        {/* Table Felt Rail & Inset Gold Glow */}
+        <div className="absolute inset-2 sm:inset-4 rounded-[40px] sm:rounded-[60px] border-2 border-amber-500/25 pointer-events-none shadow-[inset_0_0_100px_rgba(0,0,0,0.9),0_0_20px_rgba(30,58,138,0.3)] bg-radial from-transparent to-black/40" />
+
+        {/* Center Watermark Pattern */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none">
+          <span className="text-[120px] sm:text-[180px] font-black tracking-widest text-white select-none">♠♥♦♣</span>
+        </div>
 
         {/* Top Player (North - Partner of South) */}
         <div className="relative z-10 flex flex-col items-center">
           {room.players?.[2] ? (
-            <div className={`flex flex-col items-center p-1.5 rounded-xl border transition-all ${
-              gameState.turnIndex === 2 ? 'bg-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/50' : 'bg-black/40 border-white/10'
+            <div className={`flex flex-col items-center px-3 py-1.5 rounded-2xl border transition-all duration-300 shadow-md ${
+              gameState.turnIndex === 2
+                ? 'bg-gradient-to-b from-cyan-950/80 to-slate-900/90 border-cyan-400 ring-4 ring-cyan-400/40 scale-105 shadow-[0_0_20px_rgba(34,211,238,0.4)]'
+                : 'bg-black/50 border-cyan-500/30'
             }`}>
-              <UserAvatar
-                photoUrl={room.players[2].photoURL}
-                name={room.players[2].name}
-                size="w-7 h-7 sm:w-8 sm:h-8"
-              />
-              <span className="text-[10px] font-bold text-slate-200 mt-0.5">
+              <div className="relative">
+                <UserAvatar
+                  photoUrl={room.players[2].photoURL}
+                  name={room.players[2].name}
+                  size="w-8 h-8 sm:w-9 sm:h-9"
+                  ring={gameState.turnIndex === 2 ? 'ring-2 ring-cyan-300' : 'ring-1 ring-cyan-500/40'}
+                />
+                <span className="absolute -bottom-1 -right-2 bg-cyan-600 text-white font-extrabold text-[8px] px-1 rounded-full shadow-xs">
+                  পার্টনার
+                </span>
+              </div>
+              <span className="text-[10px] sm:text-xs font-bold text-slate-200 mt-1">
                 {room.players[2].name} (নর্থ)
               </span>
-              <span className="text-[9px] text-indigo-300">
+              <span className="text-[9px] text-cyan-300 font-mono">
                 {toBnNum(room.players[2].cards?.length || 0)} কার্ড
               </span>
             </div>
@@ -457,21 +477,29 @@ export default function Card29Game({
 
         {/* Center Field: East & West + Trick Table */}
         <div className="relative z-10 flex items-center justify-between my-auto px-1 sm:px-4">
-          {/* Left Player (West) */}
+          {/* Left Player (West - Team 2) */}
           <div className="flex flex-col items-center">
             {room.players?.[3] ? (
-              <div className={`flex flex-col items-center p-1.5 rounded-xl border transition-all ${
-                gameState.turnIndex === 3 ? 'bg-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/50' : 'bg-black/40 border-white/10'
+              <div className={`flex flex-col items-center px-2.5 py-1.5 rounded-2xl border transition-all duration-300 shadow-md ${
+                gameState.turnIndex === 3
+                  ? 'bg-gradient-to-b from-amber-950/80 to-slate-900/90 border-amber-400 ring-4 ring-amber-400/40 scale-105 shadow-[0_0_20px_rgba(245,158,11,0.4)]'
+                  : 'bg-black/50 border-amber-500/30'
               }`}>
-                <UserAvatar
-                  photoUrl={room.players[3].photoURL}
-                  name={room.players[3].name}
-                  size="w-7 h-7 sm:w-8 sm:h-8"
-                />
-                <span className="text-[10px] font-bold text-slate-200 mt-0.5 truncate max-w-[60px]">
+                <div className="relative">
+                  <UserAvatar
+                    photoUrl={room.players[3].photoURL}
+                    name={room.players[3].name}
+                    size="w-8 h-8 sm:w-9 sm:h-9"
+                    ring={gameState.turnIndex === 3 ? 'ring-2 ring-amber-300' : 'ring-1 ring-amber-500/40'}
+                  />
+                  <span className="absolute -bottom-1 -right-2 bg-amber-600 text-white font-extrabold text-[8px] px-1 rounded-full shadow-xs">
+                    প্রতিপক্ষ
+                  </span>
+                </div>
+                <span className="text-[10px] sm:text-xs font-bold text-slate-200 mt-1 truncate max-w-[65px]">
                   {room.players[3].name}
                 </span>
-                <span className="text-[9px] text-indigo-300">
+                <span className="text-[9px] text-amber-300 font-mono">
                   {toBnNum(room.players[3].cards?.length || 0)} কার্ড
                 </span>
               </div>
@@ -483,17 +511,19 @@ export default function Card29Game({
           </div>
 
           {/* Central Trick Arena */}
-          <div className="flex flex-col items-center justify-center p-2 rounded-2xl bg-black/40 border border-white/10 min-w-[160px] sm:min-w-[220px] text-center space-y-1.5">
-            {/* Trump Box */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-700">
+          <div className="flex flex-col items-center justify-center p-3 rounded-3xl bg-slate-950/80 backdrop-blur-md border border-amber-500/30 min-w-[170px] sm:min-w-[240px] text-center space-y-2 shadow-[0_15px_35px_rgba(0,0,0,0.8)]">
+            {/* Ornate Trump Box */}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-950/70 via-slate-900 to-amber-950/70 border border-amber-400/60 shadow-inner">
               <span className="text-[10px] font-bold text-amber-300">তুরুপ (Trump):</span>
               {gameState.trumpCard ? (
                 gameState.isTrumpRevealed ? (
-                  <span className="text-xs font-black text-rose-400">
+                  <span className="text-xs font-black text-rose-400 flex items-center gap-1 drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]">
                     {SUIT_NAMES[gameState.trumpSuit]} {SUIT_SYMBOLS[gameState.trumpSuit]}
                   </span>
                 ) : (
-                  <span className="text-[10px] text-slate-400 italic">গোপন 🔒</span>
+                  <span className="text-[10px] text-amber-300/80 font-mono bg-black/40 px-1.5 py-0.5 rounded border border-amber-500/30 flex items-center gap-1">
+                    🔒 গোপন তুরুপ
+                  </span>
                 )
               ) : (
                 <span className="text-[10px] text-slate-500">নির্বাচন হয়নি</span>
@@ -503,26 +533,39 @@ export default function Card29Game({
                 <button
                   type="button"
                   onClick={handleRevealTrump}
-                  className="px-1.5 py-0.2 bg-amber-500 text-teal-950 text-[9px] font-bold rounded hover:bg-amber-400 transition cursor-pointer"
+                  className="px-2 py-0.5 bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-teal-950 text-[10px] font-black rounded-lg shadow-md transition cursor-pointer"
                 >
                   উন্মোচন
                 </button>
               )}
             </div>
 
-            {/* Current Trick Cards */}
-            <div className="flex items-center gap-1 min-h-[64px] justify-center relative">
+            {/* Current Trick Cards with Directional/Staggered Placement */}
+            <div className="flex items-center gap-1.5 min-h-[70px] justify-center relative py-1">
               {(gameState.currentTrick || []).length > 0 ? (
                 gameState.currentTrick.map((play, idx) => {
                   const isWinningCard = gameState.resolvingTrick && gameState.trickWinnerIndex === play.playerIndex;
                   return (
-                    <div key={idx} className={`flex flex-col items-center transition-all ${isWinningCard ? 'scale-110 -translate-y-1' : ''}`}>
+                    <div
+                      key={idx}
+                      className={`flex flex-col items-center transition-all duration-300 transform ${
+                        isWinningCard
+                          ? 'scale-115 -translate-y-2 z-20 drop-shadow-[0_10px_15px_rgba(245,158,11,0.5)]'
+                          : idx === 0
+                          ? '-rotate-3'
+                          : idx === 1
+                          ? 'rotate-1'
+                          : idx === 2
+                          ? '-rotate-1'
+                          : 'rotate-3'
+                      }`}
+                    >
                       <PlayingCard
                         card={play.card}
                         size="sm"
-                        className={isWinningCard ? 'ring-2 ring-amber-400 shadow-xl' : ''}
+                        className={isWinningCard ? 'ring-2 ring-amber-400' : ''}
                       />
-                      <span className={`text-[8px] mt-0.5 ${isWinningCard ? 'font-black text-amber-300' : 'text-slate-400'}`}>
+                      <span className={`text-[8px] mt-1 font-bold ${isWinningCard ? 'text-amber-300 drop-shadow-md' : 'text-slate-400'}`}>
                         {room.players?.[play.playerIndex]?.name}
                         {isWinningCard ? ' 👑' : ''}
                       </span>
@@ -530,7 +573,7 @@ export default function Card29Game({
                   );
                 })
               ) : (
-                <span className="text-[10px] text-slate-500 italic py-3">
+                <span className="text-[10px] text-slate-500 italic py-3 font-mono">
                   কার্ড চালার জন্য অপেক্ষা...
                 </span>
               )}
@@ -538,7 +581,7 @@ export default function Card29Game({
 
             {/* Resolution Banner */}
             {gameState.resolvingTrick && (
-              <div className="px-2.5 py-0.5 rounded-full bg-amber-400 text-teal-950 font-black text-[10px] shadow-lg animate-bounce">
+              <div className="px-3 py-1 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 text-teal-950 font-black text-[10px] shadow-[0_5px_15px_rgba(245,158,11,0.5)] animate-bounce">
                 🎉 {room.players?.[gameState.trickWinnerIndex]?.name} এই হাত জিতেছেন!
               </div>
             )}
@@ -548,21 +591,29 @@ export default function Card29Game({
             </p>
           </div>
 
-          {/* Right Player (East) */}
+          {/* Right Player (East - Team 2) */}
           <div className="flex flex-col items-center">
             {room.players?.[1] ? (
-              <div className={`flex flex-col items-center p-1.5 rounded-xl border transition-all ${
-                gameState.turnIndex === 1 ? 'bg-indigo-600/30 border-indigo-400 ring-2 ring-indigo-400/50' : 'bg-black/40 border-white/10'
+              <div className={`flex flex-col items-center px-2.5 py-1.5 rounded-2xl border transition-all duration-300 shadow-md ${
+                gameState.turnIndex === 1
+                  ? 'bg-gradient-to-b from-amber-950/80 to-slate-900/90 border-amber-400 ring-4 ring-amber-400/40 scale-105 shadow-[0_0_20px_rgba(245,158,11,0.4)]'
+                  : 'bg-black/50 border-amber-500/30'
               }`}>
-                <UserAvatar
-                  photoUrl={room.players[1].photoURL}
-                  name={room.players[1].name}
-                  size="w-7 h-7 sm:w-8 sm:h-8"
-                />
-                <span className="text-[10px] font-bold text-slate-200 mt-0.5 truncate max-w-[60px]">
+                <div className="relative">
+                  <UserAvatar
+                    photoUrl={room.players[1].photoURL}
+                    name={room.players[1].name}
+                    size="w-8 h-8 sm:w-9 sm:h-9"
+                    ring={gameState.turnIndex === 1 ? 'ring-2 ring-amber-300' : 'ring-1 ring-amber-500/40'}
+                  />
+                  <span className="absolute -bottom-1 -right-2 bg-amber-600 text-white font-extrabold text-[8px] px-1 rounded-full shadow-xs">
+                    প্রতিপক্ষ
+                  </span>
+                </div>
+                <span className="text-[10px] sm:text-xs font-bold text-slate-200 mt-1 truncate max-w-[65px]">
                   {room.players[1].name}
                 </span>
-                <span className="text-[9px] text-indigo-300">
+                <span className="text-[9px] text-amber-300 font-mono">
                   {toBnNum(room.players[1].cards?.length || 0)} কার্ড
                 </span>
               </div>
@@ -582,27 +633,40 @@ export default function Card29Game({
               <span className={`text-[10px] font-bold ${isMyTurn ? 'text-amber-300 animate-pulse' : 'text-indigo-300'}`}>
                 {isMyTurn ? '👉 আপনার চাল দিন' : `আপনার কার্ড (${myName} - সাউথ)`}:
               </span>
-              <div className="flex items-center -space-x-3 sm:-space-x-4 flex-wrap justify-center">
-                {(myPlayer.cards || []).map((c, idx) => (
-                  <PlayingCard
-                    key={idx}
-                    card={c}
-                    size="md"
-                    onClick={() => {
-                      if (phase === 'select_trump' && gameState.highestBidderIndex === myIndex) {
-                        handleSelectTrump(c);
-                      } else if (phase === 'playing' && isMyTurn) {
-                        handlePlayCard(c);
-                      }
-                    }}
-                    className={
-                      (phase === 'select_trump' && gameState.highestBidderIndex === myIndex) ||
-                      (phase === 'playing' && isMyTurn)
-                        ? 'cursor-pointer hover:-translate-y-3'
-                        : ''
-                    }
-                  />
-                ))}
+              <div className="flex items-center -space-x-3 sm:-space-x-4 flex-wrap justify-center py-2">
+                {(myPlayer.cards || []).map((c, idx) => {
+                  const total = (myPlayer.cards || []).length;
+                  const mid = (total - 1) / 2;
+                  const angle = total > 1 ? (idx - mid) * 3.5 : 0;
+                  const yOffset = total > 1 ? Math.abs(idx - mid) * 2 : 0;
+                  const canClick =
+                    (phase === 'select_trump' && gameState.highestBidderIndex === myIndex) ||
+                    (phase === 'playing' && isMyTurn);
+
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        transform: `rotate(${angle}deg) translateY(${yOffset}px)`,
+                      }}
+                      className={`transition-all duration-200 transform ${
+                        canClick ? 'cursor-pointer hover:-translate-y-4 hover:scale-105 hover:z-20' : ''
+                      }`}
+                    >
+                      <PlayingCard
+                        card={c}
+                        size="md"
+                        onClick={() => {
+                          if (phase === 'select_trump' && gameState.highestBidderIndex === myIndex) {
+                            handleSelectTrump(c);
+                          } else if (phase === 'playing' && isMyTurn) {
+                            handlePlayCard(c);
+                          }
+                        }}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

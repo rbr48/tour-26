@@ -436,10 +436,10 @@ export default function TeenPattiGame({
         </div>
       </div>
 
-      {/* 2. Casino Table Felt Canvas */}
-      <div className="flex-1 min-h-[360px] p-2 sm:p-4 flex flex-col justify-between relative overflow-hidden bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-teal-900 via-emerald-950 to-slate-950">
-        {/* Table Felt Inner Border */}
-        <div className="absolute inset-2 sm:inset-4 rounded-[40px] sm:rounded-[60px] border-4 border-amber-600/40 pointer-events-none shadow-[inset_0_0_80px_rgba(0,0,0,0.8)]" />
+      {/* 2. Casino Table Felt Canvas with Royal Emerald Radial Lighting */}
+      <div className="flex-1 min-h-[360px] p-2 sm:p-4 flex flex-col justify-between relative overflow-hidden bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-800 via-teal-950 to-slate-950">
+        {/* Table Felt Inner Gold Piping Border */}
+        <div className="absolute inset-2 sm:inset-4 rounded-[40px] sm:rounded-[60px] border-4 border-amber-500/30 pointer-events-none shadow-[inset_0_0_120px_rgba(0,0,0,0.9)]" />
 
         {/* Top/Other Players Area */}
         <div className="relative z-10 flex items-center justify-center gap-2 sm:gap-4 flex-wrap pt-1">
@@ -495,12 +495,18 @@ export default function TeenPattiGame({
                   {/* Opponent's Cards */}
                   <div className="flex items-center -space-x-4 sm:-space-x-5 mt-1">
                     {(p.cards && p.cards.length === 3 ? p.cards : ['??', '??', '??']).map((c, cIdx) => (
-                      <PlayingCard
+                      <div
                         key={cIdx}
-                        card={c}
-                        size="sm"
-                        isFaceDown={!isRoundEnded || p.folded}
-                      />
+                        className={`transform transition-transform ${
+                          cIdx === 0 ? '-rotate-6' : cIdx === 1 ? 'rotate-0 -translate-y-0.5 z-10' : 'rotate-6'
+                        }`}
+                      >
+                        <PlayingCard
+                          card={c}
+                          size="sm"
+                          isFaceDown={!isRoundEnded || p.folded}
+                        />
+                      </div>
                     ))}
                   </div>
 
@@ -514,10 +520,10 @@ export default function TeenPattiGame({
 
         {/* Center Table: Pot & Game Status Banner */}
         <div className="relative z-10 flex flex-col items-center justify-center my-auto py-2 text-center">
-          {/* Pot Pill */}
-          <div className="bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-500 text-teal-950 font-black px-4 py-1.5 rounded-full shadow-xl border-2 border-amber-300 flex items-center gap-2 transform hover:scale-105 transition">
-            <Coins size={18} className="animate-spin" style={{ animationDuration: '4s' }} />
-            <span className="text-xs sm:text-sm tracking-wide">
+          {/* Pot Pill with Gold Sheen and 3D Chip Stack */}
+          <div className="bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-teal-950 font-black px-5 py-2 rounded-full shadow-[0_10px_25px_rgba(245,158,11,0.6)] border-2 border-amber-200 flex items-center gap-2.5 transform hover:scale-105 transition">
+            <Coins size={20} className="animate-spin text-teal-950" style={{ animationDuration: '4s' }} />
+            <span className="text-xs sm:text-sm tracking-wide font-extrabold">
               মোট পট: {toBnNum(room.state?.pot || 0)} চিপস
             </span>
           </div>
@@ -558,7 +564,12 @@ export default function TeenPattiGame({
                       </span>
                       <div className="flex items-center -space-x-3 mt-1.5 scale-90">
                         {(room.state.showdown.winner.cards || []).map((c, i) => (
-                          <PlayingCard key={i} card={c} size="sm" isFaceDown={false} />
+                          <div
+                            key={i}
+                            className={`transform ${i === 0 ? '-rotate-6' : i === 1 ? 'rotate-0 -translate-y-0.5 z-10' : 'rotate-6'}`}
+                          >
+                            <PlayingCard card={c} size="sm" isFaceDown={false} />
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -573,7 +584,12 @@ export default function TeenPattiGame({
                       </span>
                       <div className="flex items-center -space-x-3 mt-1.5 scale-90">
                         {(room.state.showdown.loser.cards || []).map((c, i) => (
-                          <PlayingCard key={i} card={c} size="sm" isFaceDown={false} />
+                          <div
+                            key={i}
+                            className={`transform ${i === 0 ? '-rotate-6' : i === 1 ? 'rotate-0 -translate-y-0.5 z-10' : 'rotate-6'}`}
+                          >
+                            <PlayingCard card={c} size="sm" isFaceDown={false} />
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -643,14 +659,24 @@ export default function TeenPattiGame({
                 )}
               </div>
 
-              <div className="flex items-center -space-x-3 sm:-space-x-4">
+              <div className="flex items-center -space-x-3 sm:-space-x-4 py-1">
                 {(myPlayer.cards && myPlayer.cards.length === 3 ? myPlayer.cards : ['??', '??', '??']).map((c, idx) => (
-                  <PlayingCard
+                  <div
                     key={idx}
-                    card={c}
-                    size="md"
-                    isFaceDown={!isSeen && room.status !== 'round_ended'}
-                  />
+                    className={`transition-all duration-300 transform ${
+                      idx === 0
+                        ? '-rotate-6 -translate-y-0.5 hover:-translate-y-2'
+                        : idx === 1
+                        ? 'rotate-0 -translate-y-2 z-10 scale-105 hover:-translate-y-4'
+                        : 'rotate-6 -translate-y-0.5 hover:-translate-y-2'
+                    }`}
+                  >
+                    <PlayingCard
+                      card={c}
+                      size="md"
+                      isFaceDown={!isSeen && room.status !== 'round_ended'}
+                    />
+                  </div>
                 ))}
               </div>
 
