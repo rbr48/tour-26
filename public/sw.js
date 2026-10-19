@@ -8,9 +8,16 @@ const SHELL = [
   '/index.html',
   '/manifest.json',
   '/favicon.png',
+  '/favicon.ico',
   '/apple-touch-icon.png',
   '/icon-192.png',
   '/icon-512.png',
+  '/icon-maskable-192.png',
+  '/icon-maskable-512.png',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon-maskable-192.png',
+  '/icons/icon-maskable-512.png',
   '/logo.png',
 ];
 
@@ -113,8 +120,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || '🏖️ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬';
   const options = {
     body: data.body || 'নতুন ট্যুর আপডেট এসেছে!',
-    icon: data.icon || '/icon-192.png',
-    badge: data.badge || '/icon-192.png',
+    icon: data.icon || '/icons/icon-192.png?v=20261019',
+    badge: data.badge || '/icons/icon-192.png?v=20261019',
     data: {
       url: data.url || '/',
       dateOfArrival: Date.now(),

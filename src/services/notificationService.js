@@ -319,7 +319,7 @@ export const sendTestPush = async (currentUser) => {
 };
 
 // 9. Trigger System Notification in Android Status Bar or Browser
-export const sendPushNotification = ({ title, body, icon = '/logo.png?v=5', tag, tab, onClick }) => {
+export const sendPushNotification = ({ title, body, icon = '/icons/icon-192.png?v=20261019', tag, tab, onClick }) => {
   // 1. Play sound chime
   playNotificationSound();
 

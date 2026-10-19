@@ -63,7 +63,7 @@ const TourQuizModal = lazy(() => import('./components/TourQuizModal'));
 const AppUpdateModal = lazy(() => import('./components/AppUpdateModal'));
 const GameZoneHub = lazy(() => import('./components/GameZone/GameZoneHub'));
 
-export const APP_LOGO_URL = '/logo.png?v=6';
+export const APP_LOGO_URL = '/logo.png?v=20261019';
 const VALID_TABS = ['dashboard', 'itinerary', 'expenses', 'seats_rooms', 'feed', 'discussions', 'notices', 'checklist', 'games'];
 const CACHE_KEY = 'rangpur_coxs_tour_data';
 const ACTIVITY_KEY = 'tour_recent_activities';

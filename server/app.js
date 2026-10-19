@@ -195,8 +195,8 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
       const result = await push.sendPush({
         title: String(body.title).slice(0, 200),
         body: String(body.body).slice(0, 1000),
-        icon: body.icon || '/icon-192.png',
-        badge: body.badge || '/icon-192.png',
+        icon: body.icon || '/icons/icon-192.png?v=20261019',
+        badge: body.badge || '/icons/icon-192.png?v=20261019',
         url: body.url || '/',
         tag: body.tag || 'tour_update',
         excludeEmail: body.excludeSender === false ? undefined : (body.excludeEmail || user.email),
@@ -444,13 +444,13 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
           return;
         }
         let versionData = {
-          versionCode: 10,
-          versionName: '2.8',
+          versionCode: 11,
+          versionName: '2.9',
           minVersionCode: 1,
-          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v10.apk',
+          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v11.apk',
           apkSize: '8.2 MB',
-          releaseNotes: 'নতুন আপডেট v2.8: অ্যান্ড্রয়েড স্ট্যাটাস বার ও হেডার ডিসপ্লে ফিক্স, মসৃণ নোটিফিকেশন ব্যানার, এবং গেমিং জোনের (লুডো, দাবা, ৩ পাত্তি, ২৯ কার্ড) সার্বিক পারফরম্যান্স উন্নয়ন।',
-          releasedAt: '2026-10-18T18:10:00Z',
+          releaseNotes: 'নতুন আপডেট v2.9: PWA আইকন ও হোমস্ক্রিন মাস্কিং আপডেট, গেমিং জোনে লাইভ রিঅ্যাকশন মেনু এবং ফ্লোটিং ডায়ালগ বাবল ফিক্স।',
+          releasedAt: '2026-10-19T01:45:00Z',
           forceUpdate: false,
         };
         const versionFilePath = path.join(config.distDir, 'version.json');

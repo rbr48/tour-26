@@ -6,6 +6,7 @@ BG_TEAL = (19, 78, 74) # #134e4a
 
 def generate_web_assets(src_im):
     print("Generating web & PWA assets...")
+    os.makedirs('public/icons', exist_ok=True)
     
     # 1. logo.png (512x512)
     logo_512 = src_im.resize((512, 512), Image.Resampling.LANCZOS)
@@ -25,16 +26,44 @@ def generate_web_assets(src_im):
     fav_48 = src_im.resize((48, 48), Image.Resampling.LANCZOS)
     fav_48.save('public/favicon.ico', format='ICO', sizes=[(16, 16), (32, 32), (48, 48)], append_images=[fav_16, fav_32])
     
-    # 5. apple-touch-icon.png (180x180)
-    apple_180 = src_im.resize((180, 180), Image.Resampling.LANCZOS)
+    # 5. apple-touch-icon.png (180x180) - with 88% scale on light background so iOS rounded rect doesn't clip content
+    apple_180 = Image.new('RGBA', (180, 180), (253, 253, 253, 255))
+    target_apple = int(180 * 0.88)
+    resized_apple = src_im.resize((target_apple, target_apple), Image.Resampling.LANCZOS)
+    offset_apple = (180 - target_apple) // 2
+    apple_180.paste(resized_apple, (offset_apple, offset_apple), mask=resized_apple)
     apple_180.save('public/apple-touch-icon.png', 'PNG', optimize=True)
     
-    # 6. icon-192.png & icon-512.png (PWA)
+    # 6. Standard "any" PWA icons (192x192 & 512x512)
     icon_192 = src_im.resize((192, 192), Image.Resampling.LANCZOS)
     icon_192.save('public/icon-192.png', 'PNG', optimize=True)
+    icon_192.save('public/icons/icon-192.png', 'PNG', optimize=True)
     
     icon_512 = src_im.resize((512, 512), Image.Resampling.LANCZOS)
     icon_512.save('public/icon-512.png', 'PNG', optimize=True)
+    icon_512.save('public/icons/icon-512.png', 'PNG', optimize=True)
+
+    # 7. Maskable PWA icons with safe-zone padding (76% scale on #fdfdfd canvas for adaptive circles/squircles)
+    for size, paths in [
+        (192, ['public/icon-maskable-192.png', 'public/icons/icon-maskable-192.png']),
+        (512, ['public/icon-maskable-512.png', 'public/icons/icon-maskable-512.png']),
+    ]:
+        maskable = Image.new('RGBA', (size, size), (253, 253, 253, 255))
+        target_size = int(size * 0.76)
+        resized = src_im.resize((target_size, target_size), Image.Resampling.LANCZOS)
+        offset = (size - target_size) // 2
+        maskable.paste(resized, (offset, offset), mask=resized)
+        for p in paths:
+            maskable.save(p, 'PNG', optimize=True)
+
+    # Remove stale Vite template svg files if present
+    for old_file in ['public/favicon.svg', 'public/icons.svg']:
+        if os.path.exists(old_file):
+            try:
+                os.remove(old_file)
+            except Exception:
+                pass
+
     print("Web & PWA assets complete.")
 
 def generate_android_launcher_icons(src_im):
