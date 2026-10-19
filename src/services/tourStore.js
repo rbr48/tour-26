@@ -116,8 +116,15 @@ function assemble(state) {
     discussions: Object.fromEntries(
       CHANNEL_IDS.map((id) => [id, [...state.channels[id].values()].sort(byOrder('asc'))]),
     ),
-    familyLocations: Object.fromEntries(list('locations', 'desc').map((item) => [item.email, item])),
-    userProfiles: Object.fromEntries(list('profiles').map((item) => [item.email, item])),
+    familyLocations: Object.fromEntries(
+      list('locations', 'desc').map((item) => [String(item.email || item.id || '').trim().toLowerCase(), item]),
+    ),
+    userProfiles: Object.fromEntries(
+      list('profiles').map((item) => {
+        const emailKey = String(item.email || item.id || '').trim().toLowerCase();
+        return [emailKey, { ...item, email: emailKey }];
+      }),
+    ),
   };
 }
 
@@ -142,8 +149,10 @@ export function subscribeToTour({ onUpdate, onError, onChange }) {
   };
 
   const handleListenerError = (sourceName, err) => {
-    state.loaded.add(sourceName);
-    publish();
+    if (err?.code !== 'permission-denied') {
+      state.loaded.add(sourceName);
+      publish();
+    }
     onError?.(err);
   };
 

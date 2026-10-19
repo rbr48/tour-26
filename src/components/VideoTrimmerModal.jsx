@@ -164,9 +164,9 @@ export default function VideoTrimmerModal({
     setIsCapturingThumb(true);
     try {
       const thumb = await captureVideoFrame(videoSource, timeSec, {
-        maxWidth: 640,
-        maxHeight: 640,
-        quality: 0.72,
+        maxWidth: 720,
+        maxHeight: 1280,
+        quality: 0.85,
       });
       setCoverThumb(thumb);
     } catch (e) {

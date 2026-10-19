@@ -135,7 +135,7 @@ const COLOR_OPTIONS = [
   { label: 'অরেঞ্জ', value: 'border-orange-300 bg-orange-50/50' },
 ];
 
-export default function HotelRoomMap({ members = [], rooms: externalRooms, onUpdateRooms }) {
+export default function HotelRoomMap({ members = [], rooms: externalRooms, isAdmin = false, onUpdateRooms }) {
   const [selectedFloor, setSelectedFloor] = useState('all');
 
   const [rooms, setRooms] = useState(() => {
@@ -313,25 +313,27 @@ export default function HotelRoomMap({ members = [], rooms: externalRooms, onUpd
             </div>
 
             {/* Action Buttons: Add Room & Reset */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleOpenAddModal}
-                className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-teal-950 font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-md active:scale-95"
-              >
-                <Plus size={15} />
-                <span>রুম যোগ করুন</span>
-              </button>
+            {isAdmin && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenAddModal}
+                  className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-teal-950 font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-md active:scale-95"
+                >
+                  <Plus size={15} />
+                  <span>রুম যোগ করুন</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={handleResetDefaults}
-                className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-xl transition cursor-pointer"
-                title="ডিফল্ট ১০টি রুমে রিসেট করুন"
-              >
-                <RotateCcw size={15} />
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={handleResetDefaults}
+                  className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-xl transition cursor-pointer"
+                  title="ডিফল্ট ১০টি রুমে রিসেট করুন"
+                >
+                  <RotateCcw size={15} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -412,22 +414,26 @@ export default function HotelRoomMap({ members = [], rooms: externalRooms, onUpd
                 </span>
 
                 {/* Edit & Delete Action Buttons */}
-                <button
-                  type="button"
-                  onClick={() => handleOpenEditModal(room, idx)}
-                  className="p-1.5 bg-white/90 hover:bg-teal-50 text-slate-600 hover:text-teal-700 rounded-lg border border-slate-200 transition cursor-pointer"
-                  title="রুমের তথ্য এডিট করুন"
-                >
-                  <Edit3 size={13} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteRoom(room, idx)}
-                  className="p-1.5 bg-white/90 hover:bg-rose-50 text-slate-600 hover:text-rose-600 rounded-lg border border-slate-200 transition cursor-pointer"
-                  title="রুমটি তালিকা থেকে মুছুন"
-                >
-                  <Trash2 size={13} />
-                </button>
+                {isAdmin && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditModal(room, idx)}
+                      className="p-1.5 bg-white/90 hover:bg-teal-50 text-slate-600 hover:text-teal-700 rounded-lg border border-slate-200 transition cursor-pointer"
+                      title="রুমের তথ্য এডিট করুন"
+                    >
+                      <Edit3 size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteRoom(room, idx)}
+                      className="p-1.5 bg-white/90 hover:bg-rose-50 text-slate-600 hover:text-rose-600 rounded-lg border border-slate-200 transition cursor-pointer"
+                      title="রুমটি তালিকা থেকে মুছুন"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -461,8 +467,8 @@ export default function HotelRoomMap({ members = [], rooms: externalRooms, onUpd
         </div>
       )}
 
-      {/* EDIT / ADD ROOM MODAL */}
-      {modalMode && (
+      {/* EDIT / ADD ROOM MODAL (Admin Only) */}
+      {isAdmin && modalMode && (
         <div
           className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in"
           role="presentation"

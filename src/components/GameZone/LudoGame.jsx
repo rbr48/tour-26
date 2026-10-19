@@ -12,6 +12,12 @@ import {
   getGlobalTrackIndex,
 } from './ludoLogic';
 import { updateGameRoom } from '../../services/tourStore';
+import { gameAudio } from '../../utils/gameAudio';
+import { triggerHaptic } from '../../utils/haptics';
+import GameReactions from './GameReactions';
+import GameTurnTimer from './GameTurnTimer';
+import LudoDice3D from './LudoDice3D';
+import LudoPawn3D from './LudoPawn3D';
 import UserAvatar from '../UserAvatar';
 import {
   Crown,
@@ -22,6 +28,8 @@ import {
   Sparkles,
   Trophy,
   Users,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 const toBnNum = (n) => String(n ?? 0).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[d]);
@@ -52,17 +60,30 @@ export default function LudoGame({
   const hasRolled = gameState.hasRolled || false;
   const tokens = gameState.tokens || initializeLudoTokens(room.players?.length || 4);
 
+  const [isMuted, setIsMuted] = useState(gameAudio.getMuted());
+
+  // Sound cue on my turn
+  useEffect(() => {
+    if (isMyTurn) {
+      gameAudio.playTurn();
+      triggerHaptic('light');
+    }
+  }, [isMyTurn]);
+
   // Start Ludo Game (Host only)
   const handleStartGame = () => {
     const playerCount = Math.max(2, Math.min(4, (room.players || []).length));
     const initTokens = initializeLudoTokens(playerCount);
 
+    gameAudio.playDice();
+    triggerHaptic('medium');
     updateGameRoom(room.id, {
       status: 'playing',
       state: {
         turnIndex: 0,
         diceValue: 6,
         hasRolled: false,
+        consecutiveSixes: 0,
         tokens: initTokens,
         winners: [],
         lastAction: `লুডো খেলা শুরু হয়েছে! ${room.players[0]?.name || 'লাল'}-এর চাল।`,
@@ -74,10 +95,32 @@ export default function LudoGame({
   const handleRollDice = () => {
     if (!isMyTurn || hasRolled || isRolling) return;
 
+    gameAudio.playDice();
+    triggerHaptic('medium');
     setIsRolling(true);
     setTimeout(() => {
       const roll = rollDice();
       setIsRolling(false);
+
+      const prevSixes = gameState.consecutiveSixes || 0;
+      const newSixes = roll === 6 ? prevSixes + 1 : 0;
+
+      // Rule: 3 consecutive sixes forfeits the turn!
+      if (newSixes >= 3) {
+        const nextTurn = (currentTurn + 1) % (room.players?.length || 4);
+        triggerHaptic('heavy');
+        updateGameRoom(room.id, {
+          state: {
+            ...gameState,
+            diceValue: 6,
+            hasRolled: false,
+            consecutiveSixes: 0,
+            turnIndex: nextTurn,
+            lastAction: `⚠️ ${myName} পরপর ৩টি ছক্কা পেয়েছেন! নিয়ম অনুযায়ী চাল বাতিল। এখন ${room.players[nextTurn]?.name}-এর চাল।`,
+          },
+        });
+        return;
+      }
 
       const myTokens = tokens[myIndex] || [-1, -1, -1, -1];
       const movable = getMovableTokens(myIndex, myTokens, roll);
@@ -90,6 +133,7 @@ export default function LudoGame({
             ...gameState,
             diceValue: roll,
             hasRolled: false,
+            consecutiveSixes: 0,
             turnIndex: nextTurn,
             lastAction: `${myName} ${toBnNum(roll)} রোল করেছেন (কোনো গুটি চালার সুযোগ নেই)। এখন ${room.players[nextTurn]?.name}-এর চাল।`,
           },
@@ -97,12 +141,13 @@ export default function LudoGame({
         return;
       }
 
-      // If only 1 token can move, can auto-move or let user click
+      // If tokens can move, wait for player to tap token
       updateGameRoom(room.id, {
         state: {
           ...gameState,
           diceValue: roll,
           hasRolled: true,
+          consecutiveSixes: newSixes,
           lastAction: `${myName} ${toBnNum(roll)} রোল করেছেন! গুটিতে ট্যাপ করে চাল দিন।`,
         },
       });
@@ -123,11 +168,24 @@ export default function LudoGame({
       diceValue
     );
 
+    // Audio & haptic feedback for token action
+    if (capturedToken) {
+      gameAudio.playCapture();
+      triggerHaptic('medium');
+    } else if (reachedHome) {
+      gameAudio.playWin();
+      triggerHaptic('medium');
+    } else {
+      gameAudio.playCard();
+      triggerHaptic('light');
+    }
+
     // Check if player has won!
     const won = hasPlayerWon(newTokens[myIndex]);
     let winners = [...(gameState.winners || [])];
     if (won && !winners.includes(myIndex)) {
       winners.push(myIndex);
+      gameAudio.playWin();
     }
 
     // Grant bonus turn on rolling a 6, capturing, or reaching home
@@ -157,9 +215,25 @@ export default function LudoGame({
         ...gameState,
         tokens: newTokens,
         hasRolled: false,
+        consecutiveSixes: diceValue === 6 ? (gameState.consecutiveSixes || 0) : 0,
         turnIndex: nextTurn,
         winners,
         lastAction: actionText,
+      },
+    });
+  };
+
+  // Auto-pass on timer expiry
+  const handleAutoPass = () => {
+    if (!isMyTurn) return;
+    const nextTurn = (currentTurn + 1) % (room.players?.length || 4);
+    updateGameRoom(room.id, {
+      state: {
+        ...gameState,
+        hasRolled: false,
+        consecutiveSixes: 0,
+        turnIndex: nextTurn,
+        lastAction: `সময় পার হওয়ায় ${myName}-এর চাল পাস হয়েছে।`,
       },
     });
   };
@@ -218,9 +292,13 @@ export default function LudoGame({
       <div
         key={`${row}-${col}`}
         style={{ gridRow: row + 1, gridColumn: col + 1 }}
-        className={`w-full h-full border border-slate-200/80 flex items-center justify-center relative select-none ${cellBg}`}
+        className={`w-full h-full border border-slate-300/60 flex items-center justify-center relative select-none shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] ${cellBg}`}
       >
-        {isStar && <span className="text-[9px] sm:text-xs">⭐</span>}
+        {isStar && (
+          <div className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5 rounded-full bg-amber-400/30 border border-amber-500/50 flex items-center justify-center shadow-xs">
+            <span className="text-[8px] sm:text-[10px] filter drop-shadow">⭐</span>
+          </div>
+        )}
       </div>
     );
   };
@@ -234,13 +312,16 @@ export default function LudoGame({
             🎲
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <h3 className="font-extrabold text-xs sm:text-sm text-emerald-300 truncate">
                 {room.title || 'লুডো ক্লাব টেবিল'}
               </h3>
               <span className="text-[10px] font-mono bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded border border-slate-700">
                 {room.id}
               </span>
+              {isMyTurn && (
+                <GameTurnTimer isMyTurn={isMyTurn} turnKey={`${currentTurn}_${hasRolled}`} onTimeout={handleAutoPass} />
+              )}
             </div>
             <p className="text-[10px] text-slate-400">
               {toBnNum(room.players?.length || 0)} জন খেলোয়াড় •{' '}
@@ -249,23 +330,39 @@ export default function LudoGame({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onLeave}
-          className="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/80 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-        >
-          <LogOut size={13} />
-          <span className="hidden sm:inline">বের হন</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Sound Toggle */}
+          <button
+            type="button"
+            onClick={() => setIsMuted(gameAudio.toggleMute())}
+            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+            title={isMuted ? 'সাউন্ড আনমিউট করুন' : 'সাউন্ড মিউট করুন'}
+          >
+            {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          </button>
+
+          {/* Floating Reactions */}
+          <GameReactions room={room} currentUser={currentUser} currentProfile={currentProfile} />
+
+          {/* Leave Button */}
+          <button
+            type="button"
+            onClick={onLeave}
+            className="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/80 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+          >
+            <LogOut size={13} />
+            <span className="hidden sm:inline">বের হন</span>
+          </button>
+        </div>
       </div>
 
       {/* 2. Main Game Arena */}
       <div className="flex-1 min-h-[380px] p-2 sm:p-4 flex flex-col items-center justify-center relative bg-gradient-to-b from-slate-900 via-slate-950 to-black">
-        {/* Ludo Board (Fixed Aspect Ratio Square) */}
-        <div className="w-full max-w-[360px] sm:max-w-[420px] aspect-square bg-white rounded-2xl shadow-2xl border-4 border-slate-800 relative overflow-hidden select-none">
+        {/* Ludo Board (Fixed Aspect Ratio Square with Luxury Wood Rim & 3D Elements) */}
+        <div className="w-full max-w-[360px] sm:max-w-[440px] aspect-square bg-[#fffdf9] rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.85),inset_0_2px_4px_rgba(255,255,255,0.4)] border-8 border-amber-950/90 relative overflow-hidden select-none">
           {/* Base 1: Red Base (Top-Left) */}
-          <div className="absolute top-0 left-0 w-[40%] h-[40%] bg-rose-500 p-2 sm:p-3 flex items-center justify-center">
-            <div className="w-full h-full bg-white rounded-xl shadow-inner grid grid-cols-2 gap-2 p-2">
+          <div className="absolute top-0 left-0 w-[40%] h-[40%] bg-gradient-to-br from-rose-500 via-rose-600 to-rose-700 p-2 sm:p-3 flex items-center justify-center shadow-md">
+            <div className="w-full h-full bg-white/95 rounded-2xl shadow-inner grid grid-cols-2 gap-2 p-2 border border-rose-200/80">
               {[0, 1, 2, 3].map((slotIdx) => {
                 const isPresent = tokens[0]?.[slotIdx] === -1;
                 const canMove = 0 === myIndex && movableTokenIndices.includes(slotIdx);
@@ -273,11 +370,17 @@ export default function LudoGame({
                   <div
                     key={slotIdx}
                     onClick={() => canMove && handleMoveToken(slotIdx)}
-                    className={`w-full h-full rounded-full border-2 border-rose-300 flex items-center justify-center ${
-                      isPresent ? 'bg-rose-500 shadow-md' : 'bg-rose-50'
-                    } ${canMove ? 'ring-4 ring-amber-400 animate-bounce cursor-pointer' : ''}`}
+                    className="w-full h-full rounded-full bg-slate-100 border border-slate-300 shadow-inner flex items-center justify-center"
                   >
-                    {isPresent && <span className="text-white text-[10px] font-bold">🔴</span>}
+                    {isPresent && (
+                      <LudoPawn3D
+                        colorIndex={0}
+                        tokenNumber={slotIdx + 1}
+                        isMovable={canMove}
+                        onClick={() => canMove && handleMoveToken(slotIdx)}
+                        size="sm"
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -285,8 +388,8 @@ export default function LudoGame({
           </div>
 
           {/* Base 2: Green Base (Top-Right) */}
-          <div className="absolute top-0 right-0 w-[40%] h-[40%] bg-emerald-500 p-2 sm:p-3 flex items-center justify-center">
-            <div className="w-full h-full bg-white rounded-xl shadow-inner grid grid-cols-2 gap-2 p-2">
+          <div className="absolute top-0 right-0 w-[40%] h-[40%] bg-gradient-to-br from-emerald-500 via-emerald-600 to-emerald-700 p-2 sm:p-3 flex items-center justify-center shadow-md">
+            <div className="w-full h-full bg-white/95 rounded-2xl shadow-inner grid grid-cols-2 gap-2 p-2 border border-emerald-200/80">
               {[0, 1, 2, 3].map((slotIdx) => {
                 const isPresent = tokens[1]?.[slotIdx] === -1;
                 const canMove = 1 === myIndex && movableTokenIndices.includes(slotIdx);
@@ -294,11 +397,17 @@ export default function LudoGame({
                   <div
                     key={slotIdx}
                     onClick={() => canMove && handleMoveToken(slotIdx)}
-                    className={`w-full h-full rounded-full border-2 border-emerald-300 flex items-center justify-center ${
-                      isPresent ? 'bg-emerald-500 shadow-md' : 'bg-emerald-50'
-                    } ${canMove ? 'ring-4 ring-amber-400 animate-bounce cursor-pointer' : ''}`}
+                    className="w-full h-full rounded-full bg-slate-100 border border-slate-300 shadow-inner flex items-center justify-center"
                   >
-                    {isPresent && <span className="text-white text-[10px] font-bold">🟢</span>}
+                    {isPresent && (
+                      <LudoPawn3D
+                        colorIndex={1}
+                        tokenNumber={slotIdx + 1}
+                        isMovable={canMove}
+                        onClick={() => canMove && handleMoveToken(slotIdx)}
+                        size="sm"
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -306,8 +415,8 @@ export default function LudoGame({
           </div>
 
           {/* Base 3: Yellow Base (Bottom-Right) */}
-          <div className="absolute bottom-0 right-0 w-[40%] h-[40%] bg-amber-400 p-2 sm:p-3 flex items-center justify-center">
-            <div className="w-full h-full bg-white rounded-xl shadow-inner grid grid-cols-2 gap-2 p-2">
+          <div className="absolute bottom-0 right-0 w-[40%] h-[40%] bg-gradient-to-br from-amber-400 via-amber-500 to-yellow-600 p-2 sm:p-3 flex items-center justify-center shadow-md">
+            <div className="w-full h-full bg-white/95 rounded-2xl shadow-inner grid grid-cols-2 gap-2 p-2 border border-amber-200/80">
               {[0, 1, 2, 3].map((slotIdx) => {
                 const isPresent = tokens[2]?.[slotIdx] === -1;
                 const canMove = 2 === myIndex && movableTokenIndices.includes(slotIdx);
@@ -315,11 +424,17 @@ export default function LudoGame({
                   <div
                     key={slotIdx}
                     onClick={() => canMove && handleMoveToken(slotIdx)}
-                    className={`w-full h-full rounded-full border-2 border-amber-300 flex items-center justify-center ${
-                      isPresent ? 'bg-amber-400 shadow-md' : 'bg-amber-50'
-                    } ${canMove ? 'ring-4 ring-amber-400 animate-bounce cursor-pointer' : ''}`}
+                    className="w-full h-full rounded-full bg-slate-100 border border-slate-300 shadow-inner flex items-center justify-center"
                   >
-                    {isPresent && <span className="text-white text-[10px] font-bold">🟡</span>}
+                    {isPresent && (
+                      <LudoPawn3D
+                        colorIndex={2}
+                        tokenNumber={slotIdx + 1}
+                        isMovable={canMove}
+                        onClick={() => canMove && handleMoveToken(slotIdx)}
+                        size="sm"
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -327,8 +442,8 @@ export default function LudoGame({
           </div>
 
           {/* Base 4: Blue Base (Bottom-Left) */}
-          <div className="absolute bottom-0 left-0 w-[40%] h-[40%] bg-sky-500 p-2 sm:p-3 flex items-center justify-center">
-            <div className="w-full h-full bg-white rounded-xl shadow-inner grid grid-cols-2 gap-2 p-2">
+          <div className="absolute bottom-0 left-0 w-[40%] h-[40%] bg-gradient-to-br from-sky-400 via-sky-500 to-blue-600 p-2 sm:p-3 flex items-center justify-center shadow-md">
+            <div className="w-full h-full bg-white/95 rounded-2xl shadow-inner grid grid-cols-2 gap-2 p-2 border border-sky-200/80">
               {[0, 1, 2, 3].map((slotIdx) => {
                 const isPresent = tokens[3]?.[slotIdx] === -1;
                 const canMove = 3 === myIndex && movableTokenIndices.includes(slotIdx);
@@ -336,21 +451,38 @@ export default function LudoGame({
                   <div
                     key={slotIdx}
                     onClick={() => canMove && handleMoveToken(slotIdx)}
-                    className={`w-full h-full rounded-full border-2 border-sky-300 flex items-center justify-center ${
-                      isPresent ? 'bg-sky-500 shadow-md' : 'bg-sky-50'
-                    } ${canMove ? 'ring-4 ring-amber-400 animate-bounce cursor-pointer' : ''}`}
+                    className="w-full h-full rounded-full bg-slate-100 border border-slate-300 shadow-inner flex items-center justify-center"
                   >
-                    {isPresent && <span className="text-white text-[10px] font-bold">🔵</span>}
+                    {isPresent && (
+                      <LudoPawn3D
+                        colorIndex={3}
+                        tokenNumber={slotIdx + 1}
+                        isMovable={canMove}
+                        onClick={() => canMove && handleMoveToken(slotIdx)}
+                        size="sm"
+                      />
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
 
-          {/* Center 3x3 Home Triangle Goal */}
-          <div className="absolute top-[40%] left-[40%] w-[20%] h-[20%] bg-slate-900 flex items-center justify-center shadow-inner overflow-hidden border border-slate-700">
-            <div className="relative w-full h-full flex items-center justify-center">
-              <Trophy size={18} className="text-amber-400 animate-pulse" />
+          {/* Center 3x3 Home Triangle Pyramid (Authentic Ludo Diamond) */}
+          <div className="absolute top-[40%] left-[40%] w-[20%] h-[20%] overflow-hidden flex items-center justify-center shadow-[inset_0_0_12px_rgba(0,0,0,0.4)] border border-slate-300">
+            <svg viewBox="0 0 100 100" className="w-full h-full">
+              {/* Top: Red */}
+              <polygon points="0,0 100,0 50,50" fill="#f43f5e" />
+              {/* Right: Green */}
+              <polygon points="100,0 100,100 50,50" fill="#10b981" />
+              {/* Bottom: Yellow */}
+              <polygon points="100,100 0,100 50,50" fill="#f59e0b" />
+              {/* Left: Blue */}
+              <polygon points="0,100 0,0 50,50" fill="#0ea5e9" />
+            </svg>
+            {/* Center Gold Trophy Medallion */}
+            <div className="absolute w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-amber-300 via-yellow-500 to-amber-600 border-2 border-white shadow-xl flex items-center justify-center">
+              <Trophy size={14} className="text-teal-950 fill-teal-950 animate-pulse" />
             </div>
           </div>
 
@@ -364,7 +496,6 @@ export default function LudoGame({
           {/* Dynamic Active Tokens on Board */}
           {Object.entries(tokens).map(([pStr, playerTokens]) => {
             const pIdx = Number(pStr);
-            const color = PLAYER_COLORS[pIdx] || PLAYER_COLORS[0];
 
             return playerTokens.map((step, tIdx) => {
               if (step === -1) return null; // In base handled above
@@ -390,13 +521,13 @@ export default function LudoGame({
                     isMovable ? 'cursor-pointer pointer-events-auto' : 'pointer-events-none'
                   }`}
                 >
-                  <div
-                    className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full ${color.colorClass} border-2 border-white shadow-lg flex items-center justify-center text-[9px] font-black text-white ${
-                      isMovable ? 'ring-4 ring-amber-400 animate-bounce scale-110' : ''
-                    }`}
-                  >
-                    {tIdx + 1}
-                  </div>
+                  <LudoPawn3D
+                    colorIndex={pIdx}
+                    tokenNumber={tIdx + 1}
+                    isMovable={isMovable}
+                    onClick={() => isMovable && handleMoveToken(tIdx)}
+                    size="sm"
+                  />
                 </div>
               );
             });
@@ -450,26 +581,28 @@ export default function LudoGame({
 
           {room.status === 'playing' && (
             <div className="flex items-center gap-2">
-              {/* Animated Dice */}
-              <div
-                className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white text-slate-950 font-black text-xl flex items-center justify-center shadow-lg border-2 border-slate-300 ${
-                  isRolling ? 'animate-spin' : ''
-                }`}
-              >
-                {toBnNum(diceValue)}
-              </div>
+              {/* 3D Animated Dice */}
+              <div className="flex items-center gap-3">
+                <LudoDice3D
+                  value={diceValue}
+                  isRolling={isRolling}
+                  isMyTurn={isMyTurn && !hasRolled}
+                  onClick={isMyTurn && !hasRolled ? handleRollDice : null}
+                  size="md"
+                />
 
-              {isMyTurn && !hasRolled && (
-                <button
-                  type="button"
-                  onClick={handleRollDice}
-                  disabled={isRolling}
-                  className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-teal-950 font-black text-xs sm:text-sm rounded-xl shadow-lg transition cursor-pointer active:scale-95 flex items-center gap-1"
-                >
-                  <Dices size={16} />
-                  ডাইস রোল করুন
-                </button>
-              )}
+                {isMyTurn && !hasRolled && (
+                  <button
+                    type="button"
+                    onClick={handleRollDice}
+                    disabled={isRolling}
+                    className="px-4 py-2 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-teal-950 font-black text-xs sm:text-sm rounded-xl shadow-xl transition cursor-pointer active:scale-95 flex items-center gap-1.5"
+                  >
+                    <Dices size={16} />
+                    ডাইস রোল করুন
+                  </button>
+                )}
+              </div>
 
               {isMyTurn && hasRolled && (
                 <span className="text-xs text-amber-300 font-bold animate-pulse">

@@ -25,6 +25,8 @@ import { formatDuration, toBnNum, resolveMediaUrl, getDriveEmbedUrl, PRODUCTION_
 import { getLocalVideo, getLocalVideoUrl } from '../utils/localVideoCache';
 import { uploadReelVideo } from '../utils/reelUploader';
 import { useBackHandler } from '../utils/backNavigation';
+import { triggerHaptic } from '../utils/haptics';
+import { resolveCommenterName } from '../utils/members';
 import UserAvatar from './UserAvatar';
 
 const COMMENT_REACTIONS = ['❤️', '👍', '😂', '🔥', '👏'];
@@ -35,6 +37,8 @@ export default function ReelsPlayerModal({
   isOpen,
   currentUser,
   currentProfile,
+  members = [],
+  userProfiles = {},
   onClose,
   onLikePost,
   onAddComment,
@@ -267,9 +271,10 @@ export default function ReelsPlayerModal({
     const DOUBLE_TAP_DELAY = 300;
     if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
       // Double tap!
+      triggerHaptic('medium');
       handleLike();
       setShowHeartAnim(true);
-      setTimeout(() => setShowHeartAnim(false), 900);
+      setTimeout(() => setShowHeartAnim(false), 850);
     } else {
       togglePlay();
     }
@@ -301,14 +306,19 @@ export default function ReelsPlayerModal({
 
   const handleSendComment = (e) => {
     e?.preventDefault();
-    if (!commentText.trim() || !currentReel) return;
+    const trimmed = commentText.trim();
+    if (!trimmed || !currentReel) return;
 
     const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
+    const profilePhoto = currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL;
     onAddComment?.(currentReel.id, {
       id: Date.now(),
       user: authorName,
-      text: commentText.trim(),
+      authorEmail: (currentUser?.email || '').toLowerCase() || 'member@tour.family',
+      userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
+      text: trimmed,
       time: 'এইমাত্র',
+      createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
     });
 
     setCommentText('');
@@ -490,8 +500,8 @@ export default function ReelsPlayerModal({
 
           {/* Animated Heart pop on double tap */}
           {showHeartAnim && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30 animate-ping">
-              <Heart size={100} className="fill-rose-500 text-rose-500 drop-shadow-2xl" />
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+              <Heart size={100} className="fill-white text-white drop-shadow-2xl animate-ig-heart" />
             </div>
           )}
 
@@ -665,20 +675,24 @@ export default function ReelsPlayerModal({
                   </p>
                 ) : (
                   commentsList.map((c, idx) => {
-                    const commentId = c.id !== undefined && c.id !== null ? c.id : idx;
+                    const commentId = (c && typeof c === 'object' && c.id !== undefined && c.id !== null) ? c.id : idx;
+                    const userName = resolveCommenterName(c, { userProfiles, members, currentUser, currentProfile });
+                    const commentText = typeof c === 'string' ? c : (c.text || c.comment || c.message || c.body || '');
+                    const timeDisplay = (typeof c === 'object' && (c.time || c.createdAt)) ? (c.time || c.createdAt) : 'এইমাত্র';
+                    const reactions = (typeof c === 'object' && c.reactions) ? c.reactions : {};
                     const myIdentifier = (currentUser?.email || currentProfile?.displayName || currentUser?.displayName || 'user').toLowerCase();
                     return (
-                      <div key={c.id || idx} className="text-xs bg-slate-800/60 p-2.5 rounded-xl border border-slate-750 space-y-1.5">
+                      <div key={commentId} className="text-xs bg-slate-800/60 p-2.5 rounded-xl border border-slate-750 space-y-1.5">
                         <div className="flex items-center justify-between">
-                          <span className="font-bold text-pink-300">{c.user || 'পরিবারের সদস্য'}</span>
-                          <span className="text-[10px] text-slate-500">{c.time || 'এইমাত্র'}</span>
+                          <span className="font-bold text-pink-300">{userName}</span>
+                          <span className="text-[10px] text-slate-500">{timeDisplay}</span>
                         </div>
-                        <p className="text-slate-200 leading-relaxed">{c.text}</p>
+                        <p className="text-slate-200 leading-relaxed">{commentText}</p>
 
                         {/* Comment Reactions */}
                         <div className="flex items-center flex-wrap gap-1 pt-1 border-t border-slate-700/40">
                           {COMMENT_REACTIONS.map((emoji) => {
-                            const voters = Array.isArray(c.reactions?.[emoji]) ? c.reactions[emoji] : [];
+                            const voters = Array.isArray(reactions[emoji]) ? reactions[emoji] : [];
                             const count = voters.length;
                             const hasVoted = voters.some((v) => String(v).toLowerCase() === myIdentifier);
                             return (

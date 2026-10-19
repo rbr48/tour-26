@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { newId, setTypingStatus, subscribeTyping } from '../services/tourStore';
 import { useBackHandler } from '../utils/backNavigation';
+import { localISODate } from '../utils/date';
 import UserAvatar from './UserAvatar';
 import {
   Hash,
@@ -57,6 +58,38 @@ const CHANNELS = [
 const EMOJI_REACTIONS = ['👍', '❤️', '🔥', '🏖️', '🍤', '🚌'];
 const toBnNum = (n) => String(n ?? 0).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[d]);
 
+const BN_MONTHS = [
+  'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
+  'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
+];
+
+function formatMessageDateLabel(dateStr) {
+  if (!dateStr) return null;
+  const today = localISODate();
+  const yesterday = localISODate(new Date(Date.now() - 86400000));
+
+  if (dateStr === today) return 'আজ';
+  if (dateStr === yesterday) return 'গতকাল';
+
+  const parts = String(dateStr).split('-');
+  if (parts.length === 3) {
+    const year = parts[0];
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const monthName = BN_MONTHS[month] || parts[1];
+    return `${toBnNum(day)} ${monthName}, ${toBnNum(year)}`;
+  }
+  return dateStr;
+}
+
+const ROLE_BADGE_STYLES = {
+  'অ্যাডমিন': 'bg-rose-50 text-rose-700 border-rose-200',
+  'কো-অর্ডিনেটর': 'bg-amber-50 text-amber-800 border-amber-200',
+  'ফটোগ্রাফার': 'bg-sky-50 text-sky-700 border-sky-200',
+  'ইয়ংস্টার': 'bg-purple-50 text-purple-700 border-purple-200',
+  'সদস্য': 'bg-slate-100 text-slate-700 border-slate-200',
+};
+
 const QUICK_PROMPTS = [
   'সবাই কি রেডি? 🏖️',
   'আমরা এখন লবিতে আছি 📍',
@@ -98,6 +131,7 @@ export default function DiscordDiscussion({
 
   const [showQuickPrompts, setShowQuickPrompts] = useState(false);
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState(null);
+  const [activeActionMsgId, setActiveActionMsgId] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [typingUsers, setTypingUsers] = useState([]);
 
@@ -112,6 +146,7 @@ export default function DiscordDiscussion({
     setInputText('');
   }, 15);
   useBackHandler(showQuickPrompts, () => setShowQuickPrompts(false), 20);
+  useBackHandler(Boolean(activeActionMsgId), () => setActiveActionMsgId(null), 22);
   useBackHandler(Boolean(reactionPickerMsgId), () => setReactionPickerMsgId(null), 25);
 
   // Ensure window starts at the top when entering discussion tab
@@ -125,6 +160,7 @@ export default function DiscordDiscussion({
       if (e.key === 'Escape') {
         setShowQuickPrompts(false);
         setReactionPickerMsgId(null);
+        setActiveActionMsgId(null);
         if (editingMessage) {
           setEditingMessage(null);
           setInputText('');
@@ -246,6 +282,7 @@ export default function DiscordDiscussion({
     const authorRole = currentProfile?.role || 'সদস্য';
     const authorAvatar = currentProfile?.avatarEmoji || '👑';
 
+    const now = new Date();
     const newMessage = {
       id: newId(),
       author: authorName,
@@ -254,7 +291,9 @@ export default function DiscordDiscussion({
       authorRole: authorRole,
       authorEmoji: authorAvatar,
       text: inputText.trim(),
-      time: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
+      time: now.toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
+      timestamp: now.getTime(),
+      date: localISODate(now),
       reactions: {}
     };
 
@@ -290,8 +329,8 @@ export default function DiscordDiscussion({
         </div>
       </div>
 
-      {/* 2. COMPACT 4-CHANNEL SELECTOR (Single sleek row on mobile, maximum space for chat!) */}
-      <div className="shrink-0 grid grid-cols-4 gap-1 sm:gap-2">
+      {/* 2. SLEEK HORIZONTAL CHANNEL SELECTOR (Scrollable with full Bengali titles, no truncation!) */}
+      <div className="shrink-0 flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-0.5 px-0.5">
         {CHANNELS.map((ch) => {
           const Icon = ch.icon;
           const isActive = activeChannelId === ch.id;
@@ -303,19 +342,17 @@ export default function DiscordDiscussion({
               type="button"
               onClick={() => setActiveChannelId(ch.id)}
               title={ch.desc}
-              className={`px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center sm:justify-between gap-1 border ${
+              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 border whitespace-nowrap select-none ${
                 isActive
-                  ? 'bg-gradient-to-r from-teal-800 to-indigo-800 text-white shadow-xs border-teal-500 ring-1 ring-teal-400/40'
+                  ? 'bg-gradient-to-r from-teal-800 to-indigo-800 text-white shadow-xs border-teal-500 ring-2 ring-teal-400/40'
                   : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200/90 shadow-2xs hover:border-indigo-300'
               }`}
             >
-              <div className="flex items-center gap-1 min-w-0 truncate">
-                <Icon size={12} className={isActive ? 'text-amber-300 shrink-0' : 'text-slate-500 shrink-0'} />
-                <span className="truncate text-[10px] sm:text-xs">{ch.title}</span>
-              </div>
+              <Icon size={14} className={isActive ? 'text-amber-300 shrink-0' : 'text-slate-500 shrink-0'} />
+              <span className="text-xs sm:text-[13px]">{ch.title}</span>
               <span
-                className={`text-[9px] sm:text-[10px] px-1 py-0.2 rounded-md font-mono font-semibold shrink-0 ${
-                  isActive ? 'bg-black/30 text-amber-200' : 'bg-slate-100 text-slate-600'
+                className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono font-bold shrink-0 ${
+                  isActive ? 'bg-black/35 text-amber-200' : 'bg-slate-100 text-slate-600'
                 }`}
               >
                 {toBnNum(count)}
@@ -328,10 +365,10 @@ export default function DiscordDiscussion({
       {/* 3. DISCUSSION STREAM & COMPOSER (SINGLE UNIFIED CARD - ZERO GAP!) */}
       <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
         {/* Active Channel Header */}
-        <div className="shrink-0 px-3 py-1.5 sm:px-4 sm:py-2 bg-slate-50/90 flex items-center justify-between gap-2 border-b border-slate-100">
+        <div className="shrink-0 px-3 py-2 sm:px-4 sm:py-2.5 bg-white/95 backdrop-blur-xs flex items-center justify-between gap-2 border-b border-slate-200/80 shadow-2xs">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-              <Hash size={12} />
+            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+              <Hash size={13} />
             </div>
             <div className="min-w-0 flex items-center gap-1.5">
               <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 truncate">
@@ -343,7 +380,7 @@ export default function DiscordDiscussion({
             </div>
           </div>
 
-          <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 bg-white px-2 py-0.5 rounded-lg border border-slate-200 shrink-0">
+          <span className="text-[10px] sm:text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 shrink-0">
             {toBnNum(channelMessages.length)} বার্তা
           </span>
         </div>
@@ -351,91 +388,268 @@ export default function DiscordDiscussion({
         {/* Messages Feed */}
         <div
           ref={messagesContainerRef}
-          className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-3 space-y-1.5 sm:space-y-2 bg-slate-50/40 overscroll-contain"
+          onClick={() => {
+            setActiveActionMsgId(null);
+            setReactionPickerMsgId(null);
+          }}
+          className="flex-1 min-h-0 overflow-y-auto p-2.5 sm:p-4 pt-3 sm:pt-4 space-y-1 sm:space-y-1.5 bg-slate-100/75 overscroll-contain"
         >
-          {channelMessages.length > 0 ? (
-            channelMessages.map((msg) => {
+          {(() => {
+            const processedMessages = channelMessages.map((msg, index) => {
               const myEmail = currentUser?.email?.toLowerCase();
               const isMe =
                 (msg.senderEmail ?? msg.authorEmail) === myEmail ||
                 (!msg.senderEmail && !msg.authorEmail && msg.author === currentUser?.displayName);
+
+              const prevMsg = channelMessages[index - 1];
+              const nextMsg = channelMessages[index + 1];
+
+              const msgDate = msg.date || (msg.timestamp ? localISODate(new Date(msg.timestamp)) : null);
+              const prevDate = prevMsg?.date || (prevMsg?.timestamp ? localISODate(new Date(prevMsg.timestamp)) : null);
+              const nextDate = nextMsg?.date || (nextMsg?.timestamp ? localISODate(new Date(nextMsg.timestamp)) : null);
+
+              const showDateDivider = Boolean(msgDate && (!prevDate || msgDate !== prevDate));
+
+              const senderKey = (msg.senderEmail ?? msg.authorEmail ?? msg.author ?? '').toLowerCase();
+              const prevSenderKey = (prevMsg?.senderEmail ?? prevMsg?.authorEmail ?? prevMsg?.author ?? '').toLowerCase();
+              const nextSenderKey = (nextMsg?.senderEmail ?? nextMsg?.authorEmail ?? nextMsg?.author ?? '').toLowerCase();
+
+              const isFirstInCluster = index === 0 || showDateDivider || senderKey !== prevSenderKey;
+              const isLastInCluster = index === channelMessages.length - 1 || (msgDate && nextDate && msgDate !== nextDate) || senderKey !== nextSenderKey;
 
               const activeReactions = EMOJI_REACTIONS.filter((emoji) => {
                 const voters = Array.isArray(msg.reactions?.[emoji]) ? msg.reactions[emoji] : [];
                 return voters.length > 0;
               });
 
+              return {
+                ...msg,
+                isMe,
+                showDateDivider,
+                dateLabel: msgDate ? formatMessageDateLabel(msgDate) : null,
+                isFirstInCluster,
+                isLastInCluster,
+                activeReactions,
+              };
+            });
+
+            if (processedMessages.length === 0) {
               return (
-                <div
-                  key={msg.id}
-                  className={`flex items-start gap-2 sm:gap-2.5 transition ${
-                    isMe ? 'flex-row-reverse' : ''
-                  }`}
-                >
-                  {/* User Avatar */}
-                  <UserAvatar
-                    photoUrl={msg.authorPhoto}
-                    name={msg.author}
-                    size="w-7 h-7 sm:w-8 sm:h-8"
-                    ring={isMe ? 'ring-2 ring-teal-500' : 'ring-2 ring-indigo-300'}
-                    fallbackEmoji={msg.authorEmoji || '👑'}
-                    textClass="text-[9px]"
-                    className="shrink-0 mt-0.5"
-                  />
+                <div className="py-8 sm:py-10 flex flex-col items-center justify-center text-center p-6 space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl border border-indigo-100">
+                    💬
+                  </div>
+                  <h4 className="font-bold text-sm text-slate-800">
+                    চ্যানেল #{activeChannel.name}-এ স্বাগতম!
+                  </h4>
+                  <p className="text-xs text-slate-500 max-w-sm">
+                    এই চ্যানেলে এখনো কোনো বার্তা নেই। ট্যুরের পরিবারের সবার সাথে প্রথম কথা শুরু করুন!
+                  </p>
+                </div>
+              );
+            }
 
-                  {/* Message Bubble Container */}
-                  <div className={`relative group max-w-[85%] sm:max-w-[75%] space-y-0.5 ${isMe ? 'items-end text-right' : ''}`}>
-                    <div className={`flex items-center gap-1.5 text-[10px] sm:text-[11px] leading-none mb-0.5 ${isMe ? 'justify-end' : ''}`}>
-                      <span className="font-bold text-slate-800">{msg.author}</span>
-                      {msg.authorRole && (
-                        <span className="text-[8px] sm:text-[9px] bg-indigo-50 text-indigo-700 px-1 py-0.2 rounded border border-indigo-200 font-medium">
-                          {msg.authorRole}
-                        </span>
-                      )}
-                      <span className="text-[9px] text-slate-400">{msg.time}</span>
-                      {msg.edited && (
-                        <span className="text-[8px] text-slate-400 italic font-medium">(সম্পাদিত)</span>
-                      )}
+            return processedMessages.map((msg) => {
+              const isMe = msg.isMe;
+              const isFirst = msg.isFirstInCluster;
+              const isLast = msg.isLastInCluster;
+              const showActions = activeActionMsgId === msg.id;
+
+              return (
+                <React.Fragment key={msg.id}>
+                  {/* Date Divider */}
+                  {msg.showDateDivider && msg.dateLabel && (
+                    <div className="flex items-center justify-center my-3 sm:my-3.5 select-none">
+                      <div className="h-px bg-slate-200 flex-1 max-w-[50px] sm:max-w-[80px]" />
+                      <span className="mx-2 px-3 py-0.5 rounded-full bg-slate-200/90 text-slate-700 text-[10px] font-bold shadow-2xs border border-slate-300/60">
+                        📅 {msg.dateLabel}
+                      </span>
+                      <div className="h-px bg-slate-200 flex-1 max-w-[50px] sm:max-w-[80px]" />
                     </div>
+                  )}
 
-                    {/* Popover Emoji Reaction Picker */}
-                    {reactionPickerMsgId === msg.id && (
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                        className={`flex items-center gap-1 bg-white rounded-full shadow-md border border-slate-200 px-2 py-0.5 mb-1 ${
-                          isMe ? 'justify-end ml-auto' : 'justify-start'
-                        } animate-in fade-in zoom-in-95 duration-100`}
-                      >
-                        {EMOJI_REACTIONS.map((emoji) => (
-                          <button
-                            key={emoji}
-                            type="button"
-                            onClick={() => {
-                              onAddReaction(activeChannelId, msg.id, emoji);
-                              setReactionPickerMsgId(null);
-                            }}
-                            className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-amber-50 hover:scale-125 transition text-xs cursor-pointer"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
+                  {/* Message Item */}
+                  <div
+                    className={`flex items-end gap-1.5 sm:gap-2 transition-all ${
+                      isMe ? 'flex-row-reverse' : ''
+                    } ${isFirst ? 'mt-2.5 sm:mt-3' : 'mt-0.5'}`}
+                  >
+                    {/* User Avatar: Show on last in cluster for incoming messages */}
+                    {!isMe && (
+                      <div className="w-7 sm:w-8 shrink-0 flex flex-col justify-end">
+                        {isLast ? (
+                          <UserAvatar
+                            photoUrl={msg.authorPhoto}
+                            name={msg.author}
+                            size="w-7 h-7 sm:w-8 sm:h-8"
+                            ring="ring-2 ring-indigo-200"
+                            fallbackEmoji={msg.authorEmoji || '👑'}
+                            textClass="text-[9px]"
+                          />
+                        ) : (
+                          <div className="w-7 sm:w-8 h-7 sm:h-8" aria-hidden="true" />
+                        )}
                       </div>
                     )}
 
-                    <div className={`flex items-center gap-1 ${isMe ? 'flex-row-reverse' : ''}`}>
+                    {/* Message Bubble Container */}
+                    <div className={`relative group max-w-[85%] sm:max-w-[75%] ${isMe ? 'items-end' : ''}`}>
+                      {/* Author Header: Show ONLY on first in cluster for incoming messages */}
+                      {!isMe && isFirst && (
+                        <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] leading-none mb-1 pl-1">
+                          <span className="font-bold text-slate-800">{msg.author}</span>
+                          {msg.authorRole && (
+                            <span
+                              className={`text-[8px] sm:text-[9px] px-1.5 py-0.2 rounded-md font-semibold border ${
+                                ROLE_BADGE_STYLES[msg.authorRole] || 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                              }`}
+                            >
+                              {msg.authorRole}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Popover Emoji Reaction Picker */}
+                      {reactionPickerMsgId === msg.id && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className={`absolute -top-9 z-20 flex items-center gap-1 bg-white/95 backdrop-blur-md rounded-full shadow-lg border border-slate-200 px-2 py-1 ${
+                            isMe ? 'right-0' : 'left-0'
+                          } animate-in fade-in zoom-in-95 duration-100`}
+                        >
+                          {EMOJI_REACTIONS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => {
+                                onAddReaction(activeChannelId, msg.id, emoji);
+                                setReactionPickerMsgId(null);
+                              }}
+                              className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-amber-100 hover:scale-130 active:scale-120 transition text-sm cursor-pointer"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Anchored Action Toolbar on Hover / Active Tap */}
                       <div
-                        className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl text-xs sm:text-[13px] leading-relaxed text-left inline-flex flex-wrap items-center gap-1.5 shadow-2xs max-w-full ${
+                        className={`absolute -top-3.5 z-10 ${
+                          isMe ? 'left-2' : 'right-2'
+                        } ${
+                          showActions ? 'flex' : 'hidden group-hover:flex'
+                        } items-center gap-0.5 bg-white/95 backdrop-blur-md rounded-full shadow-md border border-slate-200 px-1 py-0.5 transition-all select-none`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setReactionPickerMsgId(reactionPickerMsgId === msg.id ? null : msg.id)}
+                          className="p-1 rounded-full text-slate-500 hover:text-amber-500 hover:bg-slate-100 transition cursor-pointer"
+                          title="ইমোজি রিঅ্যাকশন দিন"
+                          aria-label="ইমোজি রিঅ্যাকশন দিন"
+                        >
+                          <Smile size={12} />
+                        </button>
+                        {(isMe || isAdmin) && onEditMessage && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingMessage({ id: msg.id, text: msg.text });
+                              setInputText(msg.text);
+                              inputRef.current?.focus();
+                              setActiveActionMsgId(null);
+                            }}
+                            className="p-1 rounded-full text-slate-500 hover:text-teal-600 hover:bg-slate-100 transition cursor-pointer"
+                            title="বার্তা সম্পাদনা করুন"
+                            aria-label="বার্তা সম্পাদনা করুন"
+                          >
+                            <Pencil size={11} />
+                          </button>
+                        )}
+                        {(isMe || isAdmin) && onDeleteMessage && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onDeleteMessage(activeChannelId, msg.id);
+                              setActiveActionMsgId(null);
+                            }}
+                            className="p-1 rounded-full text-slate-500 hover:text-red-500 hover:bg-slate-100 transition cursor-pointer"
+                            title="বার্তা মুছে ফেলুন"
+                            aria-label="বার্তা মুছে ফেলুন"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Message Bubble */}
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveActionMsgId(showActions ? null : msg.id);
+                        }}
+                        className={`px-3.5 py-2 text-xs sm:text-[13px] leading-relaxed transition-all cursor-pointer select-text ${
                           isMe
-                            ? 'bg-gradient-to-r from-teal-700 to-teal-800 text-white rounded-tr-xs'
-                            : 'bg-white text-slate-800 rounded-tl-xs border border-slate-200/90'
+                            ? `bg-gradient-to-br from-teal-700 via-teal-800 to-teal-900 text-white shadow-xs border border-teal-600/30 ${
+                                isFirst && isLast
+                                  ? 'rounded-2xl'
+                                  : isFirst
+                                    ? 'rounded-2xl rounded-br-sm'
+                                    : isLast
+                                      ? 'rounded-2xl rounded-tr-sm'
+                                      : 'rounded-l-2xl rounded-r-sm'
+                              }`
+                            : `bg-white text-slate-800 border border-slate-200/90 shadow-2xs ${
+                                isFirst && isLast
+                                  ? 'rounded-2xl'
+                                  : isFirst
+                                    ? 'rounded-2xl rounded-bl-sm'
+                                    : isLast
+                                      ? 'rounded-2xl rounded-tl-sm'
+                                      : 'rounded-r-2xl rounded-l-sm'
+                              }`
                         }`}
                       >
-                        <span className="break-words">{msg.text}</span>
+                        {/* Text Content */}
+                        <p className="break-words whitespace-pre-wrap">{msg.text}</p>
 
-                        {/* Active Reactions Inline at the Bottom Right of the Message */}
-                        {activeReactions.length > 0 && (
-                          <span className={`inline-flex items-center gap-1 ${isMe ? 'ml-auto' : ''}`}>
-                            {activeReactions.map((emoji) => {
+                        {/* Bubble Footer: Time & Micro Emoji Trigger */}
+                        <div
+                          className={`flex items-center gap-1.5 mt-1 text-[9px] font-mono leading-none select-none ${
+                            isMe ? 'justify-end text-teal-200/90' : 'justify-end text-slate-400'
+                          }`}
+                        >
+                          {msg.edited && (
+                            <span className="italic font-sans text-[8px] opacity-80">(সম্পাদিত)</span>
+                          )}
+                          <span>{msg.time}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReactionPickerMsgId(reactionPickerMsgId === msg.id ? null : msg.id);
+                            }}
+                            className={`p-0.5 rounded-full transition cursor-pointer ${
+                              isMe
+                                ? 'hover:text-amber-300 text-teal-200/70 hover:bg-teal-900/50'
+                                : 'hover:text-amber-500 text-slate-400 hover:bg-slate-100'
+                            }`}
+                            title="ইমোজি রিঅ্যাকশন দিন"
+                          >
+                            <Smile size={10} />
+                          </button>
+                        </div>
+
+                        {/* Dedicated Reactions Row (Anchored neatly at the bottom of the bubble) */}
+                        {msg.activeReactions.length > 0 && (
+                          <div
+                            className={`flex flex-wrap items-center gap-1 mt-1.5 pt-1 border-t select-none ${
+                              isMe ? 'border-teal-700/60' : 'border-slate-100'
+                            }`}
+                          >
+                            {msg.activeReactions.map((emoji) => {
                               const voters = Array.isArray(msg.reactions?.[emoji]) ? msg.reactions[emoji] : [];
                               const count = voters.length;
                               const myIdentifier = (
@@ -452,15 +666,18 @@ export default function DiscordDiscussion({
                                   key={emoji}
                                   type="button"
                                   aria-pressed={reactedByMe}
-                                  onClick={() => onAddReaction(activeChannelId, msg.id, emoji)}
-                                  className={`px-1.5 py-0.2 rounded-md text-[10px] inline-flex items-center gap-0.5 transition cursor-pointer select-none border ${
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onAddReaction(activeChannelId, msg.id, emoji);
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded-md text-[10px] inline-flex items-center gap-1 transition-all cursor-pointer border ${
                                     isMe
                                       ? reactedByMe
                                         ? 'bg-amber-400 text-teal-950 border-amber-300 font-bold shadow-2xs'
-                                        : 'bg-teal-900/80 text-teal-100 border-teal-600/70'
+                                        : 'bg-teal-900/70 text-teal-100 border-teal-600/60 hover:bg-teal-900'
                                       : reactedByMe
-                                        ? 'bg-amber-100 text-amber-900 border-amber-400 font-bold shadow-2xs'
-                                        : 'bg-slate-100 text-slate-700 border-slate-200'
+                                        ? 'bg-amber-100 text-amber-900 border-amber-300 font-bold shadow-2xs'
+                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
                                   }`}
                                   title={reactedByMe ? `${emoji} রিঅ্যাকশন বাতিল করুন` : `${emoji} রিঅ্যাক্ট করুন`}
                                 >
@@ -485,78 +702,33 @@ export default function DiscordDiscussion({
                             >
                               <Plus size={10} />
                             </button>
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Action buttons (Emoji, Edit, Delete) */}
-                      <div className={`flex items-center gap-0.5 ${isMe ? 'flex-row-reverse' : ''} opacity-70 sm:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition shrink-0`}>
-                        {/* Quick Reaction Trigger Button */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setReactionPickerMsgId(reactionPickerMsgId === msg.id ? null : msg.id);
-                          }}
-                          className="p-1 rounded-full text-slate-400 hover:text-amber-500 hover:bg-slate-100 transition cursor-pointer"
-                          title="ইমোজি রিঅ্যাকশন দিন"
-                          aria-label="ইমোজি রিঅ্যাকশন দিন"
-                        >
-                          <Smile size={13} />
-                        </button>
-
-                        {/* Edit Button (Author only) */}
-                        {isMe && onEditMessage && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingMessage({ id: msg.id, text: msg.text });
-                              setInputText(msg.text);
-                              inputRef.current?.focus();
-                            }}
-                            className="p-1 rounded-full text-slate-400 hover:text-teal-600 hover:bg-slate-100 transition cursor-pointer"
-                            title="বার্তা সংশোধন করুন"
-                            aria-label="বার্তা সংশোধন করুন"
-                          >
-                            <Pencil size={12} />
-                          </button>
-                        )}
-
-                        {/* Delete Button (Author only) */}
-                        {isMe && onDeleteMessage && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDeleteMessage(activeChannelId, msg.id);
-                            }}
-                            className="p-1 rounded-full text-slate-400 hover:text-red-500 hover:bg-slate-100 transition cursor-pointer"
-                            title="বার্তা মুছে ফেলুন"
-                            aria-label="বার্তা মুছে ফেলুন"
-                          >
-                            <Trash2 size={12} />
-                          </button>
+                          </div>
                         )}
                       </div>
                     </div>
+
+                    {/* User Avatar for Outgoing Message: Show on last in cluster */}
+                    {isMe && (
+                      <div className="w-7 sm:w-8 shrink-0 flex flex-col justify-end">
+                        {isLast ? (
+                          <UserAvatar
+                            photoUrl={currentUser?.photoURL || currentProfile?.customPhotoURL}
+                            name={currentProfile?.displayName || currentUser?.displayName || 'আমি'}
+                            size="w-7 h-7 sm:w-8 sm:h-8"
+                            ring="ring-2 ring-teal-500"
+                            fallbackEmoji={currentProfile?.avatarEmoji || '👑'}
+                            textClass="text-[9px]"
+                          />
+                        ) : (
+                          <div className="w-7 sm:w-8 h-7 sm:h-8" aria-hidden="true" />
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
+                </React.Fragment>
               );
-            })
-          ) : (
-            <div className="py-8 sm:py-10 flex flex-col items-center justify-center text-center p-6 space-y-2">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl border border-indigo-100">
-                💬
-              </div>
-              <h4 className="font-bold text-sm text-slate-800">
-                চ্যানেল #{activeChannel.name}-এ স্বাগতম!
-              </h4>
-              <p className="text-xs text-slate-500 max-w-sm">
-                এই চ্যানেলে এখনো কোনো বার্তা নেই। ট্যুরের পরিবারের সবার সাথে প্রথম কথা শুরু করুন!
-              </p>
-            </div>
-          )}
+            });
+          })()}
         </div>
 
         {/* Message Input & Quick Shortcuts (Seamlessly docked at the card's bottom - ZERO GAP!) */}

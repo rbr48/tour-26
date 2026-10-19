@@ -67,6 +67,7 @@ const blankExpense = () => ({
 export default function SplitwiseManager({
   members = [],
   expenses = [],
+  isAdmin = false,
   onAddExpense,
   onUpdateExpense,
   onDeleteExpense,
@@ -317,7 +318,7 @@ export default function SplitwiseManager({
                       - ৳{money(Math.abs(row.net))} (দেবেন)
                     </span>
                   )}
-                  {onEditMemberDeposit && (
+                  {isAdmin && onEditMemberDeposit && (
                     <button
                       type="button"
                       onClick={() => onEditMemberDeposit(members.find((member) => member.id === row.id))}
@@ -335,11 +336,12 @@ export default function SplitwiseManager({
         </div>
       </div>
 
-      {/* Add New Expense Form */}
-      <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-100 space-y-4">
-        <h3 className="font-bold text-base text-slate-800 flex items-center gap-2">
-          <Plus size={18} className="text-teal-700" aria-hidden="true" /> নতুন খরচের ভাউচার যুক্ত করুন
-        </h3>
+      {/* Add New Expense Form (Admin Only) */}
+      {isAdmin && (
+        <div className="bg-white p-5 rounded-2xl shadow-xs border border-slate-100 space-y-4">
+          <h3 className="font-bold text-base text-slate-800 flex items-center gap-2">
+            <Plus size={18} className="text-teal-700" aria-hidden="true" /> নতুন খরচের ভাউচার যুক্ত করুন
+          </h3>
 
         <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <div className="sm:col-span-2">
@@ -479,6 +481,7 @@ export default function SplitwiseManager({
           </div>
         </form>
       </div>
+      )}
 
       {/* Expenses List */}
       <div className="bg-white rounded-2xl shadow-xs border border-slate-100 overflow-hidden">
@@ -539,7 +542,7 @@ export default function SplitwiseManager({
                   <span className="font-extrabold text-sm sm:text-base text-slate-800 mr-1 sm:mr-2">
                     ৳ {money(item.amount)}
                   </span>
-                  {onUpdateExpense && (
+                  {isAdmin && onUpdateExpense && (
                     <button
                       type="button"
                       onClick={() => {
@@ -560,15 +563,17 @@ export default function SplitwiseManager({
                       <Edit3 size={15} aria-hidden="true" />
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => onDeleteExpense(item.id)}
-                    className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-400 flex items-center justify-center transition cursor-pointer"
-                    title="খরচ মুছে ফেলুন"
-                    aria-label={`${item.title} মুছে ফেলুন`}
-                  >
-                    <Trash2 size={15} aria-hidden="true" />
-                  </button>
+                  {isAdmin && onDeleteExpense && (
+                    <button
+                      type="button"
+                      onClick={() => onDeleteExpense(item.id)}
+                      className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-400 flex items-center justify-center transition cursor-pointer"
+                      title="খরচ মুছে ফেলুন"
+                      aria-label={`${item.title} মুছে ফেলুন`}
+                    >
+                      <Trash2 size={15} aria-hidden="true" />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -576,8 +581,8 @@ export default function SplitwiseManager({
         </div>
       </div>
 
-      {/* Edit Expense Modal */}
-      {editingExpense && (
+      {/* Edit Expense Modal (Admin Only) */}
+      {isAdmin && editingExpense && (
         <div
           className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
           onClick={() => setEditingExpense(null)}

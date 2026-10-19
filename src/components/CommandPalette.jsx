@@ -25,6 +25,7 @@ export default function CommandPalette({
   isOpen,
   onClose,
   members = [],
+  isAdmin = false,
   onSelectTab,
   onOpenExpenseModal,
   onOpenPrintModal,
@@ -58,7 +59,7 @@ export default function CommandPalette({
 
   // Static action commands
   const commands = [
-    {
+    ...(isAdmin ? [{
       id: 'cmd-expense',
       title: 'নতুন খরচ যোগ করুন',
       shortcut: '/expense',
@@ -68,7 +69,7 @@ export default function CommandPalette({
         onClose(false);
         onOpenExpenseModal();
       }
-    },
+    }] : []),
     {
       id: 'cmd-split',
       title: 'স্মার্ট স্প্লিটওয়াইজ ও হিসাব সেটেলমেন্ট',

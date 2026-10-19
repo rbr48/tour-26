@@ -8,6 +8,10 @@ import {
   HAND_NAMES_BN,
 } from './pokerEvaluator';
 import { updateGameRoom } from '../../services/tourStore';
+import { gameAudio } from '../../utils/gameAudio';
+import { triggerHaptic } from '../../utils/haptics';
+import GameReactions from './GameReactions';
+import GameTurnTimer from './GameTurnTimer';
 import UserAvatar from '../UserAvatar';
 import {
   Coins,
@@ -20,6 +24,8 @@ import {
   Sparkles,
   Swords,
   Trophy,
+  Volume2,
+  VolumeX,
   X,
   Zap,
 } from 'lucide-react';
@@ -47,6 +53,16 @@ export default function TeenPattiGame({
     room.status === 'playing' &&
     room.state?.turnIndex !== undefined &&
     room.players?.[room.state.turnIndex]?.email?.toLowerCase() === myEmail;
+
+  const [isMuted, setIsMuted] = useState(gameAudio.getMuted());
+
+  // Sound cue on turn
+  useEffect(() => {
+    if (isMyTurn) {
+      gameAudio.playTurn();
+      triggerHaptic('light');
+    }
+  }, [isMyTurn]);
 
   // Local state for seeing cards - synced with player's actual seen state & round status
   const [hasSeenCardsLocally, setHasSeenCardsLocally] = useState(Boolean(myPlayer?.seen));
@@ -113,6 +129,8 @@ export default function TeenPattiGame({
     const dealerIndex = ((room.state?.dealerIndex ?? -1) + 1) % updatedPlayers.length;
     const firstTurnIndex = getNextTurnIndex(updatedPlayers, dealerIndex);
 
+    gameAudio.playCard();
+    triggerHaptic('medium');
     updateGameRoom(room.id, {
       status: 'playing',
       state: {
@@ -131,6 +149,8 @@ export default function TeenPattiGame({
 
   // See Cards Action
   const handleSeeCards = () => {
+    gameAudio.playCard();
+    triggerHaptic('light');
     setHasSeenCardsLocally(true);
     const updatedPlayers = (room.players || []).map((p) =>
       p.email?.toLowerCase() === myEmail ? { ...p, seen: true } : p
@@ -147,6 +167,8 @@ export default function TeenPattiGame({
   // Chaal / Bet Action
   const handleBet = (isDouble = false) => {
     if (!isMyTurn) return;
+    gameAudio.playCard();
+    triggerHaptic('light');
 
     let betAmount = room.state?.currentStake || DEFAULT_BOOT;
 
@@ -195,6 +217,7 @@ export default function TeenPattiGame({
   // Fold / Pack Action
   const handleFold = () => {
     if (!isMyTurn) return;
+    triggerHaptic('light');
 
     const updatedPlayers = room.players.map((p) =>
       p.email?.toLowerCase() === myEmail ? { ...p, folded: true } : p
@@ -204,6 +227,8 @@ export default function TeenPattiGame({
 
     // If only 1 player remains, they win immediately!
     if (remaining.length === 1) {
+      gameAudio.playWin();
+      triggerHaptic('medium');
       const winner = remaining[0];
       const winPot = room.state?.pot || 0;
       const finalPlayers = updatedPlayers.map((p) =>
@@ -244,6 +269,8 @@ export default function TeenPattiGame({
   // Showdown Action (When 2 players remain)
   const handleShowdown = () => {
     if (!isMyTurn) return;
+    gameAudio.playWin();
+    triggerHaptic('medium');
 
     const remaining = getRemainingActivePlayers(room.players || []);
     if (remaining.length !== 2) return;
@@ -315,12 +342,23 @@ export default function TeenPattiGame({
 
   // Replenish free chips if user is broke
   const handleFreeChips = () => {
+    gameAudio.playWin();
+    triggerHaptic('medium');
     const updatedPlayers = (room.players || []).map((p) =>
       p.email?.toLowerCase() === myEmail ? { ...p, chips: (p.chips || 0) + 1000 } : p
     );
     updateGameRoom(room.id, {
       players: updatedPlayers,
+      state: {
+        ...room.state,
+        lastAction: `${myName} ১,০০০ ফ্রি চিপস রিফিল নিয়েছেন!`,
+      },
     });
+  };
+
+  const handleToggleMute = () => {
+    const nextMuted = gameAudio.toggleMute();
+    setIsMuted(nextMuted);
   };
 
   const remainingActive = getRemainingActivePlayers(room.players || []);
@@ -355,13 +393,16 @@ export default function TeenPattiGame({
             🃏
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <h3 className="font-extrabold text-xs sm:text-sm text-amber-300 truncate">
                 {room.title || '৩ পাত্তি টেবিল'}
               </h3>
               <span className="text-[10px] font-mono bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded border border-slate-700">
                 {room.id}
               </span>
+              {isMyTurn && (
+                <GameTurnTimer isMyTurn={isMyTurn} turnKey={`${room.state?.turnIndex}_${room.state?.pot}`} onTimeout={handleFold} />
+              )}
             </div>
             <p className="text-[10px] text-slate-400">
               হোস্ট: {room.hostName || 'পরিবার'} • {toBnNum(room.players?.length || 0)} জন খেলোয়াড়
@@ -369,7 +410,21 @@ export default function TeenPattiGame({
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Sound Toggle */}
+          <button
+            type="button"
+            onClick={handleToggleMute}
+            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+            title={isMuted ? 'সাউন্ড আনমিউট করুন' : 'সাউন্ড মিউট করুন'}
+          >
+            {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          </button>
+
+          {/* Floating Reactions */}
+          <GameReactions room={room} currentUser={currentUser} currentProfile={currentProfile} />
+
+          {/* Leave Button */}
           <button
             type="button"
             onClick={onLeave}
@@ -381,10 +436,10 @@ export default function TeenPattiGame({
         </div>
       </div>
 
-      {/* 2. Casino Table Felt Canvas */}
-      <div className="flex-1 min-h-[360px] p-2 sm:p-4 flex flex-col justify-between relative overflow-hidden bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-teal-900 via-emerald-950 to-slate-950">
-        {/* Table Felt Inner Border */}
-        <div className="absolute inset-2 sm:inset-4 rounded-[40px] sm:rounded-[60px] border-4 border-amber-600/40 pointer-events-none shadow-[inset_0_0_80px_rgba(0,0,0,0.8)]" />
+      {/* 2. Casino Table Felt Canvas with Royal Emerald Radial Lighting */}
+      <div className="flex-1 min-h-[360px] p-2 sm:p-4 flex flex-col justify-between relative overflow-hidden bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-800 via-teal-950 to-slate-950">
+        {/* Table Felt Inner Gold Piping Border */}
+        <div className="absolute inset-2 sm:inset-4 rounded-[40px] sm:rounded-[60px] border-4 border-amber-500/30 pointer-events-none shadow-[inset_0_0_120px_rgba(0,0,0,0.9)]" />
 
         {/* Top/Other Players Area */}
         <div className="relative z-10 flex items-center justify-center gap-2 sm:gap-4 flex-wrap pt-1">
@@ -440,12 +495,18 @@ export default function TeenPattiGame({
                   {/* Opponent's Cards */}
                   <div className="flex items-center -space-x-4 sm:-space-x-5 mt-1">
                     {(p.cards && p.cards.length === 3 ? p.cards : ['??', '??', '??']).map((c, cIdx) => (
-                      <PlayingCard
+                      <div
                         key={cIdx}
-                        card={c}
-                        size="sm"
-                        isFaceDown={!isRoundEnded || p.folded}
-                      />
+                        className={`transform transition-transform ${
+                          cIdx === 0 ? '-rotate-6' : cIdx === 1 ? 'rotate-0 -translate-y-0.5 z-10' : 'rotate-6'
+                        }`}
+                      >
+                        <PlayingCard
+                          card={c}
+                          size="sm"
+                          isFaceDown={!isRoundEnded || p.folded}
+                        />
+                      </div>
                     ))}
                   </div>
 
@@ -459,10 +520,10 @@ export default function TeenPattiGame({
 
         {/* Center Table: Pot & Game Status Banner */}
         <div className="relative z-10 flex flex-col items-center justify-center my-auto py-2 text-center">
-          {/* Pot Pill */}
-          <div className="bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-500 text-teal-950 font-black px-4 py-1.5 rounded-full shadow-xl border-2 border-amber-300 flex items-center gap-2 transform hover:scale-105 transition">
-            <Coins size={18} className="animate-spin" style={{ animationDuration: '4s' }} />
-            <span className="text-xs sm:text-sm tracking-wide">
+          {/* Pot Pill with Gold Sheen and 3D Chip Stack */}
+          <div className="bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-teal-950 font-black px-5 py-2 rounded-full shadow-[0_10px_25px_rgba(245,158,11,0.6)] border-2 border-amber-200 flex items-center gap-2.5 transform hover:scale-105 transition">
+            <Coins size={20} className="animate-spin text-teal-950" style={{ animationDuration: '4s' }} />
+            <span className="text-xs sm:text-sm tracking-wide font-extrabold">
               মোট পট: {toBnNum(room.state?.pot || 0)} চিপস
             </span>
           </div>
@@ -503,7 +564,12 @@ export default function TeenPattiGame({
                       </span>
                       <div className="flex items-center -space-x-3 mt-1.5 scale-90">
                         {(room.state.showdown.winner.cards || []).map((c, i) => (
-                          <PlayingCard key={i} card={c} size="sm" isFaceDown={false} />
+                          <div
+                            key={i}
+                            className={`transform ${i === 0 ? '-rotate-6' : i === 1 ? 'rotate-0 -translate-y-0.5 z-10' : 'rotate-6'}`}
+                          >
+                            <PlayingCard card={c} size="sm" isFaceDown={false} />
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -518,7 +584,12 @@ export default function TeenPattiGame({
                       </span>
                       <div className="flex items-center -space-x-3 mt-1.5 scale-90">
                         {(room.state.showdown.loser.cards || []).map((c, i) => (
-                          <PlayingCard key={i} card={c} size="sm" isFaceDown={false} />
+                          <div
+                            key={i}
+                            className={`transform ${i === 0 ? '-rotate-6' : i === 1 ? 'rotate-0 -translate-y-0.5 z-10' : 'rotate-6'}`}
+                          >
+                            <PlayingCard card={c} size="sm" isFaceDown={false} />
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -588,14 +659,24 @@ export default function TeenPattiGame({
                 )}
               </div>
 
-              <div className="flex items-center -space-x-3 sm:-space-x-4">
+              <div className="flex items-center -space-x-3 sm:-space-x-4 py-1">
                 {(myPlayer.cards && myPlayer.cards.length === 3 ? myPlayer.cards : ['??', '??', '??']).map((c, idx) => (
-                  <PlayingCard
+                  <div
                     key={idx}
-                    card={c}
-                    size="md"
-                    isFaceDown={!isSeen && room.status !== 'round_ended'}
-                  />
+                    className={`transition-all duration-300 transform ${
+                      idx === 0
+                        ? '-rotate-6 -translate-y-0.5 hover:-translate-y-2'
+                        : idx === 1
+                        ? 'rotate-0 -translate-y-2 z-10 scale-105 hover:-translate-y-4'
+                        : 'rotate-6 -translate-y-0.5 hover:-translate-y-2'
+                    }`}
+                  >
+                    <PlayingCard
+                      card={c}
+                      size="md"
+                      isFaceDown={!isSeen && room.status !== 'round_ended'}
+                    />
+                  </div>
                 ))}
               </div>
 

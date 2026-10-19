@@ -119,8 +119,9 @@ describe('tour document', () => {
 });
 
 describe('itinerary', () => {
-  it('lets any verified account tick an item off', async () => {
-    await assertSucceeds(updateDoc(doc(dbFor(STRANGER), TOUR, 'itinerary', '1'), { done: true }));
+  it('lets only admins tick an item off', async () => {
+    await assertFails(updateDoc(doc(dbFor(STRANGER), TOUR, 'itinerary', '1'), { done: true }));
+    await assertSucceeds(updateDoc(doc(dbFor(ADMIN), TOUR, 'itinerary', '1'), { done: true }));
   });
 
   it('lets only admins change the text of an item', async () => {
@@ -146,29 +147,28 @@ describe('members', () => {
 });
 
 describe('expenses', () => {
-  it('records the author on new expenses and rejects spoofed authors', async () => {
-    const db = dbFor(FAMILY);
-    await assertSucceeds(
-      setDoc(doc(db, TOUR, 'expenses', '3'), { id: 3, title: 'খাবার', amount: 300, addedByEmail: FAMILY }),
-    );
+  it('lets only admins add expenses, recorded under their own name', async () => {
     await assertFails(
-      setDoc(doc(db, TOUR, 'expenses', '4'), { id: 4, title: 'খাবার', amount: 300, addedByEmail: ADMIN }),
+      setDoc(doc(dbFor(FAMILY), TOUR, 'expenses', '3'), { id: 3, title: 'খাবার', amount: 300, addedByEmail: FAMILY }),
+    );
+    await assertSucceeds(
+      setDoc(doc(dbFor(ADMIN), TOUR, 'expenses', '3'), { id: 3, title: 'খাবার', amount: 300, addedByEmail: ADMIN }),
     );
   });
 
-  it('lets only the author or an admin correct an amount', async () => {
+  it('lets only admins correct an amount', async () => {
+    await assertFails(updateDoc(doc(dbFor(FAMILY), TOUR, 'expenses', '1'), { amount: 550 }));
     await assertFails(updateDoc(doc(dbFor(OTHER), TOUR, 'expenses', '1'), { amount: 550 }));
-    await assertSucceeds(updateDoc(doc(dbFor(FAMILY), TOUR, 'expenses', '1'), { amount: 550 }));
     await assertSucceeds(updateDoc(doc(dbFor(ADMIN), TOUR, 'expenses', '2'), { amount: 250 }));
   });
 
   it('does not let anyone change who added an expense', async () => {
-    await assertFails(updateDoc(doc(dbFor(FAMILY), TOUR, 'expenses', '1'), { addedByEmail: OTHER }));
+    await assertFails(updateDoc(doc(dbFor(ADMIN), TOUR, 'expenses', '1'), { addedByEmail: OTHER }));
   });
 
-  it('lets only the author or an admin delete an expense', async () => {
+  it('lets only admins delete an expense', async () => {
+    await assertFails(deleteDoc(doc(dbFor(FAMILY), TOUR, 'expenses', '1')));
     await assertFails(deleteDoc(doc(dbFor(OTHER), TOUR, 'expenses', '1')));
-    await assertSucceeds(deleteDoc(doc(dbFor(FAMILY), TOUR, 'expenses', '1')));
     await assertSucceeds(deleteDoc(doc(dbFor(ADMIN), TOUR, 'expenses', '2')));
   });
 });
@@ -184,9 +184,13 @@ describe('notices', () => {
 });
 
 describe('checklist', () => {
-  it('lets any verified account add and tick checklist items', async () => {
-    await assertSucceeds(setDoc(doc(dbFor(STRANGER), TOUR, 'checklist', 'c1'), { id: 'c1', title: 'টর্চ', done: false }));
-    await assertSucceeds(updateDoc(doc(dbFor(FAMILY), TOUR, 'checklist', 'c1'), { done: true }));
+  it('lets only admins add, tick or remove checklist items', async () => {
+    await assertFails(setDoc(doc(dbFor(STRANGER), TOUR, 'checklist', 'c1'), { id: 'c1', item: 'টর্চ', checked: false }));
+    await assertSucceeds(setDoc(doc(dbFor(ADMIN), TOUR, 'checklist', 'c1'), { id: 'c1', item: 'টর্চ', checked: false }));
+    await assertFails(updateDoc(doc(dbFor(FAMILY), TOUR, 'checklist', 'c1'), { checked: true }));
+    await assertSucceeds(updateDoc(doc(dbFor(ADMIN), TOUR, 'checklist', 'c1'), { checked: true }));
+    await assertFails(deleteDoc(doc(dbFor(FAMILY), TOUR, 'checklist', 'c1')));
+    await assertSucceeds(deleteDoc(doc(dbFor(ADMIN), TOUR, 'checklist', 'c1')));
   });
 });
 
@@ -199,8 +203,11 @@ describe('photo posts', () => {
     await assertFails(
       setDoc(doc(db, TOUR, 'posts', '3'), { id: 3, authorEmail: ADMIN, thumb: 'x', likes: [] }),
     );
+    await assertSucceeds(
+      setDoc(doc(db, TOUR, 'posts', '6'), { id: 6, authorEmail: FAMILY, thumb: 'x'.repeat(320000), likes: [] }),
+    );
     await assertFails(
-      setDoc(doc(db, TOUR, 'posts', '4'), { id: 4, authorEmail: FAMILY, thumb: 'x'.repeat(150001) }),
+      setDoc(doc(db, TOUR, 'posts', '4'), { id: 4, authorEmail: FAMILY, thumb: 'x'.repeat(350001) }),
     );
     await assertFails(
       setDoc(doc(db, TOUR, 'posts', '5'), { id: 5, authorEmail: FAMILY, image: 'x'.repeat(600001) }),
@@ -218,6 +225,11 @@ describe('photo posts', () => {
     const db = dbFor(OTHER);
     await assertSucceeds(updateDoc(doc(db, TOUR, 'posts', '1'), { views: 1 }));
     await assertFails(updateDoc(doc(db, TOUR, 'posts', '1'), { views: 2, caption: 'বদলে গেছে' }));
+  });
+
+  it('does not let anyone move a post to another author', async () => {
+    await assertFails(updateDoc(doc(dbFor(FAMILY), TOUR, 'posts', '1'), { authorEmail: OTHER }));
+    await assertFails(updateDoc(doc(dbFor(OTHER), TOUR, 'posts', '1'), { authorEmail: OTHER }));
   });
 
   it('lets only the author or an admin delete a post', async () => {
@@ -348,7 +360,7 @@ describe('game zone and typing status (stored under meta)', () => {
 
 describe('field bounds', () => {
   it('rejects negative, oversized and non-numeric expense amounts', async () => {
-    const db = dbFor(FAMILY);
+    const db = dbFor(ADMIN);
     await assertFails(setDoc(doc(db, TOUR, 'expenses', '60'), { id: 60, title: 'ভুল', amount: -5, addedByEmail: FAMILY }));
     await assertFails(setDoc(doc(db, TOUR, 'expenses', '61'), { id: 61, title: 'ভুল', amount: 10000001, addedByEmail: FAMILY }));
     await assertFails(setDoc(doc(db, TOUR, 'expenses', '62'), { id: 62, title: 'ভুল', amount: 'বেশি', addedByEmail: FAMILY }));
@@ -362,8 +374,8 @@ describe('field bounds', () => {
   });
 
   it('caps checklist item text and post captions', async () => {
-    await assertFails(setDoc(doc(dbFor(FAMILY), TOUR, 'checklist', 'long'), { id: 'long', item: 'x'.repeat(501), checked: false }));
-    await assertSucceeds(setDoc(doc(dbFor(FAMILY), TOUR, 'checklist', 'ok'), { id: 'ok', item: 'x'.repeat(500), checked: false }));
+    await assertFails(setDoc(doc(dbFor(ADMIN), TOUR, 'checklist', 'long'), { id: 'long', item: 'x'.repeat(501), checked: false }));
+    await assertSucceeds(setDoc(doc(dbFor(ADMIN), TOUR, 'checklist', 'ok'), { id: 'ok', item: 'x'.repeat(500), checked: false }));
     await assertFails(setDoc(doc(dbFor(FAMILY), TOUR, 'posts', '70'), { id: 70, authorEmail: FAMILY, thumb: 'x', caption: 'x'.repeat(1001), likes: [] }));
   });
 

@@ -201,7 +201,7 @@ export function getVideoMetadata(fileOrBlob) {
  * Captures a video frame at a given time and outputs a compressed JPEG DataURL.
  * Suitable for instant cover thumbnail display in Firestore.
  */
-export function captureVideoFrame(fileOrBlobOrUrl, seekTime = 0.5, { maxWidth = 640, maxHeight = 640, quality = 0.72 } = {}) {
+export function captureVideoFrame(fileOrBlobOrUrl, seekTime = 0.5, { maxWidth = 720, maxHeight = 1280, quality = 0.82 } = {}) {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     video.preload = 'auto';
@@ -254,6 +254,8 @@ export function captureVideoFrame(fileOrBlobOrUrl, seekTime = 0.5, { maxWidth = 
           throw new Error('Canvas context unavailable');
         }
 
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', quality);
 

@@ -1,189 +1,188 @@
 rules_version = '2';
 
-// Data model (see src/services/tourStore.js):
-//   tours/coxsbazar2026                  trip details, meeting point, schema marker
-//   tours/coxsbazar2026/itinerary/*      day plan items
-//   tours/coxsbazar2026/members/*        family members and deposits
-//   tours/coxsbazar2026/expenses/*       spending entries
-//   tours/coxsbazar2026/checklist/*      packing checklist
-//   tours/coxsbazar2026/notices/*        notice board
-//   tours/coxsbazar2026/posts/*          photo posts (thumbnail + Drive link)
-//   tours/coxsbazar2026/channels/{id}/messages/*   chat
-//   tours/coxsbazar2026/locations/{email}          live location, one per person
-//   tours/coxsbazar2026/profiles/{email}           personal profile, one per person
-//   tours/coxsbazar2026/meta/migration             upgrade lock and status (admins only)
-//   config/access                                  admin list (read by signed-in accounts)
-//
-// Who may do what:
-// - Any Google account with a verified email can read the trip. It can write only what it
-//   owns: its own expenses, posts, chat messages, location and profile. Any signed-in
-//   account can add or remove checklist items, and tick itinerary items (the `done` field
-//   only).
-// - Admins (the emails in config/access.admins) change the trip details, the itinerary,
-//   the roster and deposits, and the notice board, and they can delete other people's
-//   records. These drive the safety screen and the money, so they are not open to every
-//   account.
-// - Records imported from the old single-document layout carry `migrated: true` and can
-//   only be written by an admin, so they keep their original authorship.
-//
-// Firestore applies read rules to each document a listener touches. The app listens to
-// whole collections for locations and profiles, so any signed-in account can read those.
-//
-// The admin list is set in the Firebase console, never from the app:
-//   config/access = { admins: ["a@example.com", ...] }
+// Tour 2026 Firestore Security Rules
+// Protects database from unauthenticated access, enforces field constraints,
+// and restricts administrative management (expenses, members, itinerary, checklist, notices)
+// strictly to the admin (rajbrur@gmail.com and config/access admins).
+// General users can read tour data and only create/update/delete their own
+// feed posts, reactions, comments, profile, and chat messages.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function access() {
-      return get(/databases/$(database)/documents/config/access).data;
-    }
-
-    function isSignedIn() {
+    // Signed in with a verified account. Anonymous and unverified accounts are refused.
+    function isAuthenticated() {
       return request.auth != null && request.auth.token.email_verified == true;
     }
 
     function isAdmin() {
-      return isSignedIn() && request.auth.token.email in access().admins;
-    }
-
-    function myEmail() {
-      return request.auth.token.email;
+      return isAuthenticated() && (
+        request.auth.token.email.lower() == 'rajbrur@gmail.com' ||
+        (exists(/databases/$(database)/documents/config/access) &&
+         request.auth.token.email.lower() in get(/databases/$(database)/documents/config/access).data.admins)
+      );
     }
 
     function fits(maxFields) {
       return request.resource.data.keys().size() <= maxFields;
     }
 
-    // Optional text fields must stay within a size bound. Large images are not
-    // allowed in Firestore documents; full-size photos live in Google Drive.
     function textWithin(field, maxLength) {
       return !(field in request.resource.data)
         || (request.resource.data[field] is string && request.resource.data[field].size() <= maxLength);
     }
 
-    // Money and deposits must be plain numbers inside the trip's range (1 Crore taka).
     function isPositiveBoundedNumber(field, maxNum) {
       return !(field in request.resource.data)
         || (request.resource.data[field] is number && request.resource.data[field] >= 0 && request.resource.data[field] <= maxNum);
     }
 
-    function onlyChanged(keys) {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
-    }
-
-    // The admin list. Signed-in accounts can read it so the app can show admin-only
-    // controls. Nobody can change it from the app.
+    // Config access document (if present)
     match /config/{docId} {
-      allow read: if isSignedIn();
+      allow read: if isAuthenticated();
       allow write: if false;
     }
 
     match /tours/{tourId} {
-      allow read: if isSignedIn();
+      allow read: if isAuthenticated();
+      // Trip details change only by an admin, recorded as updatedBy that same admin.
+      // Legacy array fields are rejected so an old client cannot write them back.
       allow create, update: if isAdmin()
+        && fits(20)
         && request.resource.data.updatedBy.uid == request.auth.uid
-        && fits(20);
+        && !('expenses' in request.resource.data)
+        && !('discussions' in request.resource.data)
+        && !('userProfiles' in request.resource.data);
       allow delete: if false;
 
       match /itinerary/{itemId} {
-        allow read: if isSignedIn();
-        allow create: if isAdmin() && fits(25) && textWithin('notes', 2000);
-        allow update: if (isAdmin() && fits(25) && textWithin('notes', 2000))
-          || (isSignedIn() && onlyChanged(['done']));
+        allow read: if isAuthenticated();
+        allow create, update: if isAdmin() && fits(25) && textWithin('notes', 2000);
         allow delete: if isAdmin();
       }
 
       match /members/{memberId} {
-        allow read: if isSignedIn();
-        allow create, update: if isAdmin() && fits(25) && isPositiveBoundedNumber('deposit', 10000000);
+        allow read: if isAuthenticated();
+        allow create, update: if isAdmin()
+          && fits(25)
+          && isPositiveBoundedNumber('deposit', 10000000);
         allow delete: if isAdmin();
       }
 
       match /expenses/{expenseId} {
-        allow read: if isSignedIn();
-        allow create: if ((isSignedIn() && request.resource.data.addedByEmail == myEmail())
-            || (isAdmin() && request.resource.data.migrated == true))
+        allow read: if isAuthenticated();
+        allow create: if isAdmin()
           && fits(25)
           && isPositiveBoundedNumber('amount', 10000000)
           && textWithin('title', 300);
-        allow update: if ((isSignedIn() && resource.data.addedByEmail == myEmail()) || isAdmin())
-          && request.resource.data.addedByEmail == resource.data.addedByEmail
+        // The recorded author never changes, so an edit cannot move an expense to someone else.
+        allow update: if isAdmin()
           && fits(25)
           && isPositiveBoundedNumber('amount', 10000000)
-          && textWithin('title', 300);
-        allow delete: if isSignedIn()
-          && (resource.data.addedByEmail == myEmail() || isAdmin());
+          && textWithin('title', 300)
+          && request.resource.data.get('addedByEmail', null) == resource.data.get('addedByEmail', null);
+        allow delete: if isAdmin();
       }
 
       match /checklist/{itemId} {
-        allow read: if isSignedIn();
-        allow create, update: if isSignedIn() && fits(15) && textWithin('item', 500);
-        allow delete: if isSignedIn();
+        allow read: if isAuthenticated();
+        allow create, update: if isAdmin() && fits(15) && textWithin('text', 500) && textWithin('item', 500);
+        allow delete: if isAdmin();
       }
 
       match /notices/{noticeId} {
-        allow read: if isSignedIn();
+        allow read: if isAuthenticated();
         allow create, update: if isAdmin() && fits(20) && textWithin('content', 4000);
         allow delete: if isAdmin();
       }
 
       match /posts/{postId} {
-        allow read: if isSignedIn();
-        allow create: if ((isSignedIn() && request.resource.data.authorEmail == myEmail())
-            || (isAdmin() && request.resource.data.migrated == true))
+        allow read: if isAuthenticated();
+        // A new post names its author, so nobody can post in someone else's name.
+        // Imports from the old layout are the exception, and only an admin can make them.
+        allow create: if isAuthenticated()
+          && (
+            request.resource.data.get('authorEmail', null) == request.auth.token.email.lower() ||
+            (isAdmin() && request.resource.data.migrated == true)
+          )
           && fits(35)
-          && textWithin('thumb', 150000)
+          && textWithin('thumb', 350000)
           && textWithin('caption', 1000)
           && textWithin('image', 600000);
-        allow update: if isSignedIn()
-          && request.resource.data.authorEmail == resource.data.authorEmail
+        allow update: if isAuthenticated()
           && fits(35)
-          && textWithin('thumb', 150000)
+          && textWithin('thumb', 350000)
           && textWithin('caption', 1000)
-          && (resource.data.authorEmail == myEmail() || onlyChanged(['likes', 'comments', 'views']));
-        allow delete: if isSignedIn()
-          && (resource.data.authorEmail == myEmail() || isAdmin());
+          && textWithin('image', 600000)
+          && request.resource.data.get('authorEmail', null) == resource.data.get('authorEmail', null)
+          && (
+            isAdmin() ||
+            (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower()) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comments', 'views'])
+          );
+        allow delete: if isAuthenticated()
+          && (
+            isAdmin() ||
+            (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower())
+          );
       }
 
       match /channels/{channelId}/messages/{messageId} {
-        allow read: if isSignedIn() && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans'];
-        allow create: if channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans']
-          && ((isSignedIn() && request.resource.data.senderEmail == myEmail())
-              || (isAdmin() && request.resource.data.migrated == true))
+        allow read: if isAuthenticated() && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans'];
+        // A new message names its sender, so nobody can post as someone else.
+        allow create: if isAuthenticated()
+          && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans']
+          && (
+            request.resource.data.get('senderEmail', null) == request.auth.token.email.lower() ||
+            (isAdmin() && request.resource.data.migrated == true)
+          )
           && fits(20)
           && textWithin('text', 4000);
-        allow update: if isSignedIn()
+        allow update: if isAuthenticated()
           && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans']
-          && request.resource.data.senderEmail == resource.data.senderEmail
-          && (resource.data.senderEmail == myEmail() || onlyChanged(['reactions']));
-        allow delete: if isSignedIn()
-          && (resource.data.senderEmail == myEmail() || isAdmin());
+          && fits(20)
+          && (
+            isAdmin() ||
+            (resource.data.senderEmail != null && request.auth.token.email.lower() == resource.data.senderEmail.lower()) ||
+            (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower()) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+          );
+        allow delete: if isAuthenticated()
+          && (
+            isAdmin() ||
+            (resource.data.senderEmail != null && request.auth.token.email.lower() == resource.data.senderEmail.lower()) ||
+            (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower())
+          );
       }
 
       match /locations/{email} {
-        allow read: if isSignedIn();
-        allow create, update: if isSignedIn() && email == myEmail() && fits(20);
-        allow delete: if isSignedIn() && (email == myEmail() || isAdmin());
+        allow read: if isAuthenticated();
+        // Only the owner writes a live location. Admins may clear one (delete below).
+        allow create, update: if isAuthenticated()
+          && request.auth.token.email.lower() == email.lower()
+          && fits(20);
+        allow delete: if isAuthenticated()
+          && (isAdmin() || request.auth.token.email.lower() == email.lower());
       }
 
       // Game rooms, their index and typing status are shared state that any signed-in
-      // account writes. Everything else under meta (the migration lock) stays admin-only.
+      // account writes. The upgrade lock (meta/migration) and anything else are admin-only.
       match /meta/{docId} {
-        allow read: if isSignedIn();
+        allow read: if isAuthenticated();
         allow write: if isAdmin()
-          || (isSignedIn() && (docId == 'gamerooms_list'
+          || (isAuthenticated() && (docId == 'gamerooms_list'
             || docId.matches('gameroom_.*')
             || docId.matches('typing_.*')));
       }
 
       match /profiles/{email} {
-        allow read: if isSignedIn();
-        allow create, update: if isSignedIn()
-          && (email == myEmail() || isAdmin())
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated()
+          && (isAdmin() || request.auth.token.email.lower() == email.lower())
           && fits(25)
-          && textWithin('customPhotoURL', 150000);
-        allow delete: if isAdmin();
+          && textWithin('customPhotoURL', 200000);
+        allow delete: if isAuthenticated()
+          && (isAdmin() || request.auth.token.email.lower() == email.lower());
       }
     }
 

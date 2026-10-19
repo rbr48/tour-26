@@ -35,16 +35,17 @@ export async function compressVideo(inputPath, outputPath) {
   }
 
   // FFmpeg command arguments:
-  // - Scale down to max 720px width/height while maintaining even dimensions for libx264
-  // - CRF 26 provides great visual quality on mobile screens with ~70-85% file size reduction
+  // - True 720p scaling: For landscape (iw >= ih), scale height to min(720, ih).
+  //   For portrait/reels (ih > iw), scale width to min(720, iw) producing true 720x1280 HD vertical video.
+  // - CRF 23 provides crisp, artifact-free high-definition mobile video while keeping file size small.
   // - movflags +faststart moves moov atom to the front for instant progressive playback
   const args = [
     '-y',
     '-i', inputPath,
-    '-vf', "scale='if(gt(iw,ih),min(720,iw),-2)':'if(gt(iw,ih),-2,min(720,ih))'",
+    '-vf', "scale='if(gte(iw,ih),-2,min(720,iw))':'if(gte(iw,ih),min(720,ih),-2)'",
     '-c:v', 'libx264',
-    '-preset', 'veryfast',
-    '-crf', '26',
+    '-preset', 'faster',
+    '-crf', '23',
     '-c:a', 'aac',
     '-b:a', '128k',
     '-movflags', '+faststart',

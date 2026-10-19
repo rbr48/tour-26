@@ -1,23 +1,23 @@
 import { compressImage } from '../utils/imageCompressor';
 import { uploadToGoogleDrive } from './googleDriveService';
 
-// Firestore keeps only a small preview of each photo. The full-size copy lives in
-// the shared Google Drive folder, so no document approaches the 1 MiB limit.
-const THUMB_MAX_SIDE = 640;
-const THUMB_MAX_CHARS = 120000;
-const PROFILE_PHOTO_MAX_CHARS = 150000;
-const PROFILE_PHOTO_SIDE = 256;
+// Firestore subcollection document keeps a sharp, high-definition preview of each photo.
+// The original/full-size copy lives in the shared Google Drive folder.
+const THUMB_MAX_SIDE = 1080;
+const THUMB_MAX_CHARS = 320000;
+const PROFILE_PHOTO_MAX_CHARS = 180000;
+const PROFILE_PHOTO_SIDE = 384;
 
 export const isDataImage = (value) => typeof value === 'string' && value.startsWith('data:image');
 
-/** Small JPEG preview (about 640px, at most ~120 KB as base64). */
+/** High-definition JPEG preview (up to 1080px Instagram standard, at most ~240 KB). */
 export async function makeThumbnail(dataUrl) {
   let side = THUMB_MAX_SIDE;
-  let quality = 0.7;
+  let quality = 0.82;
   let result = await compressImage(dataUrl, side, side, quality);
-  for (let attempt = 0; attempt < 4 && result.length > THUMB_MAX_CHARS; attempt += 1) {
-    side = Math.round(side * 0.8);
-    quality = Math.max(0.4, quality - 0.1);
+  for (let attempt = 0; attempt < 3 && result.length > THUMB_MAX_CHARS; attempt += 1) {
+    side = Math.round(side * 0.88);
+    quality = Math.max(0.68, quality - 0.05);
     result = await compressImage(result, side, side, quality);
   }
   return result;

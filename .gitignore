@@ -45,3 +45,4 @@ extracted_chat/
 *.bak
 backup-*.json
 tour_data.json
+*service-account*.json

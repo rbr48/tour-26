@@ -27,12 +27,32 @@ import {
   Clock,
   Edit3,
   Eye,
+  Bookmark,
+  Grid3X3,
+  LayoutList,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Users,
+  Tag,
+  Calendar,
+  WifiOff,
+  RefreshCw,
+  MessageSquare,
+  Compass,
+  Utensils,
+  ShieldAlert,
+  Copy,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { useBackHandler } from '../utils/backNavigation';
 import VideoTrimmerModal from './VideoTrimmerModal';
 import ReelsPlayerModal from './ReelsPlayerModal';
+import StoryViewerModal from './StoryViewerModal';
+import InstagramCommentSheet from './InstagramCommentSheet';
+import InstagramPostCard from './InstagramPostCard';
 import UserAvatar from './UserAvatar';
+import { triggerHaptic } from '../utils/haptics';
 import { formatDuration, PRODUCTION_ORIGIN } from '../utils/videoHelper';
 import { saveLocalVideo } from '../utils/localVideoCache';
 import { uploadReelVideo } from '../utils/reelUploader';
@@ -52,6 +72,35 @@ import {
 } from '../services/photos';
 import { newId } from '../services/tourStore';
 import { connectGoogleDrive } from '../firebase';
+import {
+  TOUR_DAYS,
+  getTourDayById,
+  getPostTourDay,
+  getSuggestedTourLocation,
+  getCurrentTourDay,
+} from '../utils/tourSchedule';
+import {
+  enqueueOfflinePost,
+  getOfflineQueue,
+  drainOfflineQueue,
+} from '../utils/offlineQueue';
+
+// Instagram Preset CSS Filters
+export const IG_FILTERS = [
+  { id: 'normal', name: 'Normal', css: 'none', label: 'নরমাল' },
+  { id: 'clarendon', name: 'Clarendon', css: 'contrast(1.2) saturate(1.25)', label: 'ক্ল্যারেন্ডন' },
+  { id: 'juno', name: 'Juno', css: 'contrast(1.15) saturate(1.3) brightness(1.04)', label: 'জুনো' },
+  { id: 'valencia', name: 'Valencia', css: 'contrast(1.08) brightness(1.08) sepia(0.18)', label: 'ভ্যালেন্সিয়া' },
+  { id: 'lark', name: 'Lark', css: 'contrast(0.95) brightness(1.12) saturate(1.15)', label: 'লার্ক' },
+  { id: 'sunset', name: 'Sunset', css: 'sepia(0.22) saturate(1.35) contrast(1.12)', label: 'সূর্যাস্ত' },
+  { id: 'moon', name: 'Moon (B&W)', css: 'grayscale(1) contrast(1.15) brightness(1.05)', label: 'মুন' },
+  { id: 'vintage', name: 'Vintage', css: 'sepia(0.35) contrast(0.95) brightness(0.95)', label: 'ভিন্টেজ' },
+];
+
+export const getFilterCss = (filterId) => {
+  const match = IG_FILTERS.find((f) => f.id === filterId);
+  return match ? match.css : 'none';
+};
 
 // Bengali numeral formatter
 export const toBnNum = (n) => String(n).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[d]);
@@ -93,7 +142,7 @@ export const photoSource = (post) => {
   } else if (post.imageUrl && typeof post.imageUrl === 'string') {
     raw = post.imageUrl;
   } else if (post.driveFileId) {
-    return `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1000`;
+    return `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1600`;
   } else {
     raw = post.image || post.thumb || null;
   }
@@ -123,6 +172,7 @@ export default function InstagramFeed({
   currentUser = null,
   currentProfile = {},
   members = [],
+  userProfiles = {},
   onAddPost,
   onLikePost,
   onAddComment,
@@ -130,11 +180,39 @@ export default function InstagramFeed({
   onUpdatePost,
   onViewPost,
   onCommentReaction,
+  onShareToDiscussion = null,
 }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeStoryFilter, setActiveStoryFilter] = useState('all');
+  const [activeTourDayFilter, setActiveTourDayFilter] = useState(() => {
+    try {
+      return localStorage.getItem('tour_active_day_filter') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
   const [previewMedia, setPreviewMedia] = useState(null);
   const [sharingPostId, setSharingPostId] = useState(null);
+
+  // In-app Share Sheet modal state
+  const [shareModalPost, setShareModalPost] = useState(null);
+  const [shareFeedback, setShareFeedback] = useState('');
+
+  // Lightbox Zoom & Swipe state
+  const [lightboxZoom, setLightboxZoom] = useState(1);
+  const [lightboxTouchCoord, setLightboxTouchCoord] = useState({ start: null, end: null });
+  const lightboxLastTapRef = useRef(0);
+
+  // Offline Post Upload Queue state
+  const [offlineQueueCount, setOfflineQueueCount] = useState(() => {
+    try {
+      return getOfflineQueue().length;
+    } catch {
+      return 0;
+    }
+  });
+  const [isDrainingQueue, setIsDrainingQueue] = useState(false);
+  const [offlineNotification, setOfflineNotification] = useState('');
 
   // Deduplicated view tracker per session
   const viewedPostsRef = useRef(new Set());
@@ -165,6 +243,10 @@ export default function InstagramFeed({
       return '';
     }
   });
+
+  // Tour Day selector and Member Tagging state for new post
+  const [selectedTourDay, setSelectedTourDay] = useState('auto');
+  const [selectedTaggedMembers, setSelectedTaggedMembers] = useState([]);
 
   // Custom user locations persisted in localStorage
   const [customLocations, setCustomLocations] = useState(() => {
@@ -209,10 +291,156 @@ export default function InstagramFeed({
   const [editCaption, setEditCaption] = useState('');
   const [editLocation, setEditLocation] = useState('');
 
+  // Instagram Native Modals: Comments Bottom Sheet & Story Viewer
+  const [activeCommentPost, setActiveCommentPost] = useState(null);
+  const [storyViewer, setStoryViewer] = useState({ isOpen: false, memberIndex: 0 });
+
+  // Instagram Filter Selection for New Posts
+  const [selectedFilter, setSelectedFilter] = useState('normal');
+
+  // Photo Feed View Mode: 'feed' (vertical 4:5 cards) vs 'grid' (3x3 explore mosaic)
+  const [photoViewMode, setPhotoViewMode] = useState(() => {
+    try {
+      return localStorage.getItem('tour_photo_view_mode') || 'feed';
+    } catch {
+      return 'feed';
+    }
+  });
+
+  // Saved / Bookmarked Posts
+  const [savedPostIds, setSavedPostIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('tour_saved_posts') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    const handleSavedUpdated = () => {
+      try {
+        setSavedPostIds(JSON.parse(localStorage.getItem('tour_saved_posts') || '[]'));
+      } catch {}
+    };
+    window.addEventListener('tour_saved_updated', handleSavedUpdated);
+    window.addEventListener('storage', handleSavedUpdated);
+    return () => {
+      window.removeEventListener('tour_saved_updated', handleSavedUpdated);
+      window.removeEventListener('storage', handleSavedUpdated);
+    };
+  }, []);
+
+  const savedPosts = React.useMemo(() => {
+    return posts.filter((p) => savedPostIds.includes(p.id));
+  }, [posts, savedPostIds]);
+
+  // Group posts by author to construct genuine Instagram Stories
+  const membersWithStories = React.useMemo(() => {
+    const memberMap = new Map();
+    posts.forEach((p) => {
+      const author = p.author?.trim();
+      if (!author) return;
+      if (!memberMap.has(author)) {
+        memberMap.set(author, {
+          memberName: author,
+          authorPhoto: p.authorPhoto,
+          posts: [],
+        });
+      }
+      memberMap.get(author).posts.push(p);
+    });
+    return Array.from(memberMap.values());
+  }, [posts]);
+
+  // Extract unique family member names for tagging
+  const familyMemberNames = React.useMemo(() => {
+    const set = new Set();
+    (members || []).forEach((m) => {
+      if (!m?.name) return;
+      const clean = m.name.split('/')[0].split('(')[0].trim();
+      if (clean) set.add(clean);
+    });
+    return Array.from(set);
+  }, [members]);
+
   // Phone Back Button Handlers for modals inside InstagramFeed
-  useBackHandler(Boolean(previewMedia), () => setPreviewMedia(null), 25);
+  useBackHandler(storyViewer.isOpen, () => setStoryViewer({ isOpen: false, memberIndex: 0 }), 28);
+  useBackHandler(Boolean(shareModalPost), () => setShareModalPost(null), 27);
+  useBackHandler(Boolean(activeCommentPost), () => setActiveCommentPost(null), 26);
+  useBackHandler(Boolean(previewMedia), () => {
+    setPreviewMedia(null);
+    setLightboxZoom(1);
+  }, 25);
   useBackHandler(Boolean(editingPost), () => setEditingPost(null), 20);
   useBackHandler(showCreateModal, () => setShowCreateModal(false), 15);
+
+  // Discussion Channel Sharing Handler
+  const handleShareToDiscussionChannel = (channelId, post) => {
+    if (!post) return;
+    triggerHaptic('success');
+    const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
+    const profilePhoto = currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL;
+    const media = photoSource(post);
+
+    const shareMessage = {
+      id: newId(),
+      author: authorName,
+      senderEmail: (currentUser?.email || '').toLowerCase() || 'member@tour.family',
+      userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
+      text: `📸 [ইনস্টাফিড শেয়ার]\n${post.author}: "${post.caption || 'আনন্দঘন স্মৃতি'}"\n📍 ${post.location || 'কক্সবাজার'}\n\n👉 ফিডে দেখুন: ${window.location.origin}/#feed`,
+      photoUrl: media || null,
+      time: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
+      timestamp: Date.now(),
+      reactions: {},
+    };
+
+    if (onShareToDiscussion) {
+      onShareToDiscussion(channelId, shareMessage);
+    }
+
+    setShareFeedback(`✓ #${channelId} চ্যানেলে সফলভাবে শেয়ার করা হয়েছে!`);
+    setTimeout(() => {
+      setShareFeedback('');
+      setShareModalPost(null);
+    }, 1200);
+  };
+
+  // Offline Upload Queue Drain Handler
+  const handleDrainOfflineQueue = async () => {
+    if (isDrainingQueue) return;
+    setIsDrainingQueue(true);
+    setOfflineNotification('অফলাইন পোস্ট আপলোড হচ্ছে...');
+    try {
+      await drainOfflineQueue(async (queuedPost) => {
+        await onAddPost(queuedPost);
+      });
+      const remaining = getOfflineQueue().length;
+      setOfflineQueueCount(remaining);
+      if (remaining === 0) {
+        setOfflineNotification('✓ সব অফলাইন পোস্ট সফলভাবে আপলোড সম্পন্ন হয়েছে!');
+      } else {
+        setOfflineNotification(`⚠️ এখনও ${remaining}টি পোস্ট বাকি রয়েছে`);
+      }
+    } catch (err) {
+      console.warn('Queue drain error:', err);
+      setOfflineNotification('আপলোড করার সময় সমস্যা হয়েছে। আবার চেষ্টা করুন।');
+    } finally {
+      setIsDrainingQueue(false);
+      setTimeout(() => setOfflineNotification(''), 3500);
+    }
+  };
+
+  useEffect(() => {
+    const handleOnline = () => {
+      const q = getOfflineQueue();
+      setOfflineQueueCount(q.length);
+      if (q.length > 0) {
+        handleDrainOfflineQueue();
+      }
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
 
   const handleStartEditPost = (post) => {
     setEditingPost(post);
@@ -415,7 +643,7 @@ export default function InstagramFeed({
             return null;
           }
           try {
-            return await compressImageFile(file, 900, 900, 0.7);
+            return await compressImageFile(file, 1600, 1600, 0.85);
           } catch (err) {
             console.warn('Image compression fallback to direct FileReader:', err);
             return new Promise((resolve) => {
@@ -604,6 +832,8 @@ export default function InstagramFeed({
       const postId = newId();
       const profilePhoto = currentProfile?.customPhotoURL;
 
+      const finalTourDay = selectedTourDay === 'auto' ? getCurrentTourDay().id : selectedTourDay;
+
       const newReelPost = {
         id: postId,
         type: 'reel',
@@ -614,8 +844,11 @@ export default function InstagramFeed({
           : (currentUser?.photoURL || null),
         caption: postCaption,
         location: finalLocation,
+        tourDay: finalTourDay,
+        taggedMembers: selectedTaggedMembers,
         likes: [],
         comments: [],
+        views: 0,
         videoUrl: (trimmedReelData.videoUrl && !trimmedReelData.videoUrl.startsWith('blob:')) ? trimmedReelData.videoUrl : null,
         startTime: trimmedReelData.startTime || 0,
         endTime: trimmedReelData.endTime || trimmedReelData.duration || 0,
@@ -629,6 +862,17 @@ export default function InstagramFeed({
         driveViewUrl: null,
         createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' }),
       };
+
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        enqueueOfflinePost(newReelPost);
+        setOfflineQueueCount(getOfflineQueue().length);
+        setCaption('');
+        setTrimmedReelData(null);
+        setSelectedTaggedMembers([]);
+        setShowCreateModal(false);
+        alert('ইন্টারনেট সংযোগ না থাকায় আপনার রিলসটি অফলাইনে জমা রাখা হয়েছে। অনলাইনে এলে এটি স্বয়ংক্রিয়ভাবে আপলোড হবে! 📶');
+        return;
+      }
 
       // Storage & upload for video file if provided
       const fileToUpload = (trimmedReelData.videoSource instanceof Blob || trimmedReelData.videoSource instanceof File)
@@ -699,6 +943,7 @@ export default function InstagramFeed({
       setTrimmedReelData(null);
       setVideoSourceForTrimmer(null);
       setVideoUrlInput('');
+      setSelectedTaggedMembers([]);
       setIsCustomLocMode(false);
       setCustomLocInput('');
       try {
@@ -736,6 +981,7 @@ export default function InstagramFeed({
 
     const postId = newId();
     const profilePhoto = currentProfile?.customPhotoURL;
+    const finalTourDay = selectedTourDay === 'auto' ? getCurrentTourDay().id : selectedTourDay;
 
     const newPost = {
       id: postId,
@@ -746,8 +992,12 @@ export default function InstagramFeed({
         : (currentUser?.photoURL || null),
       caption: postCaption,
       location: finalLocation,
+      tourDay: finalTourDay,
+      taggedMembers: selectedTaggedMembers,
       likes: [],
       comments: [],
+      views: 0,
+      filter: selectedFilter || 'normal',
       images: thumbnailImages,
       thumb: thumbnailImages[0] || null,
       image: thumbnailImages[0] || null,
@@ -757,11 +1007,31 @@ export default function InstagramFeed({
       createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' }),
     };
 
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      enqueueOfflinePost(newPost);
+      setOfflineQueueCount(getOfflineQueue().length);
+      setCaption('');
+      setImageInput('');
+      setSelectedImages([]);
+      setSelectedFilter('normal');
+      setSelectedTaggedMembers([]);
+      setIsCustomLocMode(false);
+      setCustomLocInput('');
+      try {
+        localStorage.removeItem('tour_post_draft_caption');
+      } catch {}
+      setShowCreateModal(false);
+      alert('ইন্টারনেট সংযোগ না থাকায় পোস্টটি অফলাইনে জমা রাখা হয়েছে। অনলাইনে এলে এটি স্বয়ংক্রিয়ভাবে আপলোড হবে! 📶');
+      return;
+    }
+
     // 1. Post is added to feed and Firestore instantly!
     onAddPost(newPost);
     setCaption('');
     setImageInput('');
     setSelectedImages([]);
+    setSelectedFilter('normal');
+    setSelectedTaggedMembers([]);
     setIsCustomLocMode(false);
     setCustomLocInput('');
     try {
@@ -804,12 +1074,15 @@ export default function InstagramFeed({
     if (!text || !text.trim()) return;
 
     const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
+    const profilePhoto = currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL;
 
     onAddComment(postId, {
       id: Date.now(),
       user: authorName,
+      authorEmail: (currentUser?.email || '').toLowerCase() || 'member@tour.family',
+      userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
       text: text.trim(),
-      time: 'এইমাত্র'
+      time: 'এইমাত্র',
     });
 
     setCommentInputs({ ...commentInputs, [postId]: '' });
@@ -819,10 +1092,15 @@ export default function InstagramFeed({
   const isPostReel = (p) => Boolean(p && (p.type === 'reel' || p.videoUrl || p.video));
   const allReelPosts = posts.filter(isPostReel);
 
+  // Filter posts by Tour Day Highlights
+  const dayFilteredPosts = activeTourDayFilter === 'all'
+    ? posts
+    : posts.filter((p) => (p.tourDay || getPostTourDay(p)) === activeTourDayFilter);
+
   // Filter posts if story filter is clicked
   const filteredPosts = activeStoryFilter === 'all'
-    ? posts
-    : posts.filter(p => p.author?.includes(activeStoryFilter));
+    ? dayFilteredPosts
+    : dayFilteredPosts.filter((p) => p.author?.includes(activeStoryFilter));
 
   const filteredReelPosts = filteredPosts.filter(isPostReel);
   const filteredPhotoPosts = filteredPosts.filter((p) => !isPostReel(p));
@@ -902,6 +1180,44 @@ export default function InstagramFeed({
 
   return (
     <div className="max-w-xl mx-auto space-y-5 pb-8">
+      {/* Offline Upload Queue Status Banner */}
+      {offlineQueueCount > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border border-amber-300 p-3.5 rounded-3xl flex items-center justify-between gap-3 text-xs text-amber-950 shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <WifiOff size={16} />
+            </div>
+            <div className="min-w-0">
+              <p className="font-extrabold text-xs truncate">
+                {toBnNum(offlineQueueCount)}টি পোস্ট অফলাইন ড্রাফটে জমা আছে
+              </p>
+              <p className="text-[11px] text-amber-800 truncate">
+                ইন্টারনেট পেলেই স্বয়ংক্রিয়ভাবে ক্লাউডে আপলোড হবে
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleDrainOfflineQueue}
+            disabled={isDrainingQueue}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer text-xs shrink-0 disabled:opacity-50"
+          >
+            {isDrainingQueue ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <RefreshCw size={13} />
+            )}
+            <span>এখনই আপলোড</span>
+          </button>
+        </div>
+      )}
+
+      {offlineNotification && (
+        <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-2xl text-center animate-in fade-in">
+          {offlineNotification}
+        </div>
+      )}
+
       {/* Top Banner: InstaTour & Google Drive Backup Status */}
       <div className="bg-gradient-to-r from-purple-900 via-pink-900 to-rose-900 text-white p-4 sm:p-5 rounded-3xl shadow-md flex items-center justify-between border border-pink-700/50">
         <div>
@@ -1009,41 +1325,60 @@ export default function InstagramFeed({
         );
       })()}
 
-      {/* Sub-tab Switcher: Photos Feed vs Reels Shorts */}
-      <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+      {/* Sub-tab Switcher: Photos Feed vs Reels Shorts vs Saved Collection */}
+      <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 text-center">
         <button
           type="button"
           onClick={() => {
+            triggerHaptic('light');
             setFeedSubTab('photos');
             try { localStorage.setItem('tour_feed_subtab', 'photos'); } catch {}
           }}
-          className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer ${
+          className={`py-2 px-1.5 sm:px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
             feedSubTab === 'photos'
               ? 'bg-white text-teal-950 shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Camera size={15} className={feedSubTab === 'photos' ? 'text-pink-600' : 'text-slate-400'} />
-          <span>ফটো ফিড ({toBnNum(filteredPhotoPosts.length)})</span>
+          <Camera size={14} className={feedSubTab === 'photos' ? 'text-pink-600' : 'text-slate-400'} />
+          <span>ফটো ({toBnNum(filteredPhotoPosts.length)})</span>
         </button>
 
         <button
           type="button"
           onClick={() => {
+            triggerHaptic('light');
             setFeedSubTab('reels');
             try { localStorage.setItem('tour_feed_subtab', 'reels'); } catch {}
           }}
-          className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer ${
+          className={`py-2 px-1.5 sm:px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
             feedSubTab === 'reels'
               ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Film size={15} />
-          <span>ইনস্টা রিলস ({toBnNum(filteredReelPosts.length)})</span>
+          <Film size={14} />
+          <span>রিলস ({toBnNum(filteredReelPosts.length)})</span>
           {filteredReelPosts.length > 0 && (
-            <span className="w-2 h-2 rounded-full bg-amber-300 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-pulse" />
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic('light');
+            setFeedSubTab('saved');
+            try { localStorage.setItem('tour_feed_subtab', 'saved'); } catch {}
+          }}
+          className={`py-2 px-1.5 sm:px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+            feedSubTab === 'saved'
+              ? 'bg-white text-amber-950 shadow-xs ring-1 ring-amber-300'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Bookmark size={14} className={feedSubTab === 'saved' ? 'fill-amber-600 text-amber-600' : 'text-slate-400'} />
+          <span>সংরক্ষিত ({toBnNum(savedPosts.length)})</span>
         </button>
       </div>
 
@@ -1147,432 +1482,551 @@ export default function InstagramFeed({
             </div>
           )}
         </div>
+      ) : feedSubTab === 'saved' ? (
+        /* SAVED POSTS COLLECTION TAB */
+        <div className="space-y-4">
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <Bookmark size={20} className="fill-amber-600 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-slate-800">সংরক্ষিত পোস্টসমূহ</h3>
+                <p className="text-[11px] text-slate-500">
+                  {toBnNum(savedPosts.length)}টি প্রিয় ছবি ও মুহূর্ত সেভ করা আছে
+                </p>
+              </div>
+            </div>
+
+            {savedPosts.length > 0 && (
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setPhotoViewMode('feed');
+                    try { localStorage.setItem('tour_photo_view_mode', 'feed'); } catch {}
+                  }}
+                  className={`p-1.5 rounded-lg transition cursor-pointer ${
+                    photoViewMode === 'feed'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                  title="ফিড ভিউ"
+                  aria-label="ফিড ভিউ"
+                >
+                  <LayoutList size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setPhotoViewMode('grid');
+                    try { localStorage.setItem('tour_photo_view_mode', 'grid'); } catch {}
+                  }}
+                  className={`p-1.5 rounded-lg transition cursor-pointer ${
+                    photoViewMode === 'grid'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                  title="গ্রিড ভিউ"
+                  aria-label="গ্রিড ভিউ"
+                >
+                  <Grid3X3 size={16} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {savedPosts.length > 0 ? (
+            photoViewMode === 'grid' ? (
+              /* 3x3 Grid Mode for Saved Posts */
+              <div className="grid grid-cols-3 gap-1 sm:gap-2">
+                {savedPosts.map((post) => {
+                  const mediaSrc = photoSource(post);
+                  const isCarousel = (post.images || []).length > 1;
+                  return (
+                    <div
+                      key={post.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        recordPostView(post.id);
+                        if (post.type === 'reel') {
+                          const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
+                          setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                        } else {
+                          const imgs = (post.images && post.images.length > 0) ? post.images : [mediaSrc];
+                          setPreviewMedia({ images: imgs, index: 0, post });
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          recordPostView(post.id);
+                          if (post.type === 'reel') {
+                            const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
+                            setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                          } else {
+                            const imgs = (post.images && post.images.length > 0) ? post.images : [mediaSrc];
+                            setPreviewMedia({ images: imgs, index: 0, post });
+                          }
+                        }
+                      }}
+                      className="relative aspect-square bg-slate-900 rounded-xl overflow-hidden cursor-pointer group shadow-2xs select-none"
+                    >
+                      <img
+                        src={mediaSrc}
+                        alt={post.caption || 'Saved post'}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        style={{ filter: getFilterCss(post.filter) }}
+                        loading="lazy"
+                      />
+                      {isCarousel && (
+                        <span className="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-xs text-white p-1 rounded-md text-[10px]">
+                          <Images size={12} />
+                        </span>
+                      )}
+                      {post.type === 'reel' && (
+                        <span className="absolute top-1.5 right-1.5 bg-pink-600/80 backdrop-blur-xs text-white p-1 rounded-md text-[10px]">
+                          <Film size={12} />
+                        </span>
+                      )}
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-3 text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <span className="flex items-center gap-1 drop-shadow-md">
+                          <Heart size={14} className="fill-white" />
+                          {toBnNum((post.likes || []).length)}
+                        </span>
+                        <span className="flex items-center gap-1 drop-shadow-md">
+                          <Eye size={14} />
+                          {toBnNum(post.views || 0)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Feed Mode for Saved Posts */
+              <div className="space-y-4 sm:space-y-6">
+                {savedPosts.map((post) => {
+                  const postHasStory = membersWithStories.some((m) => m.memberName === post.author);
+                  return (
+                    <InstagramPostCard
+                      key={post.id}
+                      post={post}
+                      currentUser={currentUser}
+                      currentProfile={currentProfile}
+                      members={members}
+                      userProfiles={userProfiles}
+                      onLikePost={onLikePost}
+                      onViewPost={recordPostView}
+                      onOpenComments={(p) => {
+                        triggerHaptic('light');
+                        setActiveCommentPost(p);
+                      }}
+                      onShareMedia={handleShareMedia}
+                      onOpenShareModal={(p) => setShareModalPost(p)}
+                      onManualDriveBackup={handleManualDriveBackup}
+                      onStartEditPost={handleStartEditPost}
+                      onDeletePost={onDeletePost}
+                      onOpenReel={(p) => {
+                        const rIdx = allReelPosts.findIndex((r) => r.id === p.id);
+                        setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                      }}
+                      onOpenFullscreenImage={(media) => {
+                        if (typeof media === 'string') {
+                          const imgs = (post.images && post.images.length > 0) ? post.images : [media];
+                          setPreviewMedia({ images: imgs, index: 0, post });
+                        } else {
+                          setPreviewMedia({ ...media, post: media.post || post });
+                        }
+                      }}
+                      manualDriveUploadId={manualDriveUploadId}
+                      hasStory={postHasStory}
+                      onOpenStory={(author) => {
+                        const mIdx = membersWithStories.findIndex((m) => m.memberName === author);
+                        if (mIdx >= 0) {
+                          setStoryViewer({ isOpen: true, memberIndex: mIdx });
+                        }
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            )
+          ) : (
+            <div className="p-8 bg-white rounded-3xl border border-slate-200 text-center space-y-3">
+              <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto text-2xl">
+                <Bookmark size={26} className="fill-amber-600/20 text-amber-600" />
+              </div>
+              <h4 className="font-bold text-slate-800 text-sm">কোনো সংরক্ষিত পোস্ট নেই!</h4>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                ফিডের যেকোনো ছবির নিচে বা রিলসের নিচে থাকা বুকমার্ক আইকনে ট্যাপ করে আপনার পছন্দের পোস্টগুলো এখানে সেভ করে রাখতে পারেন।
+              </p>
+              <button
+                type="button"
+                onClick={() => setFeedSubTab('photos')}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+              >
+                📸 ফিড ব্রাউজ করুন
+              </button>
+            </div>
+          )}
+        </div>
       ) : (
         /* REGULAR PHOTO FEED MODE */
         <>
-          {/* Stories / Member Filters Bar */}
-          <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center gap-3 overflow-x-auto">
+          {/* Authentic Instagram Stories Tray */}
+          <div className="bg-white py-3 px-2 border-b border-slate-200/80 flex items-center gap-3 overflow-x-auto scrollbar-none select-none">
+            {/* 1. Your Story Button */}
+            <div
+              onClick={() => {
+                triggerHaptic('light');
+                const myName = currentProfile?.displayName || currentUser?.displayName;
+                const myIdx = membersWithStories.findIndex((m) => m.memberName === myName);
+                if (myIdx >= 0) {
+                  setStoryViewer({ isOpen: true, memberIndex: myIdx });
+                } else {
+                  setCreatePostMode('photos');
+                  setShowCreateModal(true);
+                }
+              }}
+              className="flex flex-col items-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <div className="relative">
+                <div className="p-0.5 rounded-full bg-slate-200">
+                  <UserAvatar
+                    photoUrl={currentUser?.photoURL || currentProfile?.photoURL}
+                    name={currentUser?.displayName || currentProfile?.displayName || 'আমি'}
+                    size="w-14 h-14"
+                  />
+                </div>
+                <div className="absolute bottom-0 right-0 w-4.5 h-4.5 rounded-full bg-blue-500 border-2 border-white text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                  <Plus size={11} strokeWidth={3} />
+                </div>
+              </div>
+              <span className="text-[11px] font-medium text-slate-700">আপনার স্টোরি</span>
+            </div>
+
+            {/* 2. All Members Filter Option */}
             <button
-              onClick={() => setActiveStoryFilter('all')}
-              className={`flex flex-col items-center gap-1 cursor-pointer shrink-0 ${
-                activeStoryFilter === 'all' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setActiveStoryFilter('all');
+              }}
+              className={`flex flex-col items-center gap-1.5 cursor-pointer shrink-0 ${
+                activeStoryFilter === 'all' ? 'opacity-100' : 'opacity-65 hover:opacity-100'
               }`}
             >
-              <div className={`w-13 h-13 rounded-full p-0.5 flex items-center justify-center ${
-                activeStoryFilter === 'all'
-                  ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-amber-400 to-pink-600'
-                  : 'border border-slate-200 bg-slate-50'
-              }`}>
+              <div
+                className={`w-14 h-14 rounded-full p-0.5 flex items-center justify-center ${
+                  activeStoryFilter === 'all'
+                    ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-amber-400 to-pink-600'
+                    : 'border border-slate-300 bg-slate-100'
+                }`}
+              >
                 <div className="w-full h-full rounded-full bg-white flex items-center justify-center font-bold text-xs text-slate-800">
                   সবাই
                 </div>
               </div>
-              <span className="text-[10px] font-medium text-slate-700">সকল ফটো</span>
+              <span className="text-[11px] font-medium text-slate-700">সকল ফটো</span>
             </button>
 
-            {members.map(m => {
-              const isSelected = activeStoryFilter === m.name;
+            {/* 3. Family Members Stories with Instagram Gradient Rings */}
+            {membersWithStories.map((m, idx) => {
+              const isSelected = activeStoryFilter === m.memberName;
               return (
-                <button
-                  key={m.id}
-                  onClick={() => setActiveStoryFilter(isSelected ? 'all' : m.name)}
-                  className="flex flex-col items-center gap-1 cursor-pointer shrink-0"
+                <div
+                  key={m.memberName}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setStoryViewer({ isOpen: true, memberIndex: idx });
+                  }}
+                  className="flex flex-col items-center gap-1.5 cursor-pointer shrink-0 group"
                 >
-                  <div className={`w-13 h-13 rounded-full p-0.5 flex items-center justify-center ${
+                  <div className={`p-0.5 rounded-full transition-transform duration-200 group-hover:scale-105 shadow-xs ${
                     isSelected
-                      ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-amber-400 to-pink-600'
-                      : 'bg-gradient-to-tr from-slate-200 to-teal-200 hover:from-amber-300 hover:to-pink-500'
+                      ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888]'
+                      : 'bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888]'
                   }`}>
-                    <div className="w-full h-full rounded-full bg-teal-800 text-white flex items-center justify-center font-bold text-xs">
-                      {m.name.slice(0, 2)}
+                    <div className="p-0.5 bg-white rounded-full">
+                      <UserAvatar
+                        photoUrl={m.authorPhoto}
+                        name={m.memberName}
+                        size="w-14 h-14"
+                      />
                     </div>
                   </div>
-                  <span className="text-[10px] font-medium text-slate-700 max-w-[60px] truncate">
-                    {m.name.split(' ')[0]}
+                  <span className="text-[11px] font-medium text-slate-700 max-w-[66px] truncate text-center">
+                    {m.memberName.split(' ')[0]}
                   </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Tour Day Highlights Bubbles (Day 1 – Day 5) */}
+          <div className="bg-slate-50/80 border-b border-slate-200/80 py-2.5 px-2 flex items-center gap-3 overflow-x-auto scrollbar-none select-none">
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                setActiveTourDayFilter('all');
+                try { localStorage.setItem('tour_active_day_filter', 'all'); } catch {}
+              }}
+              className={`flex flex-col items-center gap-1 shrink-0 cursor-pointer transition ${
+                activeTourDayFilter === 'all' ? 'opacity-100 scale-105' : 'opacity-70 hover:opacity-100'
+              }`}
+            >
+              <div
+                className={`w-12 h-12 rounded-full p-0.5 flex items-center justify-center ${
+                  activeTourDayFilter === 'all'
+                    ? 'ring-2 ring-teal-600 bg-gradient-to-tr from-teal-500 to-cyan-600'
+                    : 'border border-slate-300 bg-white'
+                }`}
+              >
+                <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-xs font-black text-teal-900">
+                  সব
+                </div>
+              </div>
+              <span className="text-[10px] font-bold text-slate-700">সব দিন</span>
+            </button>
+
+            {TOUR_DAYS.map((day) => {
+              const count = posts.filter((p) => (p.tourDay || getPostTourDay(p)) === day.id).length;
+              const isSelected = activeTourDayFilter === day.id;
+              return (
+                <button
+                  key={day.id}
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setActiveTourDayFilter(day.id);
+                    try { localStorage.setItem('tour_active_day_filter', day.id); } catch {}
+                  }}
+                  className={`flex flex-col items-center gap-1 shrink-0 cursor-pointer transition relative ${
+                    isSelected ? 'opacity-100 scale-105' : 'opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  <div
+                    className={`w-12 h-12 rounded-full p-0.5 flex items-center justify-center ${
+                      isSelected
+                        ? 'ring-2 ring-pink-500 bg-gradient-to-tr from-pink-500 to-amber-500 shadow-xs'
+                        : 'border border-slate-200 bg-white shadow-2xs'
+                    }`}
+                  >
+                    <div className="w-full h-full rounded-full bg-slate-50 flex items-center justify-center text-lg">
+                      {day.emoji}
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-semibold text-slate-700 truncate max-w-[64px]">
+                    {day.shortLabel}
+                  </span>
+                  {count > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 bg-slate-800 text-white text-[9px] font-bold px-1 rounded-full">
+                      {toBnNum(count)}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
 
-          {/* Instagram-style Posts Feed */}
-          <div className="space-y-6">
+          {/* View Mode & Filter Subheader Toolbar */}
+          <div className="flex items-center justify-between px-1 py-1">
+            <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5 flex-wrap">
+              {activeTourDayFilter !== 'all' && (
+                <span className="bg-sky-50 text-sky-800 font-bold px-2 py-0.5 rounded-full border border-sky-200 text-[10px]">
+                  {getTourDayById(activeTourDayFilter)?.emoji} {getTourDayById(activeTourDayFilter)?.title}
+                </span>
+              )}
+              {activeStoryFilter !== 'all' ? (
+                <span>
+                  <strong className="text-slate-800">{activeStoryFilter}</strong> এর ছবি ({toBnNum(filteredPosts.length)}টি)
+                </span>
+              ) : (
+                <span>পোস্ট ({toBnNum(filteredPosts.length)}টি)</span>
+              )}
+            </span>
+
+            {/* View Mode Toggle: Feed (Cards) vs Grid (3x3 Explore) */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setPhotoViewMode('feed');
+                  try { localStorage.setItem('tour_photo_view_mode', 'feed'); } catch {}
+                }}
+                className={`p-1.5 rounded-lg transition cursor-pointer ${
+                  photoViewMode === 'feed'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-700'
+                }`}
+                title="ফিড ভিউ"
+                aria-label="ফিড ভিউ"
+              >
+                <LayoutList size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setPhotoViewMode('grid');
+                  try { localStorage.setItem('tour_photo_view_mode', 'grid'); } catch {}
+                }}
+                className={`p-1.5 rounded-lg transition cursor-pointer ${
+                  photoViewMode === 'grid'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-700'
+                }`}
+                title="গ্রিড ভিউ"
+                aria-label="গ্রিড ভিউ"
+              >
+                <Grid3X3 size={15} />
+              </button>
+            </div>
+          </div>
+
+          {/* Instagram-style Posts Feed / 3x3 Grid */}
+          <div>
             {filteredPosts.length > 0 ? (
-              filteredPosts.map(post => {
-                const isLiked = post.likes?.includes(currentUser?.displayName || 'user') || post.likes?.includes('রাজু ভাই');
-                const likeCount = (post.likes || []).length;
-                const isSharing = sharingPostId === post.id;
-                const postImages = getPostImages(post);
-                const totalImages = postImages.length;
-                const currentIdx = Math.min(postActiveIndices[post.id] || 0, Math.max(0, totalImages - 1));
-                const currentMediaSrc = postImages[currentIdx] || photoSource(post);
-                const postIsReel = isPostReel(post);
-
-                return (
-                  <div
-                    key={post.id}
-                    data-post-id={post.id}
-                    className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
-                  >
-                    {/* Post Header */}
-                    <div className="p-3.5 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <UserAvatar
-                          photoUrl={post.authorPhoto}
-                          name={post.author}
-                          size="w-9 h-9"
-                          ring="ring-2 ring-pink-400"
-                        />
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <h4 className="font-bold text-xs text-slate-900">{post.author}</h4>
-                            {postIsReel && (
-                              <span className="text-[9px] bg-pink-100 text-pink-700 font-bold px-1.5 py-0.2 rounded-full border border-pink-200">
-                                🎬 রিলস
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-teal-700 flex items-center gap-1 font-medium">
-                            <MapPin size={10} /> {post.location}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-slate-400">
-                        <span className="text-[10px] text-slate-400">{post.createdAt}</span>
-                        {Boolean(
-                          (currentUser?.email && post.authorEmail && post.authorEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
-                          (!post.authorEmail && (currentProfile?.displayName || currentUser?.displayName) && post.author === (currentProfile?.displayName || currentUser?.displayName))
-                        ) && (
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleStartEditPost(post)}
-                              className="text-slate-400 hover:text-teal-600 p-1 transition cursor-pointer"
-                              title="ক্যাপশন ও স্থান পরিবর্তন করুন"
-                            >
-                              <Edit3 size={13} />
-                            </button>
-                            {onDeletePost && (
-                              <button
-                                type="button"
-                                onClick={() => onDeletePost(post.id)}
-                                className="text-slate-400 hover:text-rose-600 p-1 transition cursor-pointer"
-                                title="নিজের পোস্ট মুছুন"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Media Image / Carousel or Reel */}
-                    <div
-                      className="relative bg-slate-900 cursor-pointer overflow-hidden max-h-[500px] min-h-[220px] flex items-center justify-center select-none group"
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
+              photoViewMode === 'grid' ? (
+                /* 3x3 Explore Grid */
+                <div className="grid grid-cols-3 gap-1 sm:gap-2">
+                  {filteredPosts.map((post) => {
+                    const mediaSrc = photoSource(post);
+                    const isCarousel = (post.images || []).length > 1;
+                    return (
+                      <div
+                        key={post.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
                           recordPostView(post.id);
-                          if (postIsReel) {
+                          if (post.type === 'reel') {
                             const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
                             setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
                           } else {
-                            setPreviewMedia({ images: postImages, index: currentIdx, post });
+                            const imgs = (post.images && post.images.length > 0) ? post.images : [mediaSrc];
+                            setPreviewMedia({ images: imgs, index: 0, post });
                           }
-                        } else if (e.key === 'ArrowLeft' && currentIdx > 0) {
-                          setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx - 1 }));
-                        } else if (e.key === 'ArrowRight' && currentIdx < totalImages - 1) {
-                          setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx + 1 }));
-                        }
-                      }}
-                      onClick={() => {
-                        recordPostView(post.id);
-                        if (postIsReel) {
-                          const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
-                          setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
-                        } else {
-                          setPreviewMedia({ images: postImages, index: currentIdx, post });
-                        }
-                      }}
-                      onTouchStart={(e) => handleTouchStart(post.id, e)}
-                      onTouchMove={(e) => handleTouchMove(post.id, e)}
-                      onTouchEnd={() => handleTouchEnd(post.id, totalImages)}
-                    >
-                      <img
-                        src={currentMediaSrc}
-                        alt={post.caption}
-                        className="w-full object-contain max-h-[500px] hover:scale-101 transition duration-300"
-                        loading="lazy"
-                      />
-
-                      {/* If Reel, show Play Overlay & Duration Badge */}
-                      {postIsReel && (
-                        <>
-                          <div className="absolute top-2.5 right-2.5 bg-gradient-to-r from-pink-600 to-purple-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md pointer-events-none z-10">
-                            <Film size={13} />
-                            <span>রিলস {formatDuration(post.duration || 0, { bengali: true })}</span>
-                          </div>
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/35 transition pointer-events-none z-10">
-                            <div className="w-14 h-14 rounded-full bg-pink-600/90 text-white flex items-center justify-center shadow-2xl backdrop-blur-xs group-hover:scale-110 transition duration-300 border border-white/20">
-                              <Play size={24} className="ml-1 fill-white" />
-                            </div>
-                          </div>
-                        </>
-                      )}
-
-                      {/* Multi-photo Counter Badge */}
-                      {!postIsReel && totalImages > 1 && (
-                        <div className="absolute top-2.5 right-2.5 bg-black/60 backdrop-blur-md text-white text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md border border-white/20 pointer-events-none z-10">
-                          <Images size={13} className="text-pink-300" />
-                          <span>{toBnNum(currentIdx + 1)}/{toBnNum(totalImages)}</span>
-                        </div>
-                      )}
-
-                  {/* Left Carousel Arrow */}
-                  {totalImages > 1 && currentIdx > 0 && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx - 1 }));
-                      }}
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/55 hover:bg-black/80 text-white flex items-center justify-center transition shadow-lg z-10 cursor-pointer backdrop-blur-xs active:scale-90"
-                      title="পূর্ববর্তী ছবি"
-                      aria-label="Previous photo"
-                    >
-                      <ChevronLeft size={20} />
-                    </button>
-                  )}
-
-                  {/* Right Carousel Arrow */}
-                  {totalImages > 1 && currentIdx < totalImages - 1 && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPostActiveIndices((prev) => ({ ...prev, [post.id]: currentIdx + 1 }));
-                      }}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/55 hover:bg-black/80 text-white flex items-center justify-center transition shadow-lg z-10 cursor-pointer backdrop-blur-xs active:scale-90"
-                      title="পরবর্তী ছবি"
-                      aria-label="Next photo"
-                    >
-                      <ChevronRight size={20} />
-                    </button>
-                  )}
-
-                  {/* Bottom Dots Indicator */}
-                  {totalImages > 1 && (
-                    <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 backdrop-blur-xs z-10">
-                      {postImages.map((_, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPostActiveIndices((prev) => ({ ...prev, [post.id]: idx }));
-                          }}
-                          className={`transition-all duration-300 cursor-pointer rounded-full ${
-                            idx === currentIdx
-                              ? 'w-4 h-1.5 bg-white shadow-xs'
-                              : 'w-1.5 h-1.5 bg-white/50 hover:bg-white/80'
-                          }`}
-                          title={`ছবি ${toBnNum(idx + 1)}`}
-                          aria-label={`Jump to photo ${idx + 1}`}
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            recordPostView(post.id);
+                            if (post.type === 'reel') {
+                              const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
+                              setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                            } else {
+                              const imgs = (post.images && post.images.length > 0) ? post.images : [mediaSrc];
+                              setPreviewMedia({ images: imgs, index: 0, post });
+                            }
+                          }
+                        }}
+                        className="relative aspect-square bg-slate-900 rounded-xl overflow-hidden cursor-pointer group shadow-2xs select-none"
+                      >
+                        <img
+                          src={mediaSrc}
+                          alt={post.caption || 'Tour photo'}
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                          style={{ filter: getFilterCss(post.filter) }}
+                          loading="lazy"
                         />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Drive Backup Status Pill */}
-                  {post.driveBackedUp ? (
-                    <a
-                      href={post.driveViewUrl || GOOGLE_DRIVE_FOLDER_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="absolute top-2.5 left-2.5 bg-emerald-950/80 hover:bg-emerald-900 backdrop-blur-xs text-emerald-300 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 transition shadow-xs border border-emerald-500/30 z-10"
-                      title="গুগল ড্রাইভ ফোল্ডারে ছবিটি দেখুন"
-                    >
-                      <HardDrive size={10} className="text-emerald-400" /> ✓ ড্রাইভে সংরক্ষিত
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleManualDriveBackup(post);
-                      }}
-                      disabled={manualDriveUploadId === post.id}
-                      className="absolute top-2.5 left-2.5 bg-black/60 hover:bg-slate-900 backdrop-blur-xs text-white hover:text-emerald-300 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 transition cursor-pointer border border-white/20 z-10"
-                      title="গুগল ড্রাইভ ফোল্ডারে ব্যাকআপ পাঠান"
-                    >
-                      {manualDriveUploadId === post.id ? (
-                        <Loader2 size={10} className="animate-spin text-emerald-400" />
-                      ) : (
-                        <HardDrive size={10} className="text-amber-300" />
-                      )}
-                      <span>ড্রাইভে পাঠান</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* Post Actions Bar */}
-                <div className="p-3.5 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      {/* Like Button */}
-                      <button
-                        onClick={() => onLikePost(post.id, currentUser?.displayName || 'user')}
-                        className={`flex items-center gap-1.5 transition cursor-pointer ${
-                          isLiked ? 'text-rose-600 scale-110' : 'text-slate-700 hover:text-rose-500'
-                        }`}
-                      >
-                        <Heart size={22} fill={isLiked ? 'currentColor' : 'none'} />
-                        <span className="text-xs font-bold font-mono">{toBnNum(likeCount)}</span>
-                      </button>
-
-                      {/* Comment Count */}
-                      <button className="flex items-center gap-1.5 text-slate-700 hover:text-teal-600 transition cursor-pointer">
-                        <MessageCircle size={21} />
-                        <span className="text-xs font-bold font-mono">{toBnNum((post.comments || []).length)}</span>
-                      </button>
-
-                      {/* Views Count */}
-                      <div
-                        className="flex items-center gap-1.5 text-slate-500 select-none"
-                        title="মোট ভিউ সংখ্যা"
-                      >
-                        <Eye size={20} className="text-slate-400" />
-                        <span className="text-xs font-semibold text-slate-600 font-mono">
-                          {toBnNum(post.views || 0)}
-                        </span>
-                      </div>
-
-                      {/* Share Original Media Button */}
-                      <button
-                        onClick={() => handleShareMedia(post, currentMediaSrc)}
-                        disabled={isSharing}
-                        className="flex items-center gap-1 text-slate-700 hover:text-teal-600 transition cursor-pointer disabled:opacity-50"
-                        title="সরাসরি এই ছবিটি শেয়ার করুন"
-                      >
-                        {isSharing ? (
-                          <Loader2 size={20} className="animate-spin text-teal-600" />
-                        ) : (
-                          <Share2 size={20} />
+                        {isCarousel && (
+                          <span className="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-xs text-white p-1 rounded-md text-[10px]">
+                            <Images size={12} />
+                          </span>
                         )}
-                        <span className="text-[11px] font-medium hidden xs:inline">শেয়ার</span>
-                      </button>
-                    </div>
-
-                    <a
-                      href={currentMediaSrc}
-                      download={`CoxsBazar_Tour2026_${post.id}_${currentIdx + 1}.jpg`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-slate-400 hover:text-slate-800 transition p-1"
-                      title="ছবি ডাউনলোড করুন"
-                    >
-                      <Download size={18} />
-                    </a>
-                  </div>
-
-                  {/* Caption */}
-                  <div className="text-xs text-slate-800 leading-relaxed pt-1">
-                    <span className="font-bold mr-1.5">{post.author}</span>
-                    <span>{post.caption}</span>
-                  </div>
-
-                  {/* Comments Preview */}
-                  {(post.comments || []).length > 0 && (
-                    <div className="space-y-2 pt-2 border-t border-slate-100">
-                      {post.comments.slice(-4).map((c, idx) => {
-                        const commentId = c.id !== undefined && c.id !== null ? c.id : idx;
-                        const myIdentifier = (currentUser?.email || currentProfile?.displayName || currentUser?.displayName || 'user').toLowerCase();
-                        return (
-                          <div key={c.id || idx} className="text-xs text-slate-700 bg-slate-50/80 p-2 rounded-xl border border-slate-100 space-y-1">
-                            <div className="flex items-start justify-between gap-1">
-                              <div className="leading-relaxed">
-                                <strong className="font-bold text-slate-900 mr-1.5">{c.user}:</strong>
-                                <span>{c.text}</span>
-                              </div>
-                              <span className="text-[10px] text-slate-400 shrink-0">{c.time || 'এইমাত্র'}</span>
-                            </div>
-
-                            {/* Comment Emoji Reactions */}
-                            <div className="flex items-center flex-wrap gap-1 pt-1 border-t border-slate-200/50">
-                              {COMMENT_REACTIONS.map((emoji) => {
-                                const voters = Array.isArray(c.reactions?.[emoji]) ? c.reactions[emoji] : [];
-                                const count = voters.length;
-                                const hasVoted = voters.some((v) => String(v).toLowerCase() === myIdentifier);
-                                return (
-                                  <button
-                                    key={emoji}
-                                    type="button"
-                                    onClick={() => onCommentReaction?.(post.id, commentId, emoji)}
-                                    className={`px-1.5 py-0.5 rounded-full text-[10px] flex items-center gap-0.5 transition cursor-pointer select-none ${
-                                      hasVoted
-                                        ? 'bg-rose-100 text-rose-700 border border-rose-300 font-bold scale-105'
-                                        : count > 0
-                                        ? 'bg-white text-slate-700 border border-slate-200 shadow-2xs'
-                                        : 'bg-white/40 hover:bg-white text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 opacity-60 hover:opacity-100'
-                                    }`}
-                                    title={`${emoji} রিঅ্যাক্ট করুন`}
-                                  >
-                                    <span>{emoji}</span>
-                                    {count > 0 && <span className="text-[10px] font-mono">{toBnNum(count)}</span>}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* Add Comment Input */}
-                  <div className="pt-2 flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="একটি মন্তব্য লিখুন..."
-                      value={commentInputs[post.id] || ''}
-                      onChange={e => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })}
-                      onKeyDown={e => e.key === 'Enter' && handleCommentSubmit(post.id)}
-                      className="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600"
-                    />
-                    <button
-                      onClick={() => handleCommentSubmit(post.id)}
-                      className="p-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl transition cursor-pointer"
-                    >
-                      <Send size={14} />
-                    </button>
-                  </div>
+                        {post.type === 'reel' && (
+                          <span className="absolute top-1.5 right-1.5 bg-pink-600/80 backdrop-blur-xs text-white p-1 rounded-md text-[10px]">
+                            <Film size={12} />
+                          </span>
+                        )}
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-3 text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          <span className="flex items-center gap-1 drop-shadow-md">
+                            <Heart size={14} className="fill-white" />
+                            {toBnNum((post.likes || []).length)}
+                          </span>
+                          <span className="flex items-center gap-1 drop-shadow-md">
+                            <Eye size={14} />
+                            {toBnNum(post.views || 0)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
+              ) : (
+                /* Full Card Feed */
+                <div className="space-y-4 sm:space-y-6">
+                  {filteredPosts.map((post) => {
+                    const postHasStory = membersWithStories.some((m) => m.memberName === post.author);
+                    return (
+                      <InstagramPostCard
+                        key={post.id}
+                        post={post}
+                        currentUser={currentUser}
+                        currentProfile={currentProfile}
+                        members={members}
+                        userProfiles={userProfiles}
+                        onLikePost={onLikePost}
+                        onViewPost={recordPostView}
+                        onOpenComments={(p) => {
+                          triggerHaptic('light');
+                          setActiveCommentPost(p);
+                        }}
+                        onShareMedia={handleShareMedia}
+                        onOpenShareModal={(p) => setShareModalPost(p)}
+                        onManualDriveBackup={handleManualDriveBackup}
+                        onStartEditPost={handleStartEditPost}
+                        onDeletePost={onDeletePost}
+                        onOpenReel={(p) => {
+                          const rIdx = allReelPosts.findIndex((r) => r.id === p.id);
+                          setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
+                        }}
+                        onOpenFullscreenImage={(media) => {
+                          if (typeof media === 'string') {
+                            const imgs = (post.images && post.images.length > 0) ? post.images : [media];
+                            setPreviewMedia({ images: imgs, index: 0, post });
+                          } else {
+                            setPreviewMedia({ ...media, post: media.post || post });
+                          }
+                        }}
+                        manualDriveUploadId={manualDriveUploadId}
+                        hasStory={postHasStory}
+                        onOpenStory={(author) => {
+                          const mIdx = membersWithStories.findIndex((m) => m.memberName === author);
+                          if (mIdx >= 0) {
+                            setStoryViewer({ isOpen: true, memberIndex: mIdx });
+                          }
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              )
+            ) : (
+              <div className="p-8 bg-white rounded-3xl border border-slate-200 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center mx-auto text-xl">
+                  📸
+                </div>
+                <h4 className="font-bold text-slate-800 text-sm">এখনো কোনো ছবি শেয়ার করা হয়নি!</h4>
+                <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                  কক্সবাজার ভ্রমণের সুন্দর সুন্দর ছবি ও সেলফি আপলোড করে পরিবারের সবার সাথে শেয়ার করুন।
+                </p>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="px-4 py-2 bg-teal-800 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                >
+                  প্রথম ছবিটি পোস্ট করুন
+                </button>
               </div>
-            );
-          })
-        ) : (
-          <div className="p-8 bg-white rounded-3xl border border-slate-200 text-center space-y-3">
-            <div className="w-12 h-12 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center mx-auto text-xl">
-              📸
-            </div>
-            <h4 className="font-bold text-slate-800 text-sm">এখনো কোনো ছবি শেয়ার করা হয়নি!</h4>
-            <p className="text-xs text-slate-500 max-w-xs mx-auto">
-              কক্সবাজার ভ্রমণের সুন্দর সুন্দর ছবি ও সেলফি আপলোড করে পরিবারের সবার সাথে শেয়ার করুন।
-            </p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 bg-teal-800 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
-            >
-              প্রথম ছবিটি পোস্ট করুন
-            </button>
+            )}
           </div>
-        )}
-      </div>
         </>
       )}
 
@@ -1817,6 +2271,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                               src={img}
                               alt={`Selected ${idx + 1}`}
                               className="w-full h-full object-cover"
+                              style={{ filter: getFilterCss(selectedFilter) }}
                             />
                             {/* Sequence number badge */}
                             <span className="absolute top-1 left-1 bg-black/75 backdrop-blur-xs text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
@@ -1854,6 +2309,54 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                             />
                           </label>
                         )}
+                      </div>
+
+                      {/* Instagram Presets Filter Ribbon */}
+                      <div className="space-y-1.5 pt-2 border-t border-slate-200">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                            <Sparkles size={12} className="text-pink-600" />
+                            ইনস্টাগ্রাম ফিল্টার প্রিসেট
+                          </span>
+                          <span className="text-[10px] text-pink-600 font-bold">
+                            {IG_FILTERS.find((f) => f.id === selectedFilter)?.nameBn || 'স্বাভাবিক'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 scrollbar-none select-none">
+                          {IG_FILTERS.map((f) => {
+                            const isSelected = selectedFilter === f.id;
+                            return (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => {
+                                  triggerHaptic('light');
+                                  setSelectedFilter(f.id);
+                                }}
+                                className={`flex flex-col items-center gap-1 shrink-0 p-1 rounded-xl transition cursor-pointer ${
+                                  isSelected ? 'bg-pink-50 ring-2 ring-pink-500 shadow-2xs' : 'hover:bg-slate-100'
+                                }`}
+                              >
+                                <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-300 relative bg-slate-900">
+                                  <img
+                                    src={selectedImages[0]}
+                                    alt={f.name}
+                                    className="w-full h-full object-cover"
+                                    style={{ filter: f.css }}
+                                  />
+                                  {isSelected && (
+                                    <div className="absolute inset-0 bg-pink-600/30 flex items-center justify-center">
+                                      <Check size={14} className="text-white drop-shadow-md stroke-[3]" />
+                                    </div>
+                                  )}
+                                </div>
+                                <span className={`text-[10px] font-medium leading-tight ${isSelected ? 'text-pink-600 font-bold' : 'text-slate-600'}`}>
+                                  {f.name}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1895,6 +2398,45 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </div>
                 )}
 
+                {/* Tour Day Selection Bar */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Calendar size={13} className="text-pink-600" /> ট্যুর দিন (Tour Day)
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      {selectedTourDay === 'auto' ? `স্বয়ংক্রিয় (${getCurrentTourDay().name})` : (getTourDayById(selectedTourDay)?.title || selectedTourDay)}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTourDay('auto')}
+                      className={`py-1.5 px-2 rounded-xl border text-center transition cursor-pointer font-bold ${
+                        selectedTourDay === 'auto'
+                          ? 'bg-teal-700 text-white border-teal-700 shadow-2xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      ✨ অটো (তারিখ)
+                    </button>
+                    {TOUR_DAYS.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => setSelectedTourDay(d.id)}
+                        className={`py-1.5 px-2 rounded-xl border text-center transition cursor-pointer font-semibold truncate ${
+                          selectedTourDay === d.id
+                            ? 'bg-pink-600 text-white border-pink-600 shadow-2xs'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {d.emoji} {d.shortLabel}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Caption with auto-saved draft indicator */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
@@ -1928,6 +2470,35 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                       {isCustomLocMode ? '⤺ ড্রপডাউন তালিকা দেখুন' : '✍️ কাস্টম স্থান লিখুন'}
                     </button>
                   </div>
+
+                  {/* Tour Schedule Auto-Location Suggestion */}
+                  {(() => {
+                    const suggested = getSuggestedTourLocation();
+                    const suggestedSpot = suggested?.spot || '';
+                    if (!suggestedSpot || location === suggestedSpot) return null;
+                    return (
+                      <div className="flex items-center justify-between p-2 bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-xl text-xs text-sky-950 shadow-2xs">
+                        <span className="flex items-center gap-1.5 truncate">
+                          <Sparkles size={13} className="text-sky-600 shrink-0" />
+                          <span className="text-[10px] font-medium text-sky-700">বর্তমান শিডিউল:</span>
+                          <strong className="truncate text-[11px] font-bold">{suggestedSpot}</strong>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLocation(suggestedSpot);
+                            setIsCustomLocMode(false);
+                            if (suggested?.day?.id) {
+                              setSelectedTourDay(suggested.day.id);
+                            }
+                          }}
+                          className="px-2.5 py-0.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-bold rounded-lg shrink-0 cursor-pointer text-[10px] shadow-2xs"
+                        >
+                          প্রয়োগ করুন
+                        </button>
+                      </div>
+                    );
+                  })()}
 
                   {locationNotification && (
                     <div className="px-2.5 py-1 bg-emerald-50 text-emerald-800 text-[10px] font-semibold rounded-lg border border-emerald-200">
@@ -2011,6 +2582,45 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                         {chip}
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* Member Tagging Multi-Select Bar */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Users size={13} className="text-sky-600" /> সাথে আছেন (সদস্য ট্যাগ করুন)
+                    </span>
+                    {selectedTaggedMembers.length > 0 && (
+                      <span className="text-[10px] bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded-full">
+                        {toBnNum(selectedTaggedMembers.length)} জন ট্যাগ
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                    {familyMemberNames.map((name) => {
+                      const isSelected = selectedTaggedMembers.includes(name);
+                      return (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => {
+                            triggerHaptic('light');
+                            setSelectedTaggedMembers((prev) =>
+                              isSelected ? prev.filter((m) => m !== name) : [...prev, name]
+                            );
+                          }}
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition cursor-pointer flex items-center gap-1 ${
+                            isSelected
+                              ? 'bg-sky-600 text-white shadow-2xs font-bold'
+                              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span>{name}</span>
+                          {isSelected && <Check size={10} strokeWidth={3} />}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -2145,10 +2755,18 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       {/* FULLSCREEN PHOTO PREVIEW MODAL */}
       {previewMedia && (
         <div
-          className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 z-50 cursor-pointer animate-in fade-in duration-150"
+          className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 z-50 cursor-pointer animate-in fade-in duration-150 select-none"
           role="presentation"
-          onClick={() => setPreviewMedia(null)}
-          onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
+          onClick={() => {
+            setPreviewMedia(null);
+            setLightboxZoom(1);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setPreviewMedia(null);
+              setLightboxZoom(1);
+            }
+          }}
         >
           {(() => {
             const isGallery = typeof previewMedia === 'object' && Array.isArray(previewMedia?.images);
@@ -2177,7 +2795,46 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2.5">
+                  {/* Zoom Controls & Action Buttons */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center bg-white/15 rounded-full p-0.5 border border-white/10">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setLightboxZoom((z) => Math.max(1, +(z - 0.5).toFixed(1)));
+                        }}
+                        disabled={lightboxZoom <= 1}
+                        className="p-1.5 rounded-full hover:bg-white/20 disabled:opacity-30 text-white transition cursor-pointer"
+                        title="জুম কমান"
+                      >
+                        <ZoomOut size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setLightboxZoom(1);
+                        }}
+                        className="px-2 py-0.5 text-xs font-bold text-white/90 hover:text-white transition cursor-pointer"
+                        title="জুম রিসেট"
+                      >
+                        {lightboxZoom}x
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic('light');
+                          setLightboxZoom((z) => Math.min(2.5, +(z + 0.5).toFixed(1)));
+                        }}
+                        disabled={lightboxZoom >= 2.5}
+                        className="p-1.5 rounded-full hover:bg-white/20 disabled:opacity-30 text-white transition cursor-pointer"
+                        title="জুম বাড়ান"
+                      >
+                        <ZoomIn size={15} />
+                      </button>
+                    </div>
+
                     <a
                       href={currentImg}
                       download={`Tour2026_${currentGalleryIdx + 1}.jpg`}
@@ -2190,7 +2847,10 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                     </a>
                     <button
                       type="button"
-                      onClick={() => setPreviewMedia(null)}
+                      onClick={() => {
+                        setPreviewMedia(null);
+                        setLightboxZoom(1);
+                      }}
                       className="text-white hover:text-rose-400 bg-white/20 hover:bg-white/30 p-1.5 rounded-full transition cursor-pointer active:scale-95"
                       title="বন্ধ করুন"
                       aria-label="Close lightbox"
@@ -2200,19 +2860,60 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   </div>
                 </div>
 
-                {/* Main Preview Image */}
-                <div className="relative w-full flex items-center justify-center max-h-[82vh] overflow-hidden">
+                {/* Main Preview Image with Double-Tap Zoom & Swipe */}
+                <div
+                  className="relative w-full flex items-center justify-center max-h-[75vh] overflow-hidden"
+                  onTouchStart={(e) => {
+                    if (lightboxZoom === 1 && e.touches.length === 1) {
+                      setLightboxTouchCoord({ start: e.touches[0].clientX, end: null });
+                    }
+                  }}
+                  onTouchMove={(e) => {
+                    if (lightboxZoom === 1 && e.touches.length === 1) {
+                      setLightboxTouchCoord((prev) => ({ ...prev, end: e.touches[0].clientX }));
+                    }
+                  }}
+                  onTouchEnd={() => {
+                    if (lightboxZoom === 1 && lightboxTouchCoord.start !== null && lightboxTouchCoord.end !== null) {
+                      const delta = lightboxTouchCoord.start - lightboxTouchCoord.end;
+                      if (delta > 50 && galleryImages.length > 1 && currentGalleryIdx < galleryImages.length - 1) {
+                        triggerHaptic('light');
+                        setPreviewMedia({ images: galleryImages, index: currentGalleryIdx + 1, post: previewMedia.post });
+                      } else if (delta < -50 && galleryImages.length > 1 && currentGalleryIdx > 0) {
+                        triggerHaptic('light');
+                        setPreviewMedia({ images: galleryImages, index: currentGalleryIdx - 1, post: previewMedia.post });
+                      }
+                    }
+                    setLightboxTouchCoord({ start: null, end: null });
+                  }}
+                >
                   <img
                     src={currentImg}
                     alt="Fullscreen Preview"
-                    className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-2xl select-none"
+                    onClick={() => {
+                      const now = Date.now();
+                      if (now - lightboxLastTapRef.current < 300) {
+                        triggerHaptic('medium');
+                        setLightboxZoom((z) => (z > 1 ? 1 : 2));
+                      }
+                      lightboxLastTapRef.current = now;
+                    }}
+                    className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl select-none transition-transform duration-200 cursor-zoom-in"
+                    style={{
+                      transform: `scale(${lightboxZoom})`,
+                      filter: getFilterCss(previewMedia.post?.filter),
+                    }}
                   />
 
                   {/* Prev Button in Lightbox */}
                   {galleryImages.length > 1 && currentGalleryIdx > 0 && (
                     <button
                       type="button"
-                      onClick={() => setPreviewMedia({ images: galleryImages, index: currentGalleryIdx - 1, post: previewMedia.post })}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setPreviewMedia({ images: galleryImages, index: currentGalleryIdx - 1, post: previewMedia.post });
+                        setLightboxZoom(1);
+                      }}
                       className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center transition shadow-lg cursor-pointer active:scale-90"
                       title="পূর্ববর্তী ছবি"
                       aria-label="Previous image"
@@ -2225,7 +2926,11 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   {galleryImages.length > 1 && currentGalleryIdx < galleryImages.length - 1 && (
                     <button
                       type="button"
-                      onClick={() => setPreviewMedia({ images: galleryImages, index: currentGalleryIdx + 1, post: previewMedia.post })}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setPreviewMedia({ images: galleryImages, index: currentGalleryIdx + 1, post: previewMedia.post });
+                        setLightboxZoom(1);
+                      }}
                       className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center transition shadow-lg cursor-pointer active:scale-90"
                       title="পরবর্তী ছবি"
                       aria-label="Next image"
@@ -2234,9 +2939,200 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                     </button>
                   )}
                 </div>
+
+                {/* Bottom Caption & Post Info Overlay */}
+                {previewMedia?.post && (
+                  <div className="w-full mt-2 px-3 py-2 bg-black/60 backdrop-blur-md rounded-xl text-white text-xs flex flex-col gap-1 max-w-2xl border border-white/10">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-teal-300">{previewMedia.post.author}</span>
+                      {previewMedia.post.location && (
+                        <span className="text-[11px] text-slate-300 flex items-center gap-1">
+                          <MapPin size={11} className="text-teal-400" />
+                          {previewMedia.post.location}
+                        </span>
+                      )}
+                    </div>
+                    {previewMedia.post.caption && (
+                      <p className="text-[11px] text-slate-200 line-clamp-2 leading-relaxed">
+                        {previewMedia.post.caption}
+                      </p>
+                    )}
+                    {Array.isArray(previewMedia.post.taggedMembers) && previewMedia.post.taggedMembers.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-white/10 text-[10px] text-sky-200">
+                        <Users size={11} className="text-sky-400 shrink-0" />
+                        <span>সাথে: {previewMedia.post.taggedMembers.join(', ')}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {/* IN-APP SHARE SHEET MODAL */}
+      {shareModalPost && (
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          role="presentation"
+          onClick={() => setShareModalPost(null)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShareModalPost(null);
+          }}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-sm w-full shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 bg-gradient-to-r from-teal-800 to-teal-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Share2 size={18} className="text-teal-300" />
+                <h4 className="font-bold text-sm">ট্যুর মেমোরি শেয়ার করুন</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShareModalPost(null)}
+                className="p-1 rounded-full hover:bg-white/20 text-white cursor-pointer transition active:scale-90"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Post Preview Snippet */}
+            <div className="p-3.5 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
+              <img
+                src={photoSource(shareModalPost)}
+                alt="Post preview"
+                className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0"
+              />
+              <div className="min-w-0 flex-1 text-xs">
+                <p className="font-bold text-slate-800 truncate">{shareModalPost.author}</p>
+                <p className="text-slate-500 text-[11px] truncate flex items-center gap-1">
+                  <MapPin size={10} className="text-teal-600" />
+                  {shareModalPost.location || 'কক্সবাজার'}
+                </p>
+                {shareModalPost.caption && (
+                  <p className="text-slate-600 text-[11px] truncate italic mt-0.5">
+                    "{shareModalPost.caption}"
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Share Feedback Toast */}
+            {shareFeedback && (
+              <div className="mx-4 mt-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-bold text-center animate-in fade-in">
+                {shareFeedback}
+              </div>
+            )}
+
+            <div className="p-4 space-y-4">
+              {/* Discussion Channels Section */}
+              <div>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  ট্যুর ডিসকাশন চ্যানেলে পাঠান
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleShareToDiscussionChannel('general', shareModalPost)}
+                    className="p-2.5 rounded-xl border border-sky-200 bg-sky-50/70 hover:bg-sky-100 text-sky-900 flex items-center gap-2 transition text-left cursor-pointer active:scale-95"
+                  >
+                    <MessageSquare size={16} className="text-sky-600 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold truncate">সাধারণ আড্ডা</p>
+                      <p className="text-[10px] text-sky-700 truncate">#general</p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleShareToDiscussionChannel('sightseeing', shareModalPost)}
+                    className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-900 flex items-center gap-2 transition text-left cursor-pointer active:scale-95"
+                  >
+                    <Compass size={16} className="text-emerald-600 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold truncate">দর্শনীয় স্থান</p>
+                      <p className="text-[10px] text-emerald-700 truncate">#sightseeing</p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleShareToDiscussionChannel('food', shareModalPost)}
+                    className="p-2.5 rounded-xl border border-amber-200 bg-amber-50/70 hover:bg-amber-100 text-amber-900 flex items-center gap-2 transition text-left cursor-pointer active:scale-95"
+                  >
+                    <Utensils size={16} className="text-amber-600 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold truncate">খাবার মেনু</p>
+                      <p className="text-[10px] text-amber-700 truncate">#food</p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleShareToDiscussionChannel('emergency', shareModalPost)}
+                    className="p-2.5 rounded-xl border border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-900 flex items-center gap-2 transition text-left cursor-pointer active:scale-95"
+                  >
+                    <ShieldAlert size={16} className="text-rose-600 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold truncate">জরুরি হেল্প</p>
+                      <p className="text-[10px] text-rose-700 truncate">#emergency</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* External Share Section */}
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  অন্যান্য মাধ্যমে শেয়ার
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      const shareText = `রংপুর ➔ কক্সবাজার ট্যুর ২০২৬\n${shareModalPost.author}: "${shareModalPost.caption || 'আনন্দঘন মুহূর্ত'}"\n📍 ${shareModalPost.location || 'কক্সবাজার'}\n\n👉 ফিডে দেখুন: ${window.location.origin}/#feed`;
+                      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank');
+                    }}
+                    className="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
+                  >
+                    <span>💬 WhatsApp</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      triggerHaptic('light');
+                      const shareText = `${shareModalPost.author}: "${shareModalPost.caption || 'ট্যুর মেমোরি'}" - ${shareModalPost.location || 'কক্সবাজার'}`;
+                      if (navigator.share) {
+                        try {
+                          await navigator.share({
+                            title: 'কক্সবাজার ট্যুর ২০২৬',
+                            text: shareText,
+                            url: `${window.location.origin}/#feed`,
+                          });
+                        } catch {}
+                      } else {
+                        try {
+                          await navigator.clipboard.writeText(`${shareText}\n${window.location.origin}/#feed`);
+                          setShareFeedback('✓ লিঙ্ক ক্লিপবোর্ডে কপি হয়েছে!');
+                          setTimeout(() => setShareFeedback(''), 2000);
+                        } catch {}
+                      }
+                    }}
+                    className="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95"
+                  >
+                    <Copy size={14} />
+                    <span>লিঙ্ক কপি</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2247,6 +3143,8 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         isOpen={reelsPlayer.isOpen}
         currentUser={currentUser}
         currentProfile={currentProfile}
+        members={members}
+        userProfiles={userProfiles}
         onClose={handleCloseReelsPlayer}
         onLikePost={onLikePost}
         onAddComment={onAddComment}
@@ -2345,6 +3243,34 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
           setTrimmedReelData(data);
           setShowTrimmerModal(false);
         }}
+      />
+
+      {/* INSTAGRAM SLIDING BOTTOM SHEET FOR COMMENTS */}
+      <InstagramCommentSheet
+        isOpen={Boolean(activeCommentPost)}
+        post={posts.find((p) => String(p.id) === String(activeCommentPost?.id)) || activeCommentPost}
+        currentUser={currentUser}
+        currentProfile={currentProfile}
+        members={members}
+        userProfiles={userProfiles}
+        onClose={() => setActiveCommentPost(null)}
+        onAddComment={onAddComment}
+        onCommentReaction={onCommentReaction}
+      />
+
+      {/* FULLSCREEN INSTAGRAM STORY VIEWER MODAL */}
+      <StoryViewerModal
+        isOpen={storyViewer.isOpen}
+        membersWithStories={membersWithStories}
+        initialMemberIndex={storyViewer.memberIndex}
+        onClose={() => setStoryViewer({ isOpen: false, memberIndex: 0 })}
+        onLikePost={onLikePost}
+        onAddComment={onAddComment}
+        onViewPost={recordPostView}
+        currentUser={currentUser}
+        currentProfile={currentProfile}
+        members={members}
+        userProfiles={userProfiles}
       />
     </div>
   );

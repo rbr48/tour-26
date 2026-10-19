@@ -91,4 +91,37 @@ describe('pushService', () => {
 
     sendSpy.mockRestore();
   });
+
+  it('subscribes and unsubscribes FCM tokens for native android', () => {
+    const service = createPushService({ dataDir: tmpDir });
+    const fcmToken = 'fake_device_fcm_token_1234567890_abcdef';
+
+    const subResult = service.subscribe({
+      fcmToken,
+      userEmail: 'rajbrur@gmail.com',
+      deviceName: 'Pixel 8',
+    });
+
+    expect(subResult.success).toBe(true);
+    const subs = service.listSubscriptions();
+    expect(subs).toHaveLength(1);
+    expect(subs[0].type).toBe('fcm');
+    expect(subs[0].fcmToken).toBe(fcmToken);
+    expect(subs[0].userEmail).toBe('rajbrur@gmail.com');
+
+    // Updating device name or userEmail on existing token does not duplicate
+    service.subscribe({
+      fcmToken,
+      userEmail: 'rajbrur@gmail.com',
+      deviceName: 'Pixel 8 Pro',
+    });
+    expect(service.listSubscriptions()).toHaveLength(1);
+    expect(service.listSubscriptions()[0].deviceName).toBe('Pixel 8 Pro');
+
+    // Unsubscribe by fcmToken
+    const unsubResult = service.unsubscribe({ fcmToken });
+    expect(unsubResult.success).toBe(true);
+    expect(unsubResult.remaining).toBe(0);
+    expect(service.listSubscriptions()).toHaveLength(0);
+  });
 });

@@ -43,6 +43,7 @@ import {
 } from './services/tourStore';
 import { saveBackup } from './services/backupService';
 import { FUND_LABEL, computeLedger, payerIdFor } from './utils/ledger';
+import { findLinkedMember } from './utils/members';
 import { localISODate, localTimeHHMM } from './utils/date';
 import { toBnNum } from './utils/videoHelper';
 import { checkForAppUpdate } from './utils/appUpdater';
@@ -62,7 +63,7 @@ const TourQuizModal = lazy(() => import('./components/TourQuizModal'));
 const AppUpdateModal = lazy(() => import('./components/AppUpdateModal'));
 const GameZoneHub = lazy(() => import('./components/GameZone/GameZoneHub'));
 
-export const APP_LOGO_URL = '/logo.png?v=6';
+export const APP_LOGO_URL = '/logo.png?v=20261019';
 const VALID_TABS = ['dashboard', 'itinerary', 'expenses', 'seats_rooms', 'feed', 'discussions', 'notices', 'checklist', 'games'];
 const CACHE_KEY = 'rangpur_coxs_tour_data';
 const ACTIVITY_KEY = 'tour_recent_activities';
@@ -495,7 +496,19 @@ export default function App() {
   }, [data.members]);
 
   const uid = currentUser?.uid ?? null;
-  const isAdmin = Boolean(currentUser?.email);
+  const myEmail = (currentUser?.email || '').toLowerCase().trim();
+  const ADMIN_EMAILS = ['rajbrur@gmail.com'];
+  const isAdmin = ADMIN_EMAILS.includes(myEmail) || (data?.accessConfig?.admins || []).map((e) => String(e).toLowerCase().trim()).includes(myEmail);
+
+  const notifyAdminOnly = () => {
+    setActiveToast({
+      id: newId(),
+      type: 'error',
+      title: 'অনুমতি নেই',
+      body: 'শুধুমাত্র অ্যাডমিন (rajbrur@gmail.com) এই তথ্য পরিবর্তন করতে পারবেন।',
+      time: 'এইমাত্র',
+    });
+  };
 
   // Auto-subscribe to Push if permission is granted or on native platform
   useEffect(() => {
@@ -510,6 +523,8 @@ export default function App() {
   // 2. Live trip data. Each change in Firestore arrives here, and the app announces what
   //    other people added. Writes made on this device are not announced.
   useEffect(() => {
+    if (!uid) return undefined;
+
     const announce = ({ title, body, tab, type }) => {
       sendPushNotification({ title, body, tab, onClick: () => setActiveTab(tab) });
       addActivity({ id: newId(), type, title, body, tab, time: 'এইমাত্র' });
@@ -517,7 +532,7 @@ export default function App() {
 
     const stopTour = subscribeToTour({
       onUpdate: ({ data: next, tourExists: exists, legacy, raw }) => {
-        const hasAnything = LIST_KEYS.some((key) => next[key].length > 0);
+        const hasAnything = LIST_KEYS.some((key) => next[key]?.length > 0);
         setData({
           ...next,
           tourInfo: next.tourInfo ?? SEED_DATA.tourInfo,
@@ -528,7 +543,7 @@ export default function App() {
         setSyncStatus('ফায়ারবেস লাইভ সিঙ্ক');
         setLastSyncedTime(nowLabel());
 
-        if (!exists && !hasAnything && !seedingRef.current) {
+        if (!exists && !hasAnything && !seedingRef.current && isAdmin) {
           seedingRef.current = true;
           seedTour(SEED_DATA).catch((err) => {
             seedingRef.current = false;
@@ -536,7 +551,7 @@ export default function App() {
           });
         }
 
-        if (legacy && !upgradingRef.current) {
+        if (legacy && !upgradingRef.current && isAdmin) {
           upgradingRef.current = true;
           setUpgradeNotice('তথ্য নতুন ব্যবস্থায় আপগ্রেড হচ্ছে...');
           migrateLegacyTour(raw, {
@@ -597,14 +612,15 @@ export default function App() {
     return () => {
       stopTour();
     };
-  }, [addActivity]);
+  }, [uid, addActivity, isAdmin]);
 
   // 3. Keep this device's copy for instant display on the next visit.
   useEffect(() => {
-    if (remoteReady) {
+    const hasData = LIST_KEYS.some((key) => Array.isArray(data[key]) && data[key].length > 0);
+    if (remoteReady && (tourExists || hasData)) {
       writeCache(data);
     }
-  }, [data, remoteReady]);
+  }, [data, remoteReady, tourExists]);
 
   // 4. Server backup: a short pause after the last change, so bursts of edits send once.
   const backupNow = useCallback(async () => {
@@ -660,9 +676,64 @@ export default function App() {
     }
   }, [isSyncing, currentUser, backupNow, activeTab]);
 
-  // Profile Lookup
-  const currentProfileKey = currentUser?.email ? currentUser.email.toLowerCase() : null;
-  const currentProfile = (currentProfileKey && data.userProfiles?.[currentProfileKey]) || {};
+  // Profile Lookup with robust case-insensitivity & linked member fallback
+  const currentProfileKey = currentUser?.email ? currentUser.email.toLowerCase().trim() : null;
+  const rawProfile = useMemo(() => {
+    if (!currentProfileKey) return {};
+    return (
+      data.userProfiles?.[currentProfileKey] ||
+      Object.values(data.userProfiles || {}).find(
+        (p) => String(p?.email || p?.id || '').toLowerCase().trim() === currentProfileKey,
+      ) ||
+      {}
+    );
+  }, [currentProfileKey, data.userProfiles]);
+
+  const linkedMember = useMemo(() => {
+    if (rawProfile.memberId !== undefined && rawProfile.memberId !== null) {
+      const match = (data.members || []).find((m) => String(m.id) === String(rawProfile.memberId));
+      if (match) return match;
+    }
+    if (currentProfileKey) {
+      const emailMatch = (data.members || []).find(
+        (m) => m?.email && m.email.toLowerCase().trim() === currentProfileKey,
+      );
+      if (emailMatch) return emailMatch;
+      // Coordinator fallback if email is organiser/admin/coordinator
+      if (
+        currentProfileKey.includes('shohag') ||
+        currentProfileKey.includes('admin') ||
+        currentProfileKey.includes('izhaan')
+      ) {
+        const coord = (data.members || []).find(
+          (m) => m?.role === 'coordinator' || m?.name?.includes('কো-অর্ডিনেটর'),
+        );
+        if (coord) return coord;
+      }
+    }
+    return findLinkedMember(data.members || [], rawProfile, currentUser?.displayName);
+  }, [rawProfile, currentProfileKey, data.members, currentUser?.displayName]);
+
+  const effectiveDisplayName =
+    rawProfile.displayName?.trim() ||
+    currentUser?.displayName?.trim() ||
+    (linkedMember ? linkedMember.name.split('/')[0].split('(')[0].trim() : '') ||
+    (currentProfileKey ? currentProfileKey.split('@')[0] : '') ||
+    'পরিবারের সদস্য';
+
+  const currentProfile = useMemo(
+    () => ({
+      ...rawProfile,
+      memberId: rawProfile.memberId ?? linkedMember?.id ?? null,
+      displayName: effectiveDisplayName,
+      customPhotoURL: rawProfile.customPhotoURL || rawProfile.photoURL || currentUser?.photoURL || '',
+      phone: rawProfile.phone || linkedMember?.phone || '',
+      role: rawProfile.role || linkedMember?.role || 'সদস্য',
+      seat: rawProfile.seat || linkedMember?.seat || '',
+      room: rawProfile.room || linkedMember?.room || '',
+    }),
+    [rawProfile, linkedMember, effectiveDisplayName, currentUser],
+  );
 
   // Money (see src/utils/ledger.js)
   const ledger = useMemo(
@@ -796,15 +867,41 @@ export default function App() {
   };
 
   const handleAddComment = (postId, comment) => {
+    const authorName = currentProfile?.displayName || currentUser?.displayName || 'পরিবারের সদস্য';
+    const profilePhoto = currentProfile?.customPhotoURL || currentProfile?.photoURL || currentUser?.photoURL;
+    const authorEmail = (currentUser?.email || '').toLowerCase() || 'member@tour.family';
+
+    const normalized = typeof comment === 'string' ? {
+      id: Date.now(),
+      user: authorName,
+      authorEmail,
+      userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
+      text: comment.trim(),
+      time: 'এইমাত্র',
+      createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
+    } : {
+      id: comment.id || Date.now(),
+      user: (comment.user && comment.user !== 'পরিবারের সদস্য') ? comment.user : authorName,
+      authorEmail: (comment.authorEmail && comment.authorEmail !== 'member@tour.family') ? comment.authorEmail : authorEmail,
+      userPhoto: comment.userPhoto || (typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null)),
+      text: String(comment.text || comment.comment || comment.message || comment.body || '').trim(),
+      time: comment.time || 'এইমাত্র',
+      reactions: comment.reactions || {},
+      createdAt: comment.createdAt || new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
+      ...comment,
+      user: (comment.user && comment.user !== 'পরিবারের সদস্য') ? comment.user : authorName,
+      authorEmail: (comment.authorEmail && comment.authorEmail !== 'member@tour.family') ? comment.authorEmail : authorEmail,
+    };
+
     setData((prev) => ({
       ...prev,
       posts: (prev.posts || []).map((p) =>
         String(p.id) === String(postId)
-          ? { ...p, comments: [...(p.comments || []), comment] }
+          ? { ...p, comments: [...(p.comments || []), normalized] }
           : p
       ),
     }));
-    save(pushToArray(['posts'], postId, 'comments', comment));
+    save(pushToArray(['posts'], postId, 'comments', normalized));
   };
 
   const handleCommentReaction = (postId, commentId, emoji) => {
@@ -813,9 +910,10 @@ export default function App() {
     const me = (emailRef.current || currentUser?.email || currentProfile?.displayName || currentUser?.displayName || 'user').toLowerCase();
 
     const updatedComments = (post.comments || []).map((c, idx) => {
-      const cId = c.id !== undefined && c.id !== null ? String(c.id) : String(idx);
+      const cId = (c && typeof c === 'object' && c.id !== undefined && c.id !== null) ? String(c.id) : String(idx);
       if (cId !== String(commentId)) return c;
-      const currentReactions = { ...(c.reactions || {}) };
+      const cObj = typeof c === 'string' ? { id: idx, text: c, user: 'পরিবারের সদস্য' } : { ...c };
+      const currentReactions = { ...(cObj.reactions || {}) };
       const currentVoters = Array.isArray(currentReactions[emoji]) ? [...currentReactions[emoji]] : [];
       const alreadyVoted = currentVoters.map((v) => String(v).toLowerCase()).includes(me);
       if (alreadyVoted) {
@@ -826,7 +924,7 @@ export default function App() {
       } else {
         currentReactions[emoji] = [...currentVoters, me];
       }
-      return { ...c, reactions: currentReactions };
+      return { ...cObj, reactions: currentReactions };
     });
 
     setData((prev) => ({
@@ -846,13 +944,14 @@ export default function App() {
       (myEmail && post?.authorEmail && post.authorEmail.toLowerCase() === myEmail) ||
       (!post?.authorEmail && myName && post?.author && post.author.trim().toLowerCase() === myName)
     );
+    const canDelete = isAdmin || isAuthor;
 
-    if (!isAuthor && (myEmail || myName)) {
+    if (!canDelete && (myEmail || myName)) {
       setActiveToast({
         id: newId(),
         type: 'error',
         title: 'মুছতে পারবেন না',
-        body: 'শুধুমাত্র যিনি পোস্ট করেছেন তিনি নিজের ছবি মুছতে পারবেন।',
+        body: 'শুধুমাত্র যিনি পোস্ট করেছেন অথবা অ্যাডমিন ছবি মুছতে পারবেন।',
         tab: 'feed',
         time: 'এইমাত্র',
       });
@@ -901,11 +1000,19 @@ export default function App() {
   };
 
   const handleUpdateHotelRooms = (rooms) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     setData((prev) => ({ ...prev, hotelRooms: rooms }));
     save(updateTourDetails({ hotelRooms: rooms }));
   };
 
   const handleUpdateBusSeats = (seats) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     setData((prev) => ({ ...prev, busSeats: seats }));
     save(updateTourDetails({ busSeats: seats }));
   };
@@ -933,12 +1040,16 @@ export default function App() {
     const trimmed = (newText || '').trim();
     if (!trimmed) return;
     const msg = (data.discussions?.[channelId] || []).find((m) => String(m.id) === String(messageId));
-    const myEmail = (currentUser?.email || '').toLowerCase();
+    const userEmail = (currentUser?.email || '').toLowerCase();
     const isMe =
       msg &&
-      ((msg.senderEmail ?? msg.authorEmail)?.toLowerCase() === myEmail ||
+      ((msg.senderEmail ?? msg.authorEmail)?.toLowerCase() === userEmail ||
         (!msg.senderEmail && !msg.authorEmail && msg.author === currentUser?.displayName));
-    if (msg && !isMe) return;
+    const canEdit = isAdmin || isMe;
+    if (msg && !canEdit) {
+      notifyAdminOnly();
+      return;
+    }
 
     setData((prev) => ({
       ...prev,
@@ -958,12 +1069,16 @@ export default function App() {
 
   const handleDeleteMessage = (channelId, messageId) => {
     const msg = (data.discussions?.[channelId] || []).find((m) => String(m.id) === String(messageId));
-    const myEmail = (currentUser?.email || '').toLowerCase();
+    const userEmail = (currentUser?.email || '').toLowerCase();
     const isMe =
       msg &&
-      ((msg.senderEmail ?? msg.authorEmail)?.toLowerCase() === myEmail ||
+      ((msg.senderEmail ?? msg.authorEmail)?.toLowerCase() === userEmail ||
         (!msg.senderEmail && !msg.authorEmail && msg.author === currentUser?.displayName));
-    if (msg && !isMe) return;
+    const canDelete = isAdmin || isMe;
+    if (msg && !canDelete) {
+      notifyAdminOnly();
+      return;
+    }
 
     askConfirm({
       title: 'বার্তা মুছে ফেলবেন?',
@@ -1030,18 +1145,30 @@ export default function App() {
 
   // Itinerary Handlers
   const toggleItineraryDone = (id) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     const item = data.itinerary.find((entry) => entry.id === id);
     if (item) save(updateItem(['itinerary'], id, { done: !item.done }));
   };
 
   const handleAddPlan = (e) => {
     e.preventDefault();
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     if (!newPlan.title || !newPlan.day) return;
     save(addItem(['itinerary'], { ...newPlan, title: newPlan.title.trim(), done: false }));
     setNewPlan({ day: '', title: '', time: '', location: '', notes: '' });
   };
 
   const handleDeletePlan = (id) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     askConfirm({
       title: 'ভ্রমণ সূচি থেকে মুছবেন?',
       message: 'এই সূচিটি সবার তালিকা থেকে মুছে যাবে।',
@@ -1051,6 +1178,10 @@ export default function App() {
 
   // Expense Handlers
   const handleAddExpense = (expData) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     const amount = Number(expData.amount);
     if (!expData.title || !(amount > 0)) return;
     const payer = data.members.find((member) => member.id === expData.paidById) ?? null;
@@ -1086,6 +1217,10 @@ export default function App() {
   };
 
   const handleDeleteExpense = (id) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     const expense = data.expenses.find((entry) => entry.id === id);
     askConfirm({
       title: 'খরচটি মুছে ফেলবেন?',
@@ -1095,6 +1230,10 @@ export default function App() {
   };
 
   const handleUpdateExpense = (id, expData) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     const amount = Number(expData.amount);
     if (!expData.title || !(amount > 0)) return;
     const payer = data.members.find((member) => member.id === expData.paidById) ?? null;
@@ -1130,6 +1269,10 @@ export default function App() {
   // Member & Deposit Handlers
   const handleAddMember = (e) => {
     e.preventDefault();
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     if (!newMember.name.trim()) return;
     save(addItem(['members'], {
       name: newMember.name.trim(),
@@ -1143,6 +1286,10 @@ export default function App() {
   };
 
   const handleUpdateMember = (member) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     if (!member || member.id === undefined) return;
     save(updateItem(['members'], member.id, {
       name: String(member.name || '').trim(),
@@ -1172,6 +1319,10 @@ export default function App() {
   };
 
   const handleDeleteMember = (id) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     const member = data.members.find((entry) => entry.id === id);
     if (!member) return;
     const hasPayments = data.expenses.some((expense) => payerIdFor(expense, data.members) === id);
@@ -1223,6 +1374,10 @@ export default function App() {
 
   // Notice Handlers
   const handleAddNotice = (notice) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     save(addItem(['notices'], {
       ...notice,
       author: notice.author || currentProfile.displayName || currentUser?.displayName || 'পরিবারের সদস্য',
@@ -1249,6 +1404,10 @@ export default function App() {
   };
 
   const handleDeleteNotice = (id) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     askConfirm({
       title: 'নোটিশটি মুছবেন?',
       message: 'এই নোটিশটি সবার নোটিশ বোর্ড থেকে মুছে যাবে।',
@@ -1257,23 +1416,39 @@ export default function App() {
   };
 
   const handleUpdateMeetingPoint = (meetingPoint) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     save(updateTourDetails({ meetingPoint }));
   };
 
   // Checklist Handlers
   const toggleCheck = (id) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     const item = data.checklist.find((entry) => entry.id === id);
     if (item) save(updateItem(['checklist'], id, { checked: !item.checked }));
   };
 
   const handleAddCheckItem = (e) => {
     e.preventDefault();
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     if (!newCheckItem.trim()) return;
     save(addItem(['checklist'], { item: newCheckItem.trim(), category: 'অন্যান্য', checked: false }));
     setNewCheckItem('');
   };
 
   const handleDeleteCheckItem = (id) => {
+    if (!isAdmin) {
+      notifyAdminOnly();
+      return;
+    }
     askConfirm({
       title: 'চেকলিস্ট থেকে মুছবেন?',
       message: 'এই আইটেমটি চেকলিস্ট থেকে মুছে যাবে।',
@@ -1549,7 +1724,7 @@ export default function App() {
                       {currentProfile.displayName || currentUser.displayName || 'পরিবারের সদস্য'}
                     </p>
                     <span className="text-[9px] bg-amber-400/90 text-teal-950 font-bold px-1.5 py-0.2 rounded-md">
-                      {currentProfile.role || 'সদস্য'}
+                      {isAdmin ? '👑 অ্যাডমিন' : (currentProfile.role || 'সদস্য')}
                     </span>
                   </div>
                   <p className="text-[10px] text-teal-300 truncate">{currentUser.email}</p>
@@ -1657,7 +1832,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                         {currentProfile.displayName || currentUser.displayName || 'সদস্য'}
                       </p>
                       <span className="text-[9px] bg-amber-400 text-teal-950 font-bold px-1.5 py-0.2 rounded">
-                        {currentProfile.role || 'সদস্য'}
+                        {isAdmin ? '👑 অ্যাডমিন' : (currentProfile.role || 'সদস্য')}
                       </span>
                     </div>
                   </div>
@@ -1838,33 +2013,36 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       <div className={`flex-1 flex flex-col min-w-0 min-h-0 ${activeTab === 'discussions' ? 'overflow-hidden' : ''}`}>
         {/* Top Header with Mobile Hamburger Menu */}
         <header className="shrink-0 sticky top-0 z-30 bg-gradient-to-r from-teal-900/95 via-teal-800/95 to-cyan-900/95 backdrop-blur-md text-white px-3 py-3 md:px-8 md:py-4 shadow-md border-b border-teal-700/50 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
               {/* Mobile Hamburger Drawer Button */}
               <button
                 onClick={() => setIsMobileSidebarOpen(true)}
-                className="md:hidden p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+                className="md:hidden p-1.5 sm:p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer shrink-0"
                 title="মেন্যু ও সাইডবার খুলুন"
               >
-                <Menu size={20} />
+                <Menu size={19} />
               </button>
 
               <img
                 src={APP_LOGO_URL}
                 alt="App Logo"
-                className="w-9 h-9 md:w-11 md:h-11 rounded-xl object-contain bg-white p-0.5 ring-2 ring-amber-400 shadow-md md:hidden"
+                className="w-8 h-8 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-xl object-contain bg-white p-0.5 ring-2 ring-amber-400 shadow-md md:hidden shrink-0"
               />
 
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="px-2 py-0.5 text-[9px] md:text-[10px] bg-amber-400 text-teal-950 font-extrabold rounded-full whitespace-nowrap">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5">
+                  <span className="px-1.5 sm:px-2 py-0.5 text-[8.5px] sm:text-[9px] md:text-[10px] bg-amber-400 text-teal-950 font-extrabold rounded-full whitespace-nowrap">
                     {data.tourInfo.duration}
                   </span>
                   <span className="hidden sm:inline-flex items-center gap-1 text-[10px] bg-white/20 px-2 py-0.5 rounded-full text-teal-100 whitespace-nowrap">
                     <Bus size={10} /> {data.tourInfo.busName}
                   </span>
                 </div>
-                <h2 className="text-sm md:text-lg font-bold leading-tight truncate">{data.tourInfo.title}</h2>
+                <h2 className="text-xs sm:text-sm md:text-lg font-bold leading-tight truncate">
+                  <span className="sm:hidden">কক্সবাজার ফ্যামিলি ট্যুর ২০২৬</span>
+                  <span className="hidden sm:inline">{data.tourInfo.title}</span>
+                </h2>
               </div>
             </div>
 
@@ -2223,52 +2401,54 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </div>
               </div>
 
-              <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                <h3 className="font-bold text-base mb-4">নতুন ভ্রমণ প্ল্যান যুক্ত করুন</h3>
-                <form onSubmit={handleAddPlan} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    placeholder="দিন (যেমন: ৩য় দিন বিকাল)"
-                    value={newPlan.day}
-                    onChange={e => setNewPlan({ ...newPlan, day: e.target.value })}
-                    className="px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="সময় (যেমন: বিকাল ০৪:৩০ মি.)"
-                    value={newPlan.time}
-                    onChange={e => setNewPlan({ ...newPlan, time: e.target.value })}
-                    className="px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="ইভেন্টের নাম (যেমন: ইনানী বিচ ভ্রমণ)"
-                    value={newPlan.title}
-                    onChange={e => setNewPlan({ ...newPlan, title: e.target.value })}
-                    className="px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="স্থান / লোকেশন"
-                    value={newPlan.location}
-                    onChange={e => setNewPlan({ ...newPlan, location: e.target.value })}
-                    className="px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="নোট বা বিশেষ নির্দেশনা"
-                    value={newPlan.notes}
-                    onChange={e => setNewPlan({ ...newPlan, notes: e.target.value })}
-                    className="md:col-span-2 px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                  />
-                  <button
-                    type="submit"
-                    className="md:col-span-2 py-2.5 bg-teal-700 hover:bg-teal-800 text-white font-semibold text-sm rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
-                  >
-                    <Plus size={18} /> সূচিতে যুক্ত করুন
-                  </button>
-                </form>
-              </div>
+              {isAdmin && (
+                <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                  <h3 className="font-bold text-base mb-4">নতুন ভ্রমণ প্ল্যান যুক্ত করুন</h3>
+                  <form onSubmit={handleAddPlan} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      placeholder="দিন (যেমন: ৩য় দিন বিকাল)"
+                      value={newPlan.day}
+                      onChange={e => setNewPlan({ ...newPlan, day: e.target.value })}
+                      className="px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                    />
+                    <input
+                      type="text"
+                      placeholder="সময় (যেমন: বিকাল ০৪:৩০ মি.)"
+                      value={newPlan.time}
+                      onChange={e => setNewPlan({ ...newPlan, time: e.target.value })}
+                      className="px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                    />
+                    <input
+                      type="text"
+                      placeholder="ইভেন্টের নাম (যেমন: ইনানী বিচ ভ্রমণ)"
+                      value={newPlan.title}
+                      onChange={e => setNewPlan({ ...newPlan, title: e.target.value })}
+                      className="px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                    />
+                    <input
+                      type="text"
+                      placeholder="স্থান / লোকেশন"
+                      value={newPlan.location}
+                      onChange={e => setNewPlan({ ...newPlan, location: e.target.value })}
+                      className="px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                    />
+                    <input
+                      type="text"
+                      placeholder="নোট বা বিশেষ নির্দেশনা"
+                      value={newPlan.notes}
+                      onChange={e => setNewPlan({ ...newPlan, notes: e.target.value })}
+                      className="md:col-span-2 px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                    />
+                    <button
+                      type="submit"
+                      className="md:col-span-2 py-2.5 bg-teal-700 hover:bg-teal-800 text-white font-semibold text-sm rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+                    >
+                      <Plus size={18} /> সূচিতে যুক্ত করুন
+                    </button>
+                  </form>
+                </div>
+              )}
 
               <div className="space-y-3">
                 {data.itinerary.map(item => (
@@ -2280,7 +2460,9 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   >
                     <button
                       onClick={() => toggleItineraryDone(item.id)}
-                      className="mt-1 text-teal-600 hover:scale-110 transition cursor-pointer shrink-0"
+                      disabled={!isAdmin}
+                      className={`mt-1 text-teal-600 transition shrink-0 ${isAdmin ? 'hover:scale-110 cursor-pointer' : 'cursor-default opacity-80'}`}
+                      title={isAdmin ? (item.done ? 'সম্পন্ন চিহ্নিত বাদ দিন' : 'সম্পন্ন চিহ্নিত করুন') : 'শুধুমাত্র অ্যাডমিন সূচি পরিবর্তন করতে পারেন'}
                     >
                       {item.done ? <CheckCircle2 size={22} className="text-emerald-600" /> : <Circle size={22} />}
                     </button>
@@ -2317,13 +2499,15 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                           <Eye size={18} />
                         </button>
                       )}
-                      <button
-                        onClick={() => handleDeletePlan(item.id)}
-                        className="text-slate-300 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                        title="মুছে ফেলুন"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleDeletePlan(item.id)}
+                          className="text-slate-300 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                          title="মুছে ফেলুন"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -2336,6 +2520,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
             <SplitwiseManager
               members={data.members || []}
               expenses={data.expenses || []}
+              isAdmin={isAdmin}
               onAddExpense={handleAddExpense}
               onUpdateExpense={handleUpdateExpense}
               onDeleteExpense={handleDeleteExpense}
@@ -2384,6 +2569,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 <BusSeatMap
                   members={data.members || []}
                   seats={data.busSeats}
+                  isAdmin={isAdmin}
                   onUpdateSeats={handleUpdateBusSeats}
                   onUpdateMember={handleUpdateMember}
                   currentUser={currentUser}
@@ -2394,6 +2580,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 <HotelRoomMap
                   members={data.members || []}
                   rooms={data.hotelRooms}
+                  isAdmin={isAdmin}
                   onUpdateRooms={handleUpdateHotelRooms}
                   currentUser={currentUser}
                 />
@@ -2401,61 +2588,63 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
 
               {seatRoomSubTab === 'roster' && (
                 <div className="space-y-6">
-                  <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                    <h3 className="font-bold text-base mb-4">নতুন সদস্য যুক্ত করুন</h3>
-                    <form onSubmit={handleAddMember} className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <input
-                        type="text"
-                        placeholder="সদস্য বা পরিবারের নাম"
-                        value={newMember.name}
-                        onChange={e => setNewMember({ ...newMember, name: e.target.value })}
-                        className="px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                        required
-                      />
-                      <input
-                        type="text"
-                        placeholder="মোবাইল নম্বর"
-                        value={newMember.phone}
-                        onChange={e => setNewMember({ ...newMember, phone: e.target.value })}
-                        className="px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                      />
-                      <input
-                        type="number"
-                        placeholder="পরিবারের সদস্য সংখ্যা (হেডকাউন্ট)"
-                        value={newMember.familyCount}
-                        onChange={e => setNewMember({ ...newMember, familyCount: e.target.value })}
-                        className="px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                        min="1"
-                      />
-                      <input
-                        type="text"
-                        placeholder="বাস সিট (যেমন: স্লিপার ২ সিট)"
-                        value={newMember.seat}
-                        onChange={e => setNewMember({ ...newMember, seat: e.target.value })}
-                        className="px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                      />
-                      <input
-                        type="text"
-                        placeholder="হোটেল রুম (যেমন: ডাবল বেড রুম)"
-                        value={newMember.room}
-                        onChange={e => setNewMember({ ...newMember, room: e.target.value })}
-                        className="px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                      />
-                      <input
-                        type="number"
-                        placeholder="জমা দেওয়া ফান্ড/চাঁদা (৳)"
-                        value={newMember.deposit}
-                        onChange={e => setNewMember({ ...newMember, deposit: e.target.value })}
-                        className="px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                      />
-                      <button
-                        type="submit"
-                        className="md:col-span-3 py-2.5 bg-teal-700 hover:bg-teal-800 text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
-                      >
-                        <Plus size={16} /> সদস্য তালিকায় যোগ করুন
-                      </button>
-                    </form>
-                  </div>
+                  {isAdmin && (
+                    <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                      <h3 className="font-bold text-base mb-4">নতুন সদস্য যুক্ত করুন</h3>
+                      <form onSubmit={handleAddMember} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <input
+                          type="text"
+                          placeholder="সদস্য বা পরিবারের নাম"
+                          value={newMember.name}
+                          onChange={e => setNewMember({ ...newMember, name: e.target.value })}
+                          className="px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                          required
+                        />
+                        <input
+                          type="text"
+                          placeholder="মোবাইল নম্বর"
+                          value={newMember.phone}
+                          onChange={e => setNewMember({ ...newMember, phone: e.target.value })}
+                          className="px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                        />
+                        <input
+                          type="number"
+                          placeholder="পরিবারের সদস্য সংখ্যা (হেডকাউন্ট)"
+                          value={newMember.familyCount}
+                          onChange={e => setNewMember({ ...newMember, familyCount: e.target.value })}
+                          className="px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                          min="1"
+                        />
+                        <input
+                          type="text"
+                          placeholder="বাস সিট (যেমন: স্লিপার ২ সিট)"
+                          value={newMember.seat}
+                          onChange={e => setNewMember({ ...newMember, seat: e.target.value })}
+                          className="px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                        />
+                        <input
+                          type="text"
+                          placeholder="হোটেল রুম (যেমন: ডাবল বেড রুম)"
+                          value={newMember.room}
+                          onChange={e => setNewMember({ ...newMember, room: e.target.value })}
+                          className="px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                        />
+                        <input
+                          type="number"
+                          placeholder="জমা দেওয়া ফান্ড/চাঁদা (৳)"
+                          value={newMember.deposit}
+                          onChange={e => setNewMember({ ...newMember, deposit: e.target.value })}
+                          className="px-3.5 py-2.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                        />
+                        <button
+                          type="submit"
+                          className="md:col-span-3 py-2.5 bg-teal-700 hover:bg-teal-800 text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+                        >
+                          <Plus size={16} /> সদস্য তালিকায় যোগ করুন
+                        </button>
+                      </form>
+                    </div>
+                  )}
 
                   <div className="grid md:grid-cols-2 gap-4">
                     {(data.members || []).map(member => (
@@ -2472,12 +2661,14 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                               <span className="text-xs text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
                                 জমা: ৳ {Number(member.deposit || 0).toLocaleString()}
                               </span>
-                              <button
-                                onClick={() => setEditingMember(member)}
-                                className="text-[11px] font-semibold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2 py-0.5 rounded-lg border border-teal-200 flex items-center gap-1 transition cursor-pointer"
-                              >
-                                <Edit3 size={12} /> ডিপোজিট আপডেট
-                              </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => setEditingMember(member)}
+                                  className="text-[11px] font-semibold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2 py-0.5 rounded-lg border border-teal-200 flex items-center gap-1 transition cursor-pointer"
+                                >
+                                  <Edit3 size={12} /> ডিপোজিট আপডেট
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -2491,13 +2682,15 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                                 <PhoneCall size={14} />
                               </a>
                             )}
-                            <button
-                              onClick={() => setEditingMember(member)}
-                              className="text-slate-400 hover:text-teal-600 p-1.5 rounded-lg hover:bg-teal-50 transition cursor-pointer"
-                              title="তথ্য পরিবর্তন করুন"
-                            >
-                              <Edit3 size={15} />
-                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => setEditingMember(member)}
+                                className="text-slate-400 hover:text-teal-600 p-1.5 rounded-lg hover:bg-teal-50 transition cursor-pointer"
+                                title="তথ্য পরিবর্তন করুন"
+                              >
+                                <Edit3 size={15} />
+                              </button>
+                            )}
                             {isAdmin && (
                               <button
                                 onClick={() => handleDeleteMember(member.id)}
@@ -2541,6 +2734,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               currentUser={currentUser}
               currentProfile={currentProfile}
               members={data.members || []}
+              userProfiles={data.userProfiles || {}}
               onAddPost={handleAddPost}
               onLikePost={handleLikePost}
               onAddComment={handleAddComment}
@@ -2548,6 +2742,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               onUpdatePost={handleUpdatePost}
               onViewPost={handleViewPost}
               onCommentReaction={handleCommentReaction}
+              onShareToDiscussion={handleSendMessage}
             />
           )}
 
@@ -2581,6 +2776,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               notices={data.notices || []}
               meetingPoint={data.meetingPoint || {}}
               onAddNotice={handleAddNotice}
+              isAdmin={isAdmin}
               canDelete={isAdmin}
               onDeleteNotice={handleDeleteNotice}
               onUpdateMeetingPoint={handleUpdateMeetingPoint}
@@ -2590,24 +2786,26 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
           {/* TAB 8: CHECKLIST */}
           {activeTab === 'checklist' && (
             <div className="space-y-6">
-              <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                <h3 className="font-bold text-base mb-3">প্যাকিং চেকলিস্টে নতুন আইটেম যোগ করুন</h3>
-                <form onSubmit={handleAddCheckItem} className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="যেমন: ক্যামেরা মেমোরি কার্ড, বাচ্চাদের সুইমিং ড্রেস..."
-                    value={newCheckItem}
-                    onChange={e => setNewCheckItem(e.target.value)}
-                    className="flex-1 px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
-                  />
-                  <button
-                    type="submit"
-                    className="px-4 py-2.5 bg-teal-700 hover:bg-teal-800 text-white font-semibold text-sm rounded-xl flex items-center gap-1.5 transition cursor-pointer"
-                  >
-                    <Plus size={18} /> যোগ করুন
-                  </button>
-                </form>
-              </div>
+              {isAdmin && (
+                <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                  <h3 className="font-bold text-base mb-3">প্যাকিং চেকলিস্টে নতুন আইটেম যোগ করুন</h3>
+                  <form onSubmit={handleAddCheckItem} className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="যেমন: ক্যামেরা মেমোরি কার্ড, বাচ্চাদের সুইমিং ড্রেস..."
+                      value={newCheckItem}
+                      onChange={e => setNewCheckItem(e.target.value)}
+                      className="flex-1 px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
+                    />
+                    <button
+                      type="submit"
+                      className="px-4 py-2.5 bg-teal-700 hover:bg-teal-800 text-white font-semibold text-sm rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Plus size={18} /> যোগ করুন
+                    </button>
+                  </form>
+                </div>
+              )}
 
               <div className="bg-white rounded-3xl shadow-sm border border-slate-100 divide-y divide-slate-100">
                 {(data.checklist || []).map(item => (
@@ -2616,10 +2814,24 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                     className="p-4 flex items-center justify-between gap-3.5 hover:bg-slate-50 transition"
                   >
                     <div
-                     role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}  onClick={() => toggleCheck(item.id)}
-                      className="flex-1 flex items-center gap-3.5 cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          if (isAdmin) toggleCheck(item.id);
+                        }
+                      }}
+                      onClick={() => {
+                        if (isAdmin) toggleCheck(item.id);
+                      }}
+                      className={`flex-1 flex items-center gap-3.5 ${isAdmin ? 'cursor-pointer' : 'cursor-default'}`}
+                      title={isAdmin ? (item.checked ? 'চেক আনমার্ক করুন' : 'চেক মার্ক করুন') : 'শুধুমাত্র অ্যাডমিন চেকলিস্ট পরিবর্তন করতে পারেন'}
                     >
-                      <button className="text-teal-600 cursor-pointer">
+                      <button
+                        className={`text-teal-600 ${isAdmin ? 'cursor-pointer' : 'cursor-default opacity-80'}`}
+                        disabled={!isAdmin}
+                      >
                         {item.checked ? <CheckCircle2 size={22} className="text-emerald-600" /> : <Circle size={22} />}
                       </button>
                       <div>
@@ -2629,13 +2841,15 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                         <span className="text-[11px] text-slate-400">{item.category}</span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleDeleteCheckItem(item.id)}
-                      className="text-slate-300 hover:text-rose-500 p-1 transition cursor-pointer"
-                      title="মুছে ফেলুন"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleDeleteCheckItem(item.id)}
+                        className="text-slate-300 hover:text-rose-500 p-1 transition cursor-pointer"
+                        title="মুছে ফেলুন"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2683,48 +2897,57 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       </nav>
 
       {/* GLOBAL COMMAND PALETTE (Ctrl+K) */}
-      <CommandPalette
-        isOpen={isCommandOpen}
-        onClose={setIsCommandOpen}
-        members={data.members || []}
-        onSelectTab={(tabId) => {
-          setActiveTab(tabId);
-          setIsCommandOpen(false);
-        }}
-        onOpenExpenseModal={() => {
-          setActiveTab('expenses');
-          setIsCommandOpen(false);
-        }}
-        onOpenPrintModal={() => {
-          setShowPrintReport(true);
-          setIsCommandOpen(false);
-        }}
-        onOpenProfileModal={() => {
-          setShowProfileModal(true);
-          setIsCommandOpen(false);
-        }}
-        onTriggerSOS={() => {
-          setActiveTab('notices');
-          setIsCommandOpen(false);
-        }}
-      />
+      {isCommandOpen && (
+        <Suspense fallback={null}>
+          <CommandPalette
+            isOpen={isCommandOpen}
+            onClose={setIsCommandOpen}
+            members={data.members || []}
+            isAdmin={isAdmin}
+            onSelectTab={(tabId) => {
+              setActiveTab(tabId);
+              setIsCommandOpen(false);
+            }}
+            onOpenExpenseModal={() => {
+              setActiveTab('expenses');
+              setIsCommandOpen(false);
+            }}
+            onOpenPrintModal={() => {
+              setShowPrintReport(true);
+              setIsCommandOpen(false);
+            }}
+            onOpenProfileModal={() => {
+              setShowProfileModal(true);
+              setIsCommandOpen(false);
+            }}
+            onTriggerSOS={() => {
+              setActiveTab('notices');
+              setIsCommandOpen(false);
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* USER PROFILE MODAL */}
-      <UserProfileModal
-        isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-        currentUser={currentUser}
-        currentProfile={currentProfile}
-        members={data.members || []}
-        onSaveProfile={handleSaveProfile}
-        onOpenUpdateModal={(info) => {
-          setAppUpdateInfo(info);
-          setShowAppUpdateModal(true);
-        }}
-      />
+      {showProfileModal && (
+        <Suspense fallback={null}>
+          <UserProfileModal
+            isOpen={showProfileModal}
+            onClose={() => setShowProfileModal(false)}
+            currentUser={currentUser}
+            currentProfile={currentProfile}
+            members={data.members || []}
+            onSaveProfile={handleSaveProfile}
+            onOpenUpdateModal={(info) => {
+              setAppUpdateInfo(info);
+              setShowAppUpdateModal(true);
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* EDIT MEMBER & DEPOSIT UPDATE MODAL (Pinned header/footer, mobile-friendly) */}
-      {editingMember && (() => {
+      {isAdmin && editingMember && (() => {
         const originalMember = (data.members || []).find((m) => m.id === editingMember.id) || editingMember;
         const initialDeposit = Number(originalMember.deposit || 0);
         const currentDeposit = Number(editingMember.deposit || 0);
@@ -2995,30 +3218,42 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
       )}
 
       {/* SUPERPOWER MODALS */}
-      <FamilySafetyHub
-        isOpen={showSafetyHubModal}
-        onClose={() => setShowSafetyHubModal(false)}
-        currentUser={currentUser}
-        currentProfile={currentProfile}
-        familyLocations={data.familyLocations || {}}
-        members={data.members || []}
-        onShareLocation={handleShareLocation}
-        onClearLocation={handleClearLocation}
-      />
+      {showSafetyHubModal && (
+        <Suspense fallback={null}>
+          <FamilySafetyHub
+            isOpen={showSafetyHubModal}
+            onClose={() => setShowSafetyHubModal(false)}
+            currentUser={currentUser}
+            currentProfile={currentProfile}
+            familyLocations={data.familyLocations || {}}
+            members={data.members || []}
+            onShareLocation={handleShareLocation}
+            onClearLocation={handleClearLocation}
+          />
+        </Suspense>
+      )}
 
-      <TourQuizModal
-        isOpen={showQuizModal}
-        onClose={() => setShowQuizModal(false)}
-        currentUser={currentUser}
-        currentProfile={currentProfile}
-      />
+      {showQuizModal && (
+        <Suspense fallback={null}>
+          <TourQuizModal
+            isOpen={showQuizModal}
+            onClose={() => setShowQuizModal(false)}
+            currentUser={currentUser}
+            currentProfile={currentProfile}
+          />
+        </Suspense>
+      )}
 
       {/* IN-APP OTA APP UPDATER MODAL */}
-      <AppUpdateModal
-        isOpen={showAppUpdateModal}
-        updateInfo={appUpdateInfo}
-        onClose={() => setShowAppUpdateModal(false)}
-      />
+      {showAppUpdateModal && (
+        <Suspense fallback={null}>
+          <AppUpdateModal
+            isOpen={showAppUpdateModal}
+            updateInfo={appUpdateInfo}
+            onClose={() => setShowAppUpdateModal(false)}
+          />
+        </Suspense>
+      )}
 
     </div>
     <ConfirmDialog request={confirmRequest} onCancel={closeConfirm} />
