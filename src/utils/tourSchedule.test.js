@@ -9,15 +9,17 @@ import {
 } from './tourSchedule';
 
 describe('tourSchedule', () => {
-  it('has 5 configured tour days', () => {
+  it('has 5 configured tour days with shortLabels', () => {
     expect(TOUR_DAYS).toHaveLength(5);
     expect(TOUR_DAYS[0].id).toBe('day1');
+    expect(TOUR_DAYS[0].shortLabel).toBe('১ম দিন');
     expect(TOUR_DAYS[4].id).toBe('day5');
   });
 
-  it('retrieves tour day by id', () => {
+  it('retrieves tour day by id or object', () => {
     expect(getTourDayById('day2').name).toBe('২য় দিন');
     expect(getTourDayById('day4').badge).toBe('মহেশখালী সফর');
+    expect(getTourDayById({ id: 'day3' }).name).toBe('৩য় দিন');
     expect(getTourDayById('invalid_id').id).toBe('day1');
   });
 
@@ -31,8 +33,9 @@ describe('tourSchedule', () => {
     expect(getCurrentTourDay(oct21).id).toBe('day3');
   });
 
-  it('determines post tour day by post.tourDay or date', () => {
+  it('determines post tour day by post.tourDay (string or object) or date', () => {
     expect(getPostTourDay({ tourDay: 'day2' })).toBe('day2');
+    expect(getPostTourDay({ tourDay: { id: 'day4' } })).toBe('day4');
     expect(getPostTourDay({ date: '2026-10-21' })).toBe('day3');
     expect(getPostTourDay({ caption: 'ইনানী বিচে দারুণ সময় কাটালাম' })).toBe('day1');
   });

@@ -98,7 +98,7 @@ export default function StoryViewerModal({
 
   if (!isOpen || !currentStory) return null;
 
-  const tourDayId = currentStory.tourDay || getPostTourDay(currentStory);
+  const tourDayId = (typeof currentStory.tourDay === 'object' ? currentStory.tourDay?.id : currentStory.tourDay) || getPostTourDay(currentStory);
   const tourDayInfo = tourDayId ? getTourDayById(tourDayId) : null;
 
   const mediaUrl = photoSource(currentStory);
@@ -297,7 +297,7 @@ export default function StoryViewerModal({
             <div className="absolute top-20 right-3.5 z-20 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-300">
               <div className="bg-gradient-to-r from-pink-500/95 to-purple-600/95 backdrop-blur-md text-white text-[11px] font-black px-3 py-1.5 rounded-xl shadow-2xl border border-white/40 flex items-center gap-1.5 rotate-3">
                 <span>{tourDayInfo.emoji}</span>
-                <span>{tourDayInfo.shortLabel}</span>
+                <span>{tourDayInfo.shortLabel || tourDayInfo.name}</span>
               </div>
             </div>
           )}

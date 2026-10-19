@@ -832,7 +832,7 @@ export default function InstagramFeed({
       const postId = newId();
       const profilePhoto = currentProfile?.customPhotoURL;
 
-      const finalTourDay = selectedTourDay === 'auto' ? getCurrentTourDay() : selectedTourDay;
+      const finalTourDay = selectedTourDay === 'auto' ? getCurrentTourDay().id : selectedTourDay;
 
       const newReelPost = {
         id: postId,
@@ -981,7 +981,7 @@ export default function InstagramFeed({
 
     const postId = newId();
     const profilePhoto = currentProfile?.customPhotoURL;
-    const finalTourDay = selectedTourDay === 'auto' ? getCurrentTourDay() : selectedTourDay;
+    const finalTourDay = selectedTourDay === 'auto' ? getCurrentTourDay().id : selectedTourDay;
 
     const newPost = {
       id: postId,
@@ -2405,7 +2405,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                       <Calendar size={13} className="text-pink-600" /> ট্যুর দিন (Tour Day)
                     </span>
                     <span className="text-[10px] text-slate-500">
-                      {selectedTourDay === 'auto' ? `স্বয়ংক্রিয় (${getTourDayById(getCurrentTourDay())?.shortLabel})` : getTourDayById(selectedTourDay)?.title}
+                      {selectedTourDay === 'auto' ? `স্বয়ংক্রিয় (${getCurrentTourDay().name})` : (getTourDayById(selectedTourDay)?.title || selectedTourDay)}
                     </span>
                   </div>
                   <div className="grid grid-cols-3 gap-1.5 text-[11px]">
@@ -2473,20 +2473,24 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
 
                   {/* Tour Schedule Auto-Location Suggestion */}
                   {(() => {
-                    const suggestedLoc = getSuggestedTourLocation();
-                    if (!suggestedLoc || location === suggestedLoc) return null;
+                    const suggested = getSuggestedTourLocation();
+                    const suggestedSpot = suggested?.spot || '';
+                    if (!suggestedSpot || location === suggestedSpot) return null;
                     return (
                       <div className="flex items-center justify-between p-2 bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-xl text-xs text-sky-950 shadow-2xs">
                         <span className="flex items-center gap-1.5 truncate">
                           <Sparkles size={13} className="text-sky-600 shrink-0" />
                           <span className="text-[10px] font-medium text-sky-700">বর্তমান শিডিউল:</span>
-                          <strong className="truncate text-[11px] font-bold">{suggestedLoc}</strong>
+                          <strong className="truncate text-[11px] font-bold">{suggestedSpot}</strong>
                         </span>
                         <button
                           type="button"
                           onClick={() => {
-                            setLocation(suggestedLoc);
+                            setLocation(suggestedSpot);
                             setIsCustomLocMode(false);
+                            if (suggested?.day?.id) {
+                              setSelectedTourDay(suggested.day.id);
+                            }
                           }}
                           className="px-2.5 py-0.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white font-bold rounded-lg shrink-0 cursor-pointer text-[10px] shadow-2xs"
                         >

@@ -101,7 +101,7 @@ export default function InstagramPostCard({
   const currentMediaSrc = postImages[activeImageIdx] || photoSource(post);
   const postIsReel = Boolean(post.isReel || post.reel || post.videoUrl || post.video || post.type === 'reel');
 
-  const tourDayId = post.tourDay || getPostTourDay(post);
+  const tourDayId = (typeof post.tourDay === 'object' ? post.tourDay?.id : post.tourDay) || getPostTourDay(post);
   const tourDayInfo = tourDayId ? getTourDayById(tourDayId) : null;
 
   const myIdentifier = (
@@ -221,7 +221,7 @@ export default function InstagramPostCard({
               </h4>
               {tourDayInfo && (
                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shadow-2xs ${tourDayInfo.badgeColor || 'bg-sky-50 text-sky-700 border-sky-200'}`}>
-                  {tourDayInfo.emoji} {tourDayInfo.shortLabel}
+                  {tourDayInfo.emoji} {tourDayInfo.shortLabel || tourDayInfo.name}
                 </span>
               )}
               {postIsReel && (

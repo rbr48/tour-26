@@ -8,6 +8,7 @@ export const TOUR_DAYS = [
     id: 'day1',
     dayNum: 1,
     name: '১ম দিন',
+    shortLabel: '১ম দিন',
     date: '2026-10-19',
     badge: 'যাত্রার সূচনা',
     title: 'রংপুর ➔ বগুড়া ➔ ঢাকা নাইট জার্নি',
@@ -19,6 +20,7 @@ export const TOUR_DAYS = [
     id: 'day2',
     dayNum: 2,
     name: '২য় দিন',
+    shortLabel: '২য় দিন',
     date: '2026-10-20',
     badge: 'কক্সবাজার আগমন',
     title: 'হোটেল সি মুন ও লাবণী বিচ সূর্যাস্ত',
@@ -30,6 +32,7 @@ export const TOUR_DAYS = [
     id: 'day3',
     dayNum: 3,
     name: '৩য় দিন',
+    shortLabel: '৩য় দিন',
     date: '2026-10-21',
     badge: 'ইনানী ও BBQ নাইট',
     title: 'হিমছড়ি, ইনানী, পটুয়ারটেক ও বারবিকিউ',
@@ -41,6 +44,7 @@ export const TOUR_DAYS = [
     id: 'day4',
     dayNum: 4,
     name: '৪র্থ দিন',
+    shortLabel: '৪র্থ দিন',
     date: '2026-10-22',
     badge: 'মহেশখালী সফর',
     title: 'আদিনাথ মন্দির, পানের বরজ ও বার্মিজ মার্কেট',
@@ -52,6 +56,7 @@ export const TOUR_DAYS = [
     id: 'day5',
     dayNum: 5,
     name: '৫ম দিন',
+    shortLabel: '৫ম দিন',
     date: '2026-10-23',
     badge: 'প্রত্যাবর্তন',
     title: 'চেক-আউট ও রংপুরের উদ্দেশ্যে ফিরতি যাত্রা',
@@ -66,7 +71,8 @@ export const TOUR_DAYS = [
  */
 export function getTourDayById(dayId) {
   if (!dayId) return TOUR_DAYS[0];
-  return TOUR_DAYS.find((d) => d.id === dayId) || TOUR_DAYS[0];
+  const id = typeof dayId === 'object' ? dayId.id : dayId;
+  return TOUR_DAYS.find((d) => d.id === id) || TOUR_DAYS[0];
 }
 
 /**
@@ -107,7 +113,7 @@ export function getCurrentTourDay(date = new Date()) {
  */
 export function getPostTourDay(post) {
   if (!post) return 'day1';
-  if (post.tourDay) return post.tourDay;
+  if (post.tourDay) return typeof post.tourDay === 'object' ? post.tourDay?.id || 'day1' : post.tourDay;
 
   const dateStr = post.date || post.createdAtDate || '';
   if (dateStr) {
