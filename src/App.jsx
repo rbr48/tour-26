@@ -47,6 +47,7 @@ import { findLinkedMember } from './utils/members';
 import { localISODate, localTimeHHMM } from './utils/date';
 import { toBnNum } from './utils/videoHelper';
 import { checkForAppUpdate } from './utils/appUpdater';
+import { syncBusSeatsWithMembers, syncHotelRoomsWithMembers, DEFAULT_BUS_SEATS, DEFAULT_ROOMS, extractSeats, extractRooms } from './utils/syncHelpers';
 
 // Heavy screens load on demand so the first screen opens quickly.
 const SplitwiseManager = lazy(() => import('./components/SplitwiseManager'));
@@ -1300,27 +1301,67 @@ export default function App() {
       return;
     }
     if (!member || member.id === undefined) return;
-    save(updateItem(['members'], member.id, {
+
+    const originalMember = (data.members || []).find((m) => m.id === member.id);
+    const updatedMemberRecord = {
       name: String(member.name || '').trim(),
       phone: String(member.phone || '').trim(),
       seat: member.seat ?? '',
       room: member.room ?? '',
       deposit: Math.max(0, Number(member.deposit) || 0),
       familyCount: Math.max(1, Number(member.familyCount) || 1),
-    }));
+    };
+
+    save(updateItem(['members'], member.id, updatedMemberRecord));
     setEditingMember(null);
+
+    // Dynamic 2-way sync across Bus Seats and Hotel Rooms
+    const updatedMemberList = (data.members || []).map((m) =>
+      m.id === member.id ? { ...m, ...updatedMemberRecord } : m
+    );
+    if (!updatedMemberList.some((m) => m.id === member.id)) {
+      updatedMemberList.push({ ...member, ...updatedMemberRecord });
+    }
+
+    const baseBusSeats = (Array.isArray(data.busSeats) && data.busSeats.length > 0)
+      ? data.busSeats
+      : DEFAULT_BUS_SEATS;
+    const syncedBusSeats = syncBusSeatsWithMembers(baseBusSeats, updatedMemberList);
+
+    const baseHotelRooms = (Array.isArray(data.hotelRooms) && data.hotelRooms.length > 0)
+      ? data.hotelRooms
+      : DEFAULT_ROOMS;
+    const syncedHotelRooms = syncHotelRoomsWithMembers(baseHotelRooms, updatedMemberList);
+
+    setData((prev) => ({
+      ...prev,
+      busSeats: syncedBusSeats,
+      hotelRooms: syncedHotelRooms,
+    }));
+    save(updateTourDetails({ busSeats: syncedBusSeats, hotelRooms: syncedHotelRooms }));
+
+    const oldDeposit = Number(originalMember?.deposit || 0);
+    const newDeposit = Number(member.deposit || 0);
+    const diff = newDeposit - oldDeposit;
+    const diffText = diff > 0
+      ? ` (+৳${diff.toLocaleString()})`
+      : diff < 0
+      ? ` (-৳${Math.abs(diff).toLocaleString()})`
+      : '';
+
     addActivity({
       id: newId(),
       type: 'deposit',
       title: '👤 সদস্য তথ্য ও জমা আপডেট',
-      body: `${member.name} • জমা: ৳${Number(member.deposit || 0).toLocaleString()}`,
+      body: `${member.name} • মোট জমা: ৳${newDeposit.toLocaleString()}${diffText}`,
       tab: 'expenses',
       time: 'এইমাত্র',
     });
-    if (Number(member.deposit || 0) > 0) {
+
+    if (newDeposit > 0) {
       sendBroadcastPush({
         title: '💰 ফান্ডে জমা আপডেট',
-        body: `${member.name} এর মোট জমা: ৳${Number(member.deposit || 0).toLocaleString()}`,
+        body: `${member.name} এর মোট জমা: ৳${newDeposit.toLocaleString()}${diffText}`,
         url: '/#expenses',
         tag: 'deposit',
       });
@@ -2722,6 +2763,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   rooms={data.hotelRooms}
                   isAdmin={isAdmin}
                   onUpdateRooms={handleUpdateHotelRooms}
+                  onUpdateMember={handleUpdateMember}
                   currentUser={currentUser}
                 />
               )}
@@ -3089,6 +3131,11 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
             currentUser={currentUser}
             currentProfile={currentProfile}
             members={data.members || []}
+            ledger={ledger}
+            onNavigateToExpenses={() => {
+              setShowProfileModal(false);
+              setActiveTab('expenses');
+            }}
             onSaveProfile={handleSaveProfile}
             onOpenUpdateModal={(info) => {
               setAppUpdateInfo(info);
@@ -3286,6 +3333,24 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                         onChange={e => setEditingMember({ ...editingMember, seat: e.target.value })}
                         className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
                       />
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {['S1, S2', 'S3, S4', 'S7, S8', 'S9, S10', 'B1, B2', 'B4, B5', 'B7, B8', 'B10, B11', 'B12', 'B13'].map((chip) => (
+                          <button
+                            key={chip}
+                            type="button"
+                            onClick={() => {
+                              const cur = editingMember.seat || '';
+                              setEditingMember({
+                                ...editingMember,
+                                seat: cur ? `${cur}, ${chip}` : chip,
+                              });
+                            }}
+                            className="px-1.5 py-0.5 text-[10px] bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-600 rounded-md border border-slate-200 transition cursor-pointer"
+                          >
+                            +{chip}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div>
@@ -3300,6 +3365,18 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                         onChange={e => setEditingMember({ ...editingMember, room: e.target.value })}
                         className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 bg-white"
                       />
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {['রুম ৩০১', 'রুম ৩০২', 'রুম ৪০১', 'রুম ৪০২', 'রুম ৫০১', 'রুম ৫০২', 'রুম ৬০১', 'রুম ৬০২', 'রুম ৭০১', 'রুম ৭০২'].map((rChip) => (
+                          <button
+                            key={rChip}
+                            type="button"
+                            onClick={() => setEditingMember({ ...editingMember, room: rChip })}
+                            className="px-1.5 py-0.5 text-[10px] bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-600 rounded-md border border-slate-200 transition cursor-pointer"
+                          >
+                            {rChip}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>

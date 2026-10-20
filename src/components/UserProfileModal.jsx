@@ -15,6 +15,8 @@ import {
   RefreshCw,
   Image as ImageIcon,
   Loader2,
+  Wallet,
+  ArrowRight,
 } from 'lucide-react';
 import { compressImageFile } from '../utils/imageCompressor';
 import { findLinkedMember } from '../utils/members';
@@ -41,6 +43,8 @@ export default function UserProfileModal({
   currentUser,
   currentProfile = {},
   members = [],
+  ledger = null,
+  onNavigateToExpenses,
   onSaveProfile,
   onOpenUpdateModal,
 }) {
@@ -183,6 +187,10 @@ export default function UserProfileModal({
   };
 
   const linkedMember = members.find((member) => String(member.id) === String(profile.memberId)) ?? null;
+  const memberLedger = React.useMemo(() => {
+    if (!linkedMember || !ledger?.rows) return null;
+    return ledger.rows.find((r) => r.id === linkedMember.id) || null;
+  }, [linkedMember, ledger]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -514,6 +522,50 @@ export default function UserProfileModal({
                 </div>
               </div>
             </div>
+
+            {/* Live Financial Summary Card */}
+            {memberLedger && (
+              <div className="bg-gradient-to-br from-slate-900 to-teal-950 text-white p-3.5 rounded-2xl border border-teal-800/40 shadow-sm space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-teal-300">
+                    <Wallet size={15} />
+                    <span>ব্যক্তিগত ফিনান্সিয়াল হিসাব ({linkedMember?.name})</span>
+                  </div>
+                  {onNavigateToExpenses && (
+                    <button
+                      type="button"
+                      onClick={onNavigateToExpenses}
+                      className="text-[10px] text-teal-200 hover:text-white flex items-center gap-0.5 cursor-pointer hover:underline"
+                    >
+                      সম্পূর্ণ লেজার <ArrowRight size={10} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2 bg-white/10 rounded-xl backdrop-blur-xs">
+                    <span className="text-[10px] text-slate-300 block">মোট জমা</span>
+                    <span className="text-xs sm:text-sm font-extrabold text-teal-300">
+                      ৳{Number(memberLedger.deposit || 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="p-2 bg-white/10 rounded-xl backdrop-blur-xs">
+                    <span className="text-[10px] text-slate-300 block">খরচের ভাগ ({memberLedger.familyCount} জন)</span>
+                    <span className="text-xs sm:text-sm font-extrabold text-amber-300">
+                      ৳{Number(memberLedger.share || 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="p-2 bg-white/10 rounded-xl backdrop-blur-xs">
+                    <span className="text-[10px] text-slate-300 block">
+                      {memberLedger.net >= 0 ? 'উদ্বৃত্ত পাবে' : 'বকেয়া দিতে হবে'}
+                    </span>
+                    <span className={`text-xs sm:text-sm font-extrabold ${memberLedger.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      ৳{Math.abs(Number(memberLedger.net || 0)).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Official Google Drive Backup Folder Integration Card */}
             <div className="bg-gradient-to-r from-emerald-50 to-teal-50 p-3 rounded-2xl border border-emerald-200/90 flex items-center justify-between text-xs">

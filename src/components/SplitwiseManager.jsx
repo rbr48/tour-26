@@ -5,6 +5,7 @@ import {
 import { FUND_LABEL, computeLedger } from '../utils/ledger';
 import { localISODate, localTimeHHMM } from '../utils/date';
 import { useBackHandler } from '../utils/backNavigation';
+import { resolvePayerName } from '../utils/syncHelpers';
 
 export const DEFAULT_CATEGORIES = {
   'খাবার': { color: 'bg-emerald-500', bgLight: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
@@ -532,7 +533,7 @@ export default function SplitwiseManager({
                     </span>
                     <span className="text-[11px] text-slate-400">{item.date}</span>
                     <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">
-                      পরিশোধ: {item.paidBy || FUND_LABEL}
+                      পরিশোধ: {resolvePayerName(item, members)}
                     </span>
                   </div>
                   <h5 className="font-bold text-sm text-slate-900 truncate">{item.title}</h5>

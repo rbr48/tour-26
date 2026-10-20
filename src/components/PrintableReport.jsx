@@ -3,6 +3,7 @@ import { Printer, Download, X } from 'lucide-react';
 import { FUND_LABEL, categoryTotals, computeLedger } from '../utils/ledger';
 import { csvRow } from '../utils/csv';
 import { localISODate } from '../utils/date';
+import { resolvePayerName } from '../utils/syncHelpers';
 
 export default function PrintableReport({
   tourInfo = {},
@@ -63,7 +64,7 @@ export default function PrintableReport({
     section('খরচের সম্পূর্ণ বিবরণী (EXPENSES LEDGER)');
     line('ক্রমিক নং', 'তারিখ', 'সময়', 'খাত', 'খরচের বিবরণ', 'বিল পরিশোধক', 'পরিমাণ (টাকা)');
     expenses.forEach((expense, index) => {
-      line(index + 1, expense.date || '', expense.time || '', expense.category || '', expense.title || '', expense.paidBy || FUND_LABEL, Number(expense.amount) || 0);
+      line(index + 1, expense.date || '', expense.time || '', expense.category || '', expense.title || '', resolvePayerName(expense, members), Number(expense.amount) || 0);
     });
     line('', '', '', '', 'সর্বমোট ব্যয়:', '', ledger.totalExpense);
 
@@ -209,7 +210,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                       </td>
                       <td className="p-2 font-semibold text-teal-800">{e.category}</td>
                       <td className="p-2">{e.title}</td>
-                      <td className="p-2 text-slate-600 whitespace-nowrap">{e.paidBy || 'ট্যুর ফান্ড'}</td>
+                      <td className="p-2 text-slate-600 whitespace-nowrap">{resolvePayerName(e, members)}</td>
                       <td className="p-2 font-bold text-right whitespace-nowrap">৳ {Number(e.amount).toLocaleString()}</td>
                     </tr>
                   ))}

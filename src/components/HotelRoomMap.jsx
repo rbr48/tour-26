@@ -18,6 +18,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { phoneForMember } from '../utils/members';
+import { syncHotelRoomsWithMembers, extractRooms } from '../utils/syncHelpers';
 
 export const DEFAULT_ROOMS = [
   {
@@ -135,7 +136,7 @@ const COLOR_OPTIONS = [
   { label: 'অরেঞ্জ', value: 'border-orange-300 bg-orange-50/50' },
 ];
 
-export default function HotelRoomMap({ members = [], rooms: externalRooms, isAdmin = false, onUpdateRooms }) {
+export default function HotelRoomMap({ members = [], rooms: externalRooms, isAdmin = false, onUpdateRooms, onUpdateMember }) {
   const [selectedFloor, setSelectedFloor] = useState('all');
 
   const [rooms, setRooms] = useState(() => {
@@ -149,12 +150,16 @@ export default function HotelRoomMap({ members = [], rooms: externalRooms, isAdm
     return DEFAULT_ROOMS;
   });
 
-  // Sync with Firestore externalRooms updates
+  // Sync with Firestore externalRooms updates & live members
   useEffect(() => {
-    if (Array.isArray(externalRooms) && externalRooms.length > 0) {
+    const baseRooms = Array.isArray(externalRooms) && externalRooms.length > 0 ? externalRooms : rooms;
+    if (Array.isArray(members) && members.length > 0) {
+      const synced = syncHotelRoomsWithMembers(baseRooms, members);
+      setRooms(synced);
+    } else if (Array.isArray(externalRooms) && externalRooms.length > 0) {
       setRooms(externalRooms);
     }
-  }, [externalRooms]);
+  }, [externalRooms, members]);
 
   // Modal State for Add / Edit
   const [modalMode, setModalMode] = useState(null); // 'add' | 'edit' | null
@@ -442,9 +447,9 @@ export default function HotelRoomMap({ members = [], rooms: externalRooms, isAdm
               <h5 className="font-bold text-sm text-slate-800">{room.occupants || 'বরাদ্দ করা হয়নি'}</h5>
             </div>
 
-            {phoneForMember(members, room.memberName) && (
+            {(room.memberPhone || phoneForMember(members, room.memberName)) && (
               <a
-                href={`tel:${phoneForMember(members, room.memberName)}`}
+                href={`tel:${room.memberPhone || phoneForMember(members, room.memberName)}`}
                 className="w-full py-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-2xs transition"
               >
                 <PhoneCall size={13} className="text-teal-700" /> রুমের প্রতিনিধির সাথে যোগাযোগ ({room.memberName})

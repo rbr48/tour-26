@@ -16,6 +16,7 @@ import {
 
 import { phoneForMember } from '../utils/members';
 import { useBackHandler } from '../utils/backNavigation';
+import { syncBusSeatsWithMembers, extractSeats } from '../utils/syncHelpers';
 
 export const DEFAULT_BUS_SEATS = [
   // Upper Deck: 10 Sleepers
@@ -86,12 +87,16 @@ export default function BusSeatMap({
     return DEFAULT_BUS_SEATS;
   });
 
-  // Sync with Firestore externalSeats updates
+  // Sync with Firestore externalSeats updates & live members
   useEffect(() => {
-    if (Array.isArray(externalSeats) && externalSeats.length > 0) {
+    const baseSeats = Array.isArray(externalSeats) && externalSeats.length > 0 ? externalSeats : seats;
+    if (Array.isArray(members) && members.length > 0) {
+      const synced = syncBusSeatsWithMembers(baseSeats, members);
+      setSeats(synced);
+    } else if (Array.isArray(externalSeats) && externalSeats.length > 0) {
       setSeats(externalSeats);
     }
-  }, [externalSeats]);
+  }, [externalSeats, members]);
 
   const showNotification = (msg) => {
     setNotification(msg);
@@ -109,17 +114,14 @@ export default function BusSeatMap({
   // Dynamically resolve seat occupant
   const getSeatOccupant = (s) => {
     if (!s) return '';
-    if (s.member !== undefined && s.member !== null) {
-      return s.member;
+    if (s.memberId !== undefined && s.memberId !== null) {
+      const linked = members.find((m) => String(m.id) === String(s.memberId));
+      if (linked?.name) return linked.name;
     }
-    const matched = members.find((m) => {
-      if (!m.seat) return false;
-      const clean = m.seat.toUpperCase();
-      const id = s.id.toUpperCase();
-      return clean.includes(id);
-    });
-    if (matched) return matched.name;
-    return '';
+    const seatId = String(s.id || '').toUpperCase();
+    const matched = members.find((m) => extractSeats(m.seat).includes(seatId));
+    if (matched?.name) return matched.name;
+    return s.member || '';
   };
 
   // Reassignment Modal State inside selectedSeat
@@ -266,15 +268,17 @@ export default function BusSeatMap({
 
     const updated = seats.map((s) => {
       if (s.id === seatToClear.id) {
-        return { ...s, member: '', memberName: '' };
+        return { ...s, member: '', memberName: '', memberId: null, memberPhone: '' };
       }
       return s;
     });
     persistSeats(updated);
 
     // Clean member record if applicable
-    if (currentOccupant && onUpdateMember) {
-      const matchedM = members.find((m) => m.name === currentOccupant);
+    if (onUpdateMember) {
+      const matchedM = (seatToClear.memberId && members.find((m) => String(m.id) === String(seatToClear.memberId))) ||
+        members.find((m) => m.name === currentOccupant) ||
+        members.find((m) => extractSeats(m.seat).includes(seatToClear.id.toUpperCase()));
       if (matchedM && matchedM.seat) {
         const remainingSeats = matchedM.seat
           .split(/[,+]/)
@@ -310,6 +314,8 @@ export default function BusSeatMap({
     if (!selectedSeat) return;
 
     let newName = '';
+    let newMemberId = null;
+    let newPhone = '';
     if (editMemberId === '__empty__') {
       newName = '';
     } else if (editMemberId === '__custom__') {
@@ -318,6 +324,8 @@ export default function BusSeatMap({
       const m = members.find((mem) => String(mem.id) === String(editMemberId));
       if (m) {
         newName = m.name;
+        newMemberId = m.id;
+        newPhone = m.phone || '';
         if (onUpdateMember) {
           const existingSeats = m.seat
             ? m.seat.split(/[,+]/).map((s) => s.trim()).filter(Boolean)
@@ -337,7 +345,10 @@ export default function BusSeatMap({
       if (s.id === selectedSeat.id) {
         return {
           ...s,
+          memberId: newMemberId,
           member: newName,
+          memberName: newName,
+          memberPhone: newPhone,
           label: editSeatLabel.trim() || s.label,
           desc: editSeatDesc.trim() || s.desc,
         };
@@ -712,7 +723,7 @@ export default function BusSeatMap({
                       onClick={() => {
                         setIsEditingSeat(true);
                         const cur = getSeatOccupant(selectedSeat);
-                        const matchedM = members.find((m) => m.name === cur);
+                        const matchedM = (selectedSeat.memberId && members.find((m) => String(m.id) === String(selectedSeat.memberId))) || members.find((m) => m.name === cur);
                         setEditMemberId(matchedM ? String(matchedM.id) : cur ? '__custom__' : '__empty__');
                         setCustomNameInput(matchedM ? '' : cur);
                         setEditSeatLabel(selectedSeat.label || '');
@@ -845,9 +856,9 @@ export default function BusSeatMap({
               </div>
 
               {/* Call Passenger */}
-              {phoneForMember(members, selectedSeat.memberName ?? getSeatOccupant(selectedSeat)) && (
+              {(selectedSeat.memberPhone || phoneForMember(members, selectedSeat.memberName ?? getSeatOccupant(selectedSeat))) && (
                 <a
-                  href={`tel:${phoneForMember(
+                  href={`tel:${selectedSeat.memberPhone || phoneForMember(
                     members,
                     selectedSeat.memberName ?? getSeatOccupant(selectedSeat)
                   )}`}
