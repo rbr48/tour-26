@@ -1,10 +1,10 @@
 {
-  "versionCode": 15,
-  "versionName": "2.15",
+  "versionCode": 16,
+  "versionName": "2.16",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v15.apk",
-  "apkSize": "8.8 MB",
-  "releaseNotes": "নতুন মেগা আপডেট v2.15: দাবা এআই বট ও পাস-অ্যান্ড-প্লে মোড, ৮২০ কিমি লাইভ হাইওয়ে রোডম্যাপ ও জিপিএস স্পিডোমিটার, কক্সবাজার সুইম সেফটি ও রেস্তোরাঁ গাইড, এবং ডিজিটাল ফ্যামিলি স্ক্র্যাপবুক ম্যাগাজিন।",
-  "releasedAt": "2026-10-19T08:58:00Z",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v16.apk",
+  "apkSize": "8.9 MB",
+  "releaseNotes": "নতুন মেগা আপডেট v2.16: মেম্বার ও ডিপোজিট ফুল অটোমেশন (SSOT), ড্যাশবোর্ড ও মেম্বার রোস্টারে লাইভ ফিনান্সিয়াল ব্যালেন্স কার্ড, এবং বাস ও হোটেল রুম ১০০% ডাইনামিক সিঙ্ক।",
+  "releasedAt": "2026-10-20T01:15:00Z",
   "forceUpdate": false
 }

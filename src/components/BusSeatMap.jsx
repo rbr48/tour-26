@@ -77,14 +77,8 @@ export default function BusSeatMap({
   const [notification, setNotification] = useState('');
 
   const [seats, setSeats] = useState(() => {
-    if (Array.isArray(externalSeats) && externalSeats.length > 0) {
-      return externalSeats;
-    }
-    try {
-      const saved = localStorage.getItem('tour_bus_seats');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return DEFAULT_BUS_SEATS;
+    const base = Array.isArray(externalSeats) && externalSeats.length > 0 ? externalSeats : DEFAULT_BUS_SEATS;
+    return Array.isArray(members) && members.length > 0 ? syncBusSeatsWithMembers(base, members) : base;
   });
 
   // Sync with Firestore externalSeats updates & live members

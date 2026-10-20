@@ -1277,22 +1277,43 @@ export default function App() {
   };
 
   // Member & Deposit Handlers
-  const handleAddMember = (e) => {
+  const handleAddMember = async (e) => {
     e.preventDefault();
     if (!isAdmin) {
       notifyAdminOnly();
       return;
     }
     if (!newMember.name.trim()) return;
-    save(addItem(['members'], {
+    const memberRecord = {
       name: newMember.name.trim(),
       phone: newMember.phone.trim(),
       seat: newMember.seat || 'নির্ধারিত নয়',
       room: newMember.room || 'নির্ধারিত নয়',
       deposit: Math.max(0, Number(newMember.deposit) || 0),
       familyCount: Math.max(1, Number(newMember.familyCount) || 1),
-    }));
+    };
+    const created = await save(addItem(['members'], memberRecord));
     setNewMember({ name: '', phone: '', seat: '', room: '', deposit: '', familyCount: 1 });
+
+    // Auto-sync bus seats & hotel rooms
+    const updatedMemberList = [...(data.members || []), { ...memberRecord, id: created?.id || newId() }];
+    const baseBusSeats = (Array.isArray(data.busSeats) && data.busSeats.length > 0) ? data.busSeats : DEFAULT_BUS_SEATS;
+    const syncedBusSeats = syncBusSeatsWithMembers(baseBusSeats, updatedMemberList);
+
+    const baseHotelRooms = (Array.isArray(data.hotelRooms) && data.hotelRooms.length > 0) ? data.hotelRooms : DEFAULT_ROOMS;
+    const syncedHotelRooms = syncHotelRoomsWithMembers(baseHotelRooms, updatedMemberList);
+
+    setData((prev) => ({ ...prev, busSeats: syncedBusSeats, hotelRooms: syncedHotelRooms }));
+    save(updateTourDetails({ busSeats: syncedBusSeats, hotelRooms: syncedHotelRooms }));
+
+    addActivity({
+      id: newId(),
+      type: 'deposit',
+      title: '👤 নতুন সদস্য যুক্ত হয়েছে',
+      body: `${memberRecord.name} • প্রারম্ভিক জমা: ৳${memberRecord.deposit.toLocaleString()}`,
+      tab: 'seats_rooms',
+      time: 'এইমাত্র',
+    });
   };
 
   const handleUpdateMember = (member) => {
@@ -1390,7 +1411,19 @@ export default function App() {
     askConfirm({
       title: 'সদস্যকে তালিকা থেকে মুছবেন?',
       message: `${member.name} এর জমার তথ্যও তালিকা থেকে মুছে যাবে।`,
-      onConfirm: () => save(removeItem(['members'], id)),
+      onConfirm: () => {
+        save(removeItem(['members'], id));
+        // Auto-vacate bus seats & hotel rooms
+        const updatedMemberList = (data.members || []).filter((m) => m.id !== id);
+        const baseBusSeats = (Array.isArray(data.busSeats) && data.busSeats.length > 0) ? data.busSeats : DEFAULT_BUS_SEATS;
+        const syncedBusSeats = syncBusSeatsWithMembers(baseBusSeats, updatedMemberList);
+
+        const baseHotelRooms = (Array.isArray(data.hotelRooms) && data.hotelRooms.length > 0) ? data.hotelRooms : DEFAULT_ROOMS;
+        const syncedHotelRooms = syncHotelRoomsWithMembers(baseHotelRooms, updatedMemberList);
+
+        setData((prev) => ({ ...prev, busSeats: syncedBusSeats, hotelRooms: syncedHotelRooms }));
+        save(updateTourDetails({ busSeats: syncedBusSeats, hotelRooms: syncedHotelRooms }));
+      },
     });
   };
 
@@ -1777,7 +1810,7 @@ export default function App() {
             </button>
 
             <a
-              href="/Tour2026.apk?v=15"
+              href="/Tour2026.apk?v=16"
               download="Tour2026.apk"
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-950 hover:bg-emerald-900 text-emerald-200 hover:text-white transition cursor-pointer border border-emerald-500/50 shadow-xs"
             >
@@ -2038,7 +2071,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </button>
 
                 <a
-                  href="/Tour2026.apk?v=15"
+                  href="/Tour2026.apk?v=16"
                   download="Tour2026.apk"
                   className="w-full py-2 px-3 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 rounded-xl text-xs font-semibold flex items-center justify-between border border-emerald-600/60 transition cursor-pointer"
                 >
@@ -2254,6 +2287,54 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   <p className="text-sm min-[380px]:text-base sm:text-2xl font-bold text-emerald-300 mt-0.5 truncate">৳ {remainingBalance.toLocaleString()}</p>
                 </div>
               </div>
+
+              {/* Logged-in User's Live Personal Financial Balance Widget */}
+              {(() => {
+                const myMember = findLinkedMember(data.members || [], currentProfile, currentUser?.displayName);
+                const myRow = myMember && ledger?.rows?.find((r) => r.id === myMember.id);
+                if (!myMember || !myRow) return null;
+                return (
+                  <div className="bg-white p-3.5 sm:p-4 rounded-3xl shadow-xs border border-teal-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-2xl bg-teal-100 text-teal-800 flex items-center justify-center shrink-0 text-base shadow-2xs">
+                        💳
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-xs sm:text-sm text-slate-800 truncate">
+                            {myMember.name} (আপনার ফ্যামিলি ফান্ড হিসাব)
+                          </h4>
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded">
+                            {myMember.familyCount || 1} জন
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          মোট জমা: <b className="text-teal-700">৳{myRow.deposit.toLocaleString()}</b> • খরচের ভাগ: <b className="text-amber-700">৳{myRow.share.toLocaleString()}</b>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-2 shrink-0">
+                      <span className={`px-2.5 py-1 rounded-xl text-xs font-bold border ${
+                        myRow.net >= 0
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : 'bg-rose-50 text-rose-800 border-rose-200'
+                      }`}>
+                        {myRow.net >= 0
+                          ? `+ ৳${myRow.net.toLocaleString()} (ফান্ড থেকে ফেরত পাবেন)`
+                          : `- ৳${Math.abs(myRow.net).toLocaleString()} (বকেয়া পরিশোধযোগ্য)`}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('expenses')}
+                        className="text-[11px] font-bold text-teal-700 hover:text-teal-900 px-2.5 py-1 bg-teal-50 hover:bg-teal-100 rounded-lg transition cursor-pointer"
+                      >
+                        লেজার দেখুন →
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* LIVE TIDE & SUNSET WIDGET */}
               <TideWeatherWidget />
@@ -2749,7 +2830,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               {seatRoomSubTab === 'bus' && (
                 <BusSeatMap
                   members={data.members || []}
-                  seats={data.busSeats}
+                  seats={data.busSeats || syncBusSeatsWithMembers(DEFAULT_BUS_SEATS, data.members || [])}
                   isAdmin={isAdmin}
                   onUpdateSeats={handleUpdateBusSeats}
                   onUpdateMember={handleUpdateMember}
@@ -2760,7 +2841,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               {seatRoomSubTab === 'hotel' && (
                 <HotelRoomMap
                   members={data.members || []}
-                  rooms={data.hotelRooms}
+                  rooms={data.hotelRooms || syncHotelRoomsWithMembers(DEFAULT_ROOMS, data.members || [])}
                   isAdmin={isAdmin}
                   onUpdateRooms={handleUpdateHotelRooms}
                   onUpdateMember={handleUpdateMember}
@@ -2839,19 +2920,40 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                                 {member.familyCount || 1} জন
                               </span>
                             </div>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-xs text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
-                                জমা: ৳ {Number(member.deposit || 0).toLocaleString()}
-                              </span>
-                              {isAdmin && (
-                                <button
-                                  onClick={() => setEditingMember(member)}
-                                  className="text-[11px] font-semibold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2 py-0.5 rounded-lg border border-teal-200 flex items-center gap-1 transition cursor-pointer"
-                                >
-                                  <Edit3 size={12} /> ডিপোজিট আপডেট
-                                </button>
-                              )}
-                            </div>
+                            {(() => {
+                              const mRow = ledger?.rows?.find((r) => r.id === member.id);
+                              return (
+                                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                  <span className="text-xs text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
+                                    জমা: ৳ {Number(member.deposit || 0).toLocaleString()}
+                                  </span>
+                                  {mRow && (
+                                    <>
+                                      <span className="text-[11px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 font-medium">
+                                        খরচ ভাগ: ৳ {Number(mRow.share || 0).toLocaleString()}
+                                      </span>
+                                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border ${
+                                        mRow.net >= 0
+                                          ? 'text-teal-800 bg-teal-50 border-teal-200'
+                                          : 'text-rose-700 bg-rose-50 border-rose-200'
+                                      }`}>
+                                        {mRow.net >= 0
+                                          ? `+৳${Number(mRow.net).toLocaleString()} (পাবে)`
+                                          : `-৳${Math.abs(Number(mRow.net)).toLocaleString()} (দেবে)`}
+                                      </span>
+                                    </>
+                                  )}
+                                  {isAdmin && (
+                                    <button
+                                      onClick={() => setEditingMember(member)}
+                                      className="text-[11px] font-semibold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2 py-0.5 rounded-lg border border-teal-200 flex items-center gap-1 transition cursor-pointer"
+                                    >
+                                      <Edit3 size={12} /> আপডেট
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           <div className="flex items-center gap-1.5">

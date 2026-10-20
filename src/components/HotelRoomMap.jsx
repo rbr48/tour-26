@@ -140,14 +140,8 @@ export default function HotelRoomMap({ members = [], rooms: externalRooms, isAdm
   const [selectedFloor, setSelectedFloor] = useState('all');
 
   const [rooms, setRooms] = useState(() => {
-    if (Array.isArray(externalRooms) && externalRooms.length > 0) {
-      return externalRooms;
-    }
-    try {
-      const saved = localStorage.getItem('tour_hotel_rooms');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return DEFAULT_ROOMS;
+    const base = Array.isArray(externalRooms) && externalRooms.length > 0 ? externalRooms : DEFAULT_ROOMS;
+    return Array.isArray(members) && members.length > 0 ? syncHotelRoomsWithMembers(base, members) : base;
   });
 
   // Sync with Firestore externalRooms updates & live members

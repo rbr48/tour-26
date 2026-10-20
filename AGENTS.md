@@ -11,7 +11,15 @@
 - **Offline**: Firestore uses IndexedDB persistence. The service worker (`public/sw.js`) caches only the app shell, under a per-build cache name. It never caches `/api` or trip data.
 - **Native**: Capacitor 8 Android project in `android/`. Its release build is minified and not debuggable. APK downloads are served at `/Tour2026.apk`.
 
-## 2. Standard Deployment
+## 2. Standard Deployment & Mandatory Version Increments
+
+**MANDATORY RULE FOR EVERY APK BUILD**:
+Each and every time the Android APK is built and deployed, you MUST increment the version code and version name:
+1. Bump `versionCode` (+1) and `versionName` in `android/app/build.gradle`.
+2. Update `public/version.json` (`versionCode`, `versionName`, `apkUrl: "https://tour2026.izhaanintellect.fun/Tour2026-v{code}.apk"`).
+3. Update `CURRENT_WEB_VERSION` and `CURRENT_WEB_BUILD` in `src/utils/appUpdater.js`.
+4. Update the APK download links in `src/App.jsx` (`/Tour2026.apk?v={code}`).
+5. After `gradlew assembleRelease`, copy the APK to both `public/Tour2026.apk` and `public/Tour2026-v{code}.apk`, then rebuild the web bundle.
 
 Run from the repository root in PowerShell:
 
