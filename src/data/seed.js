@@ -180,7 +180,7 @@ export const SEED_DATA = {
       "id": 1,
       "name": "রাজু ভাই (ট্যুর অর্গানাইজার)",
       "seat": "স্লিপার S1, S2 (২ সিট)",
-      "room": "রুম ৩০১ (সি-সাইড)",
+      "room": "রুম ৬১১ (সি-সাইড)",
       "deposit": 15000,
       "familyCount": 2
     },
@@ -188,7 +188,7 @@ export const SEED_DATA = {
       "id": 2,
       "name": "মাসুদ ভাই (এসবিএল)",
       "seat": "বিজনেস B1, B2, B3 (৩ সিট)",
-      "room": "রুম ৪০১ (ফ্যামিলি)",
+      "room": "রুম ৪০৩ (ফ্যামিলি)",
       "deposit": 15000,
       "familyCount": 3
     },
@@ -196,7 +196,7 @@ export const SEED_DATA = {
       "id": 3,
       "name": "আশেক মো: আসিফ ভাই",
       "seat": "স্লিপার S3, S4, S5, S6 (৪ সিট)",
-      "room": "রুম ৫০১ ও ৫০২",
+      "room": "রুম ৪০২ (ফ্যামিলি স্যুইট)",
       "deposit": 20000,
       "familyCount": 4
     },
@@ -204,15 +204,15 @@ export const SEED_DATA = {
       "id": 4,
       "name": "শশি ভাই (সচিবুল ভাই)",
       "seat": "বিজনেস B4, B5, B6 (৩ সিট)",
-      "room": "রুম ৬০১ (ফ্যামিলি)",
+      "room": "রুম ৬১৩ (ফ্যামিলি)",
       "deposit": 15000,
       "familyCount": 3
     },
     {
       "id": 5,
-      "name": "নুরুজ্জামান ভাই",
+      "name": "নুর ভাই",
       "seat": "বিজনেস B7, B8, B9 (৩ সিট)",
-      "room": "রুম ৬০২ (ফ্যামিলি)",
+      "room": "রুম ৬১৪ (ডাবল)",
       "deposit": 15000,
       "familyCount": 3
     },
@@ -220,7 +220,7 @@ export const SEED_DATA = {
       "id": 6,
       "name": "লতিফ ভাই / খালু (কুড়িগ্রাম)",
       "seat": "বিজনেস B10, B11 (২ সিট)",
-      "room": "রুম ৩০২ (ফ্রন্ট ভিউ)",
+      "room": "রুম ৭১৩ (ফ্রন্ট ভিউ)",
       "deposit": 10000,
       "familyCount": 2
     },
@@ -228,7 +228,7 @@ export const SEED_DATA = {
       "id": 7,
       "name": "আলিম ভাই",
       "seat": "স্লিপার S7, S8 (২ সিট)",
-      "room": "রুম ৫০৩ (ডাবল)",
+      "room": "রুম ৭১২ (ডাবল)",
       "deposit": 10000,
       "familyCount": 2
     },
@@ -236,7 +236,7 @@ export const SEED_DATA = {
       "id": 8,
       "name": "সাইফুল ভাই / জামাই",
       "seat": "স্লিপার S9, S10 (২ সিট)",
-      "room": "রুম ৭০১ (সি-ভিউ)",
+      "room": "রুম ৭১৪ (সি-ভিউ)",
       "deposit": 10000,
       "familyCount": 2
     },
@@ -244,8 +244,8 @@ export const SEED_DATA = {
       "id": 9,
       "name": "মো: সোহাগ রানা / এম এস রানা (ট্যুর কো-অর্ডিনেটর)",
       "seat": "বিজনেস B12 (সিঙ্গেল)",
-      "room": "রুম ৭০২ (শেয়ার্ড)",
-      "deposit": 10000,
+      "room": "রুম ৪০৪ (সি-ভিউ)",
+      "deposit": 5000,
       "familyCount": 1,
       "role": "coordinator"
     },
@@ -253,7 +253,7 @@ export const SEED_DATA = {
       "id": 10,
       "name": "আলমগীর ভাই (ফটোগ্রাফার)",
       "seat": "বিজনেস B13 (সিঙ্গেল)",
-      "room": "রুম ৭০২ (শেয়ার্ড)",
+      "room": "রুম ৫১১ (টুইন বেড সি-ভিউ)",
       "deposit": 8000,
       "familyCount": 1
     }

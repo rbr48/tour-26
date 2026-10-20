@@ -37,9 +37,9 @@ export const DEFAULT_BUS_SEATS = [
   { id: 'B4', deck: 'lower', type: 'business', position: 'left-single', member: 'শশি ভাই (সচিবুল ভাই)', label: 'বিজনেস B4', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
   { id: 'B5', deck: 'lower', type: 'business', position: 'right-aisle', member: 'শশি ভাই (সচিবুল ভাই)', label: 'বিজনেস B5', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
   { id: 'B6', deck: 'lower', type: 'business', position: 'right-window', member: 'শশি ভাই (সচিবুল ভাই)', label: 'বিজনেস B6', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
-  { id: 'B7', deck: 'lower', type: 'business', position: 'left-single', member: 'নুরুজ্জামান ভাই', label: 'বিজনেস B7', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
-  { id: 'B8', deck: 'lower', type: 'business', position: 'right-aisle', member: 'নুরুজ্জামান ভাই', label: 'বিজনেস B8', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
-  { id: 'B9', deck: 'lower', type: 'business', position: 'right-window', member: 'নুরুজ্জামান ভাই', label: 'বিজনেস B9', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
+  { id: 'B7', deck: 'lower', type: 'business', position: 'left-single', member: 'নুর ভাই', label: 'বিজনেস B7', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
+  { id: 'B8', deck: 'lower', type: 'business', position: 'right-aisle', member: 'নুর ভাই', label: 'বিজনেস B8', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
+  { id: 'B9', deck: 'lower', type: 'business', position: 'right-window', member: 'নুর ভাই', label: 'বিজনেস B9', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
   { id: 'B10', deck: 'lower', type: 'business', position: 'left-single', member: 'লতিফ ভাই / খালু (কুড়িগ্রাম)', label: 'বিজনেস B10', desc: 'লোয়ার ডেক • বিজনেস রিক্লাইনার' },
   { id: 'B11', deck: 'lower', type: 'business', position: 'right-aisle', member: 'লতিফ ভাই / খালু (কুড়িগ্রাম)', label: 'বিজনেস B11', desc: 'লোয়ার ডেক • ডাবল রিক্লাইনার' },
   { id: 'B12', deck: 'lower', type: 'business', position: 'right-window', memberName: 'মো: সোহাগ রানা / এম এস রানা (ট্যুর কো-অর্ডিনেটর)', member: 'এম এস রানা ভাই (বিকেবি)', label: 'বিজনেস B12', desc: 'লোয়ার ডেক • ডাবল উইন্ডো' },
@@ -56,7 +56,7 @@ const getFamilyColor = (name) => {
   if (name.includes('মাসুদ')) return 'bg-blue-50 border-blue-300 text-blue-800 hover:bg-blue-100';
   if (name.includes('আসিফ')) return 'bg-purple-50 border-purple-300 text-purple-800 hover:bg-purple-100';
   if (name.includes('শশি')) return 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100';
-  if (name.includes('নুরুজ্জামান')) return 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100';
+  if (name.includes('নুর') || name.includes('নুরুজ্জামান')) return 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100';
   if (name.includes('লতিফ')) return 'bg-indigo-50 border-indigo-300 text-indigo-800 hover:bg-indigo-100';
   if (name.includes('আলিম')) return 'bg-cyan-50 border-cyan-300 text-cyan-800 hover:bg-cyan-100';
   if (name.includes('সাইফুল')) return 'bg-rose-50 border-rose-300 text-rose-800 hover:bg-rose-100';

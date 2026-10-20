@@ -1,10 +1,10 @@
 {
-  "versionCode": 16,
-  "versionName": "2.16",
+  "versionCode": 17,
+  "versionName": "2.17",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v16.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v17.apk",
   "apkSize": "8.9 MB",
-  "releaseNotes": "নতুন মেগা আপডেট v2.16: মেম্বার ও ডিপোজিট ফুল অটোমেশন (SSOT), ড্যাশবোর্ড ও মেম্বার রোস্টারে লাইভ ফিনান্সিয়াল ব্যালেন্স কার্ড, এবং বাস ও হোটেল রুম ১০০% ডাইনামিক সিঙ্ক।",
-  "releasedAt": "2026-10-20T01:15:00Z",
+  "releaseNotes": "আপডেট v2.17: মেম্বার টেবিল ১০০% হোটেল রুম অনুযায়ী সিঙ্ক, মেম্বার নূর ভাইয়ের তথ্য নিশ্চিতকরণ এবং সোহাগ রানার একাউন্ট ম্যাপিং ও ডিপোজিট ফিক্স।",
+  "releasedAt": "2026-10-20T02:22:00Z",
   "forceUpdate": false
 }
