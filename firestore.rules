@@ -10,8 +10,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Signed in with a verified account. Anonymous and unverified accounts are refused.
     function isAuthenticated() {
-      return request.auth != null;
+      return request.auth != null && request.auth.token.email_verified == true;
     }
 
     function isAdmin() {
@@ -44,9 +45,11 @@ service cloud.firestore {
 
     match /tours/{tourId} {
       allow read: if isAuthenticated();
-      // Allow updates to tour info from admin only, reject legacy array injection
+      // Trip details change only by an admin, recorded as updatedBy that same admin.
+      // Legacy array fields are rejected so an old client cannot write them back.
       allow create, update: if isAdmin()
         && fits(20)
+        && request.resource.data.updatedBy.uid == request.auth.uid
         && !('expenses' in request.resource.data)
         && !('discussions' in request.resource.data)
         && !('userProfiles' in request.resource.data);
@@ -72,16 +75,18 @@ service cloud.firestore {
           && fits(25)
           && isPositiveBoundedNumber('amount', 10000000)
           && textWithin('title', 300);
+        // The recorded author never changes, so an edit cannot move an expense to someone else.
         allow update: if isAdmin()
           && fits(25)
           && isPositiveBoundedNumber('amount', 10000000)
-          && textWithin('title', 300);
+          && textWithin('title', 300)
+          && request.resource.data.get('addedByEmail', null) == resource.data.get('addedByEmail', null);
         allow delete: if isAdmin();
       }
 
       match /checklist/{itemId} {
         allow read: if isAuthenticated();
-        allow create, update: if isAdmin() && fits(15) && textWithin('text', 500);
+        allow create, update: if isAdmin() && fits(15) && textWithin('text', 500) && textWithin('item', 500);
         allow delete: if isAdmin();
       }
 
@@ -93,13 +98,23 @@ service cloud.firestore {
 
       match /posts/{postId} {
         allow read: if isAuthenticated();
+        // A new post names its author, so nobody can post in someone else's name.
+        // Imports from the old layout are the exception, and only an admin can make them.
         allow create: if isAuthenticated()
+          && (
+            request.resource.data.get('authorEmail', null) == request.auth.token.email.lower() ||
+            (isAdmin() && request.resource.data.migrated == true)
+          )
           && fits(35)
-          && textWithin('thumb', 200000)
-          && textWithin('caption', 1000);
+          && textWithin('thumb', 350000)
+          && textWithin('caption', 1000)
+          && textWithin('image', 600000);
         allow update: if isAuthenticated()
           && fits(35)
-          && textWithin('thumb', 200000)
+          && textWithin('thumb', 350000)
+          && textWithin('caption', 1000)
+          && textWithin('image', 600000)
+          && request.resource.data.get('authorEmail', null) == resource.data.get('authorEmail', null)
           && (
             isAdmin() ||
             (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower()) ||
@@ -114,8 +129,13 @@ service cloud.firestore {
 
       match /channels/{channelId}/messages/{messageId} {
         allow read: if isAuthenticated() && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans'];
+        // A new message names its sender, so nobody can post as someone else.
         allow create: if isAuthenticated()
           && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans']
+          && (
+            request.resource.data.get('senderEmail', null) == request.auth.token.email.lower() ||
+            (isAdmin() && request.resource.data.migrated == true)
+          )
           && fits(20)
           && textWithin('text', 4000);
         allow update: if isAuthenticated()
@@ -137,16 +157,22 @@ service cloud.firestore {
 
       match /locations/{email} {
         allow read: if isAuthenticated();
+        // Only the owner writes a live location. Admins may clear one (delete below).
         allow create, update: if isAuthenticated()
-          && (isAdmin() || request.auth.token.email.lower() == email.lower())
+          && request.auth.token.email.lower() == email.lower()
           && fits(20);
         allow delete: if isAuthenticated()
           && (isAdmin() || request.auth.token.email.lower() == email.lower());
       }
 
+      // Game rooms, their index and typing status are shared state that any signed-in
+      // account writes. The upgrade lock (meta/migration) and anything else are admin-only.
       match /meta/{docId} {
         allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
+        allow write: if isAdmin()
+          || (isAuthenticated() && (docId == 'gamerooms_list'
+            || docId.matches('gameroom_.*')
+            || docId.matches('typing_.*')));
       }
 
       match /profiles/{email} {
