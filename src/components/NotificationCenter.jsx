@@ -137,6 +137,8 @@ export default function NotificationCenter({
         return <Wallet size={15} className="text-emerald-500 shrink-0" />;
       case 'success':
         return <CheckCheck size={16} className="text-emerald-400 shrink-0" />;
+      case 'error':
+        return <AlertCircle size={16} className="text-rose-400 shrink-0" />;
       default:
         return <Sparkles size={15} className="text-teal-400 shrink-0" />;
     }
@@ -376,56 +378,77 @@ export default function NotificationCenter({
       )}
 
       {/* IN-APP FLOATING TOAST BANNER */}
-      {activeToast && (
-        <div className="fixed top-[calc(max(0.75rem,env(safe-area-inset-top))+4.25rem)] left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md animate-in slide-in-from-top duration-300 pointer-events-auto shadow-2xl">
-          <div
-            role="button"
-            tabIndex={0}
-            aria-label={activeToast.title}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                e.currentTarget.click();
-              }
-            }}
-            onClick={() => {
-              if (onMarkAsRead) onMarkAsRead(activeToast.id);
-              if (activeToast.tab) onNavigate(activeToast.tab);
-              onDismissToast();
-            }}
-            className="bg-slate-900/95 backdrop-blur-md text-white p-3 sm:p-3.5 rounded-2xl shadow-2xl border border-teal-500/50 flex items-center justify-between gap-3 cursor-pointer"
-          >
-            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              <div className="w-8 h-8 rounded-xl bg-teal-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                {getActivityIcon(activeToast.type)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="font-bold text-xs text-white leading-snug">{activeToast.title}</p>
-                <p className="text-[11px] text-teal-100 line-clamp-2 leading-relaxed mt-0.5">{activeToast.body}</p>
-              </div>
-            </div>
+      {activeToast && (() => {
+        const isError = activeToast.type === 'error';
+        const isSuccess = activeToast.type === 'success';
 
-            <div className="flex items-center gap-2 shrink-0">
-              {activeToast.tab && activeToast.type !== 'success' && (
-                <span className="px-2.5 py-1 bg-amber-400 text-teal-950 text-[10px] font-black rounded-lg shadow-xs">
-                  দেখুন
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDismissToast();
-                }}
-                className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs transition cursor-pointer"
-                title="বন্ধ করুন"
-              >
-                ✕
-              </button>
+        return (
+          <div className="fixed top-[calc(max(0.75rem,env(safe-area-inset-top))+4.25rem)] left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md animate-in slide-in-from-top duration-300 pointer-events-auto shadow-2xl">
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label={activeToast.title}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.currentTarget.click();
+                }
+              }}
+              onClick={() => {
+                if (onMarkAsRead) onMarkAsRead(activeToast.id);
+                if (activeToast.tab && !isError) onNavigate(activeToast.tab);
+                onDismissToast();
+              }}
+              className={`bg-slate-950/98 backdrop-blur-md text-white p-3 sm:p-3.5 rounded-2xl shadow-2xl border ${
+                isError ? 'border-rose-500/50' : isSuccess ? 'border-emerald-500/50' : 'border-teal-500/50'
+              } flex items-center justify-between gap-3 cursor-pointer`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <div
+                  className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                    isError
+                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                      : isSuccess
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : 'bg-teal-500/20 text-teal-400'
+                  }`}
+                >
+                  {getActivityIcon(activeToast.type)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-xs text-white leading-snug">{activeToast.title}</p>
+                  <p
+                    className={`text-[11px] line-clamp-2 leading-relaxed mt-0.5 ${
+                      isError ? 'text-rose-100/90' : 'text-teal-100'
+                    }`}
+                  >
+                    {activeToast.body}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {activeToast.tab && !isSuccess && !isError && (
+                  <span className="px-2.5 py-1 bg-amber-400 text-teal-950 text-[10px] font-black rounded-lg shadow-xs">
+                    দেখুন
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDismissToast();
+                  }}
+                  className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs transition cursor-pointer"
+                  title="বন্ধ করুন"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

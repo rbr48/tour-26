@@ -454,10 +454,10 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
           return;
         }
         let versionData = {
-          versionCode: 11,
-          versionName: '2.9',
+          versionCode: 18,
+          versionName: '2.18',
           minVersionCode: 1,
-          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v11.apk',
+          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v18.apk',
           apkSize: '8.2 MB',
           releaseNotes: 'নতুন আপডেট v2.9: PWA আইকন ও হোমস্ক্রিন মাস্কিং আপডেট, গেমিং জোনে লাইভ রিঅ্যাকশন মেনু এবং ফ্লোটিং ডায়ালগ বাবল ফিক্স।',
           releasedAt: '2026-10-19T01:45:00Z',

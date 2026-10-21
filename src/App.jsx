@@ -319,13 +319,25 @@ export default function App() {
 
   const reportSaveFailure = useCallback((err) => {
     console.error('Save failed:', err);
-    const denied = err?.code === 'permission-denied';
+    const code = err?.code || '';
+    let body = 'তথ্য ক্লাউডে সংরক্ষণ করা যায়নি। অনুগ্রহ করে পুনরায় চেষ্টা করুন।';
+    if (code === 'permission-denied') {
+      body = 'আপনার এই কাজটি করার অনুমতি নেই।';
+    } else if (code === 'unavailable' || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+      body = 'ইন্টারনেট বা সার্ভার সংযোগে সমস্যা হচ্ছে। একটু পর আবার চেষ্টা করুন।';
+    } else if (code === 'resource-exhausted') {
+      body = 'ফাইল বা তথ্যের আকার নির্ধারিত সীমার চেয়ে বড় হয়েছে।';
+    } else if (code === 'not-found') {
+      body = 'সংশ্লিষ্ট তথ্যটি সার্ভারে খুঁজে পাওয়া যায়নি।';
+    } else if (err?.message && !err.message.includes('Function') && !err.message.includes('object')) {
+      body = err.message;
+    }
+
     setActiveToast({
       id: newId(),
       type: 'error',
       title: 'সংরক্ষণ হয়নি',
-      body: denied ? 'আপনার এই কাজটি করার অনুমতি নেই।' : 'ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।',
-      tab: 'dashboard',
+      body,
       time: 'এইমাত্র',
     });
   }, []);
@@ -1006,7 +1018,10 @@ export default function App() {
       ...prev,
       posts: (prev.posts || []).map((p) => (String(p.id) === String(postId) ? { ...p, views: newViews } : p)),
     }));
-    save(updateItem(['posts'], postId, { views: newViews }));
+    // Silent update: view increment is analytics and should never throw an error toast to the user
+    updateItem(['posts'], postId, { views: newViews }).catch((err) => {
+      console.warn('Silent view update skipped:', err);
+    });
   };
 
   const handleUpdateHotelRooms = (rooms) => {
@@ -1810,7 +1825,7 @@ export default function App() {
             </button>
 
             <a
-              href="/Tour2026.apk?v=17"
+              href="/Tour2026.apk?v=18"
               download="Tour2026.apk"
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-950 hover:bg-emerald-900 text-emerald-200 hover:text-white transition cursor-pointer border border-emerald-500/50 shadow-xs"
             >
@@ -2071,7 +2086,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </button>
 
                 <a
-                  href="/Tour2026.apk?v=17"
+                  href="/Tour2026.apk?v=18"
                   download="Tour2026.apk"
                   className="w-full py-2 px-3 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 rounded-xl text-xs font-semibold flex items-center justify-between border border-emerald-600/60 transition cursor-pointer"
                 >

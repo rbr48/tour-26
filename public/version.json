@@ -1,10 +1,10 @@
 {
-  "versionCode": 17,
-  "versionName": "2.17",
+  "versionCode": 18,
+  "versionName": "2.18",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v17.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v18.apk",
   "apkSize": "8.9 MB",
-  "releaseNotes": "আপডেট v2.17: মেম্বার টেবিল ১০০% হোটেল রুম অনুযায়ী সিঙ্ক, মেম্বার নূর ভাইয়ের তথ্য নিশ্চিতকরণ এবং সোহাগ রানার একাউন্ট ম্যাপিং ও ডিপোজিট ফিক্স।",
-  "releasedAt": "2026-10-20T02:22:00Z",
+  "releaseNotes": "আপডেট v2.18: নোটিফিকেশন অ্যালার্ট ও এরর আইকন ফিক্স, নিরবচ্ছিন্ন ফিড স্ক্রলিং ও সাইলেন্ট ভিউ ট্র্যাকিং, ফায়ারস্টোর রুলস নাল-সেফটি এবং ক্লাউড সেভ নোটিফিকেশন উন্নতকরণ।",
+  "releasedAt": "2026-10-21T12:33:12.349Z",
   "forceUpdate": false
 }

@@ -28,6 +28,7 @@ service cloud.firestore {
 
     function textWithin(field, maxLength) {
       return !(field in request.resource.data)
+        || request.resource.data[field] == null
         || (request.resource.data[field] is string && request.resource.data[field].size() <= maxLength);
     }
 
@@ -95,11 +96,11 @@ service cloud.firestore {
         allow read: if isAuthenticated();
         allow create: if isAuthenticated()
           && fits(35)
-          && textWithin('thumb', 200000)
+          && textWithin('thumb', 350000)
           && textWithin('caption', 1000);
         allow update: if isAuthenticated()
           && fits(35)
-          && textWithin('thumb', 200000)
+          && textWithin('thumb', 350000)
           && (
             isAdmin() ||
             (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower()) ||

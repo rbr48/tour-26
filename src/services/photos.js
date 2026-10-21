@@ -3,8 +3,8 @@ import { uploadToGoogleDrive } from './googleDriveService';
 
 // Firestore subcollection document keeps a sharp, high-definition preview of each photo.
 // The original/full-size copy lives in the shared Google Drive folder.
-const THUMB_MAX_SIDE = 1080;
-const THUMB_MAX_CHARS = 320000;
+const THUMB_MAX_SIDE = 800;
+const THUMB_MAX_CHARS = 180000;
 const PROFILE_PHOTO_MAX_CHARS = 180000;
 const PROFILE_PHOTO_SIDE = 384;
 
