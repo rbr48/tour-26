@@ -42,7 +42,15 @@ export function resolveMediaUrl(url, driveFileId = null) {
     return url;
   }
 
-  // Relative path (e.g. /uploads/reel_123.mp4 or /uploads/photo_123.jpg)
+  // Relative path (e.g. /uploads/reel_123.mp4 or /uploads/photo_123.jpg or uploads/...)
+  const normalized = url.startsWith('/') ? url : `/${url}`;
+  if (normalized.startsWith('/uploads/')) {
+    if (Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port !== '3000')) {
+      return `${PRODUCTION_ORIGIN}${normalized}`;
+    }
+    return normalized;
+  }
+
   if (url.startsWith('/')) {
     if (Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port !== '3000')) {
       return `${PRODUCTION_ORIGIN}${url}`;
@@ -249,16 +257,20 @@ export function captureVideoFrame(fileOrBlobOrUrl, seekTime = 0.5, { maxWidth = 
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         let dataUrl = canvas.toDataURL('image/jpeg', quality);
 
-        // Keep thumbnail string strictly bounded (< 75,000 chars) for Firestore safety
-        if (dataUrl.length > 75000) {
+        // Keep thumbnail string strictly bounded (< 65,000 chars) for Firestore safety
+        let currentCanvas = canvas;
+        let q = quality;
+        for (let attempt = 0; attempt < 3 && dataUrl.length > 65000; attempt++) {
           try {
             const smallCanvas = document.createElement('canvas');
-            smallCanvas.width = Math.max(1, Math.round(canvas.width * 0.75));
-            smallCanvas.height = Math.max(1, Math.round(canvas.height * 0.75));
+            smallCanvas.width = Math.max(1, Math.round(currentCanvas.width * 0.75));
+            smallCanvas.height = Math.max(1, Math.round(currentCanvas.height * 0.75));
             const sCtx = smallCanvas.getContext('2d');
             if (sCtx) {
-              sCtx.drawImage(canvas, 0, 0, smallCanvas.width, smallCanvas.height);
-              dataUrl = smallCanvas.toDataURL('image/jpeg', 0.65);
+              sCtx.drawImage(currentCanvas, 0, 0, smallCanvas.width, smallCanvas.height);
+              q = Math.max(0.55, q - 0.1);
+              dataUrl = smallCanvas.toDataURL('image/jpeg', q);
+              currentCanvas = smallCanvas;
             }
           } catch {}
         }

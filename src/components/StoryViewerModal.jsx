@@ -279,6 +279,15 @@ export default function StoryViewerModal({
               className="w-full h-full object-cover select-none pointer-events-none"
               style={{ filter: getFilterCss(currentStory.filter) }}
               loading="eager"
+              onError={(e) => {
+                if (currentStory?.thumb && e.currentTarget.src !== currentStory.thumb) {
+                  e.currentTarget.src = currentStory.thumb;
+                } else if (currentStory?.driveFileId) {
+                  e.currentTarget.src = `https://drive.google.com/thumbnail?id=${currentStory.driveFileId}&sz=w1600`;
+                } else {
+                  e.currentTarget.onerror = null;
+                }
+              }}
             />
           ) : (
             <div className="p-6 text-center text-white/60 text-xs">ছবি লোড হতে পারেনি</div>

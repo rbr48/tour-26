@@ -1,10 +1,10 @@
 {
-  "versionCode": 19,
-  "versionName": "2.19",
+  "versionCode": 20,
+  "versionName": "2.20",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v19.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v20.apk",
   "apkSize": "8.9 MB",
-  "releaseNotes": "আপডেট v2.19: ছবি ও রিলস মিডিয়া আপলোড, লোকাল ও ক্লাউড স্টোরেজ সিঙ্ক, ক্যাপাসিটর নেটিভ ইউআরএল রেজোলিউশন ও ড্রাইভে স্বয়ংক্রিয় ব্যাকআপ ফিক্স।",
-  "releasedAt": "2026-10-21T14:05:00.000Z",
+  "releaseNotes": "আপডেট v2.20: ছবি ও রিলস মিডিয়া আপলোড, সার্ভিস ওয়ার্কার বাইপাস, গ্রিড ও ফুলস্ক্রিন প্রিভিউ রেজোলিউশন এবং ফায়ারস্টোর থাম্বনেইল লিমিট সম্পূর্ণ ফিক্স।",
+  "releasedAt": "2026-10-21T14:39:35.524676+00:00",
   "forceUpdate": false
 }

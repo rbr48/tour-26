@@ -3,21 +3,21 @@ import { uploadToGoogleDrive } from './googleDriveService';
 
 // Firestore subcollection document keeps a sharp, fast preview of each photo.
 // The original/full-size copy lives on the VPS and the shared Google Drive folder.
-const THUMB_MAX_SIDE = 600;
-const THUMB_MAX_CHARS = 75000;
+const THUMB_MAX_SIDE = 1080;
+const THUMB_MAX_CHARS = 140000;
 const PROFILE_PHOTO_MAX_CHARS = 120000;
 const PROFILE_PHOTO_SIDE = 384;
 
 export const isDataImage = (value) => typeof value === 'string' && value.startsWith('data:image');
 
-/** High-definition JPEG preview (up to 600px mobile standard, ~50 KB). */
+/** High-definition JPEG preview (up to 1080px mobile Full HD, ~80-100 KB). */
 export async function makeThumbnail(dataUrl) {
   let side = THUMB_MAX_SIDE;
-  let quality = 0.78;
+  let quality = 0.85;
   let result = await compressImage(dataUrl, side, side, quality);
   for (let attempt = 0; attempt < 3 && result.length > THUMB_MAX_CHARS; attempt += 1) {
-    side = Math.round(side * 0.85);
-    quality = Math.max(0.62, quality - 0.05);
+    side = Math.round(side * 0.90);
+    quality = Math.max(0.72, quality - 0.04);
     result = await compressImage(result, side, side, quality);
   }
   return result;

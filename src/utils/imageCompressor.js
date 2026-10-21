@@ -2,7 +2,7 @@
 // Downscales high-resolution camera/mobile photos to lightweight web-optimized JPEG data URLs
 // Prevents Firestore 1MB document limit exceed errors and speeds up app performance
 
-export const compressImage = (dataUrl, maxWidth = 1440, maxHeight = 1440, quality = 0.82) => {
+export const compressImage = (dataUrl, maxWidth = 2560, maxHeight = 2560, quality = 0.90) => {
   return new Promise((resolve) => {
     if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
       return resolve(dataUrl);
@@ -56,7 +56,7 @@ export const compressImage = (dataUrl, maxWidth = 1440, maxHeight = 1440, qualit
 };
 
 // Compress a File object directly from <input type="file">
-export const compressImageFile = (file, maxWidth = 1440, maxHeight = 1440, quality = 0.82) => {
+export const compressImageFile = (file, maxWidth = 2560, maxHeight = 2560, quality = 0.90) => {
   return new Promise((resolve, reject) => {
     const isImage = Boolean(file) && (
       !file.name ||

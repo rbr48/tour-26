@@ -111,7 +111,7 @@ export function isSafeMediaUrl(url) {
   const trimmed = url.trim();
   if (trimmed.startsWith('data:image/')) return true;
   if (trimmed.startsWith('blob:')) return true;
-  if (trimmed.startsWith('https://') || trimmed.startsWith('http://') || trimmed.startsWith('/')) {
+  if (trimmed.startsWith('https://') || trimmed.startsWith('http://') || trimmed.startsWith('/') || trimmed.startsWith('uploads/')) {
     return true;
   }
   return false;
@@ -663,7 +663,7 @@ export default function InstagramFeed({
             return null;
           }
           try {
-            return await compressImageFile(file, 1600, 1600, 0.85);
+            return await compressImageFile(file, 2560, 2560, 0.90);
           } catch (err) {
             console.warn('Image compression fallback to direct FileReader:', err);
             return new Promise((resolve) => {
@@ -1022,7 +1022,7 @@ export default function InstagramFeed({
             return img;
           })
         );
-        serverImages = finalImages.map((img, idx) => uploaded[idx] || thumbnailImages[idx] || img);
+        serverImages = finalImages.map((img, idx) => uploaded[idx] || thumbnailImages[idx] || null).filter(Boolean);
       } catch (err) {
         console.warn('Image server upload skipped, using local thumbnails:', err);
       }
@@ -1609,7 +1609,7 @@ export default function InstagramFeed({
                           const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
                           setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
                         } else {
-                          const imgs = (post.images && post.images.length > 0) ? post.images : [mediaSrc];
+                          const imgs = getPostImages(post);
                           setPreviewMedia({ images: imgs, index: 0, post });
                         }
                       }}
@@ -1621,7 +1621,7 @@ export default function InstagramFeed({
                             const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
                             setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
                           } else {
-                            const imgs = (post.images && post.images.length > 0) ? post.images : [mediaSrc];
+                            const imgs = getPostImages(post);
                             setPreviewMedia({ images: imgs, index: 0, post });
                           }
                         }
@@ -1634,6 +1634,18 @@ export default function InstagramFeed({
                         className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                         style={{ filter: getFilterCss(post.filter) }}
                         loading="lazy"
+                        onError={(e) => {
+                          const cur = e.currentTarget.getAttribute('data-error-stage') || '0';
+                          if (cur === '0' && post.thumb) {
+                            e.currentTarget.setAttribute('data-error-stage', '1');
+                            e.currentTarget.src = resolveMediaUrl(post.thumb, post.driveFileId);
+                          } else if (cur !== '2' && post.driveFileId) {
+                            e.currentTarget.setAttribute('data-error-stage', '2');
+                            e.currentTarget.src = `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1600`;
+                          } else {
+                            e.currentTarget.onerror = null;
+                          }
+                        }}
                       />
                       {isCarousel && (
                         <span className="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-xs text-white p-1 rounded-md text-[10px]">
@@ -1963,7 +1975,7 @@ export default function InstagramFeed({
                             const rIdx = allReelPosts.findIndex((r) => r.id === post.id);
                             setReelsPlayer({ isOpen: true, initialIndex: Math.max(0, rIdx) });
                           } else {
-                            const imgs = (post.images && post.images.length > 0) ? post.images : [mediaSrc];
+                            const imgs = getPostImages(post);
                             setPreviewMedia({ images: imgs, index: 0, post });
                           }
                         }}
@@ -1988,6 +2000,18 @@ export default function InstagramFeed({
                           className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                           style={{ filter: getFilterCss(post.filter) }}
                           loading="lazy"
+                          onError={(e) => {
+                            const cur = e.currentTarget.getAttribute('data-error-stage') || '0';
+                            if (cur === '0' && post.thumb) {
+                              e.currentTarget.setAttribute('data-error-stage', '1');
+                              e.currentTarget.src = resolveMediaUrl(post.thumb, post.driveFileId);
+                            } else if (cur !== '2' && post.driveFileId) {
+                              e.currentTarget.setAttribute('data-error-stage', '2');
+                              e.currentTarget.src = `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1600`;
+                            } else {
+                              e.currentTarget.onerror = null;
+                            }
+                          }}
                         />
                         {isCarousel && (
                           <span className="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-xs text-white p-1 rounded-md text-[10px]">
@@ -2941,8 +2965,20 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   }}
                 >
                   <img
-                    src={currentImg}
+                    src={resolveMediaUrl(currentImg, previewMedia.post?.driveFileId) || currentImg}
                     alt="Fullscreen Preview"
+                    onError={(e) => {
+                      const cur = e.currentTarget.getAttribute('data-error-stage') || '0';
+                      if (cur === '0' && previewMedia.post?.thumb) {
+                        e.currentTarget.setAttribute('data-error-stage', '1');
+                        e.currentTarget.src = resolveMediaUrl(previewMedia.post.thumb, previewMedia.post.driveFileId);
+                      } else if (cur !== '2' && previewMedia.post?.driveFileId) {
+                        e.currentTarget.setAttribute('data-error-stage', '2');
+                        e.currentTarget.src = `https://drive.google.com/thumbnail?id=${previewMedia.post.driveFileId}&sz=w1600`;
+                      } else {
+                        e.currentTarget.onerror = null;
+                      }
+                    }}
                     onClick={() => {
                       const now = Date.now();
                       if (now - lightboxLastTapRef.current < 300) {

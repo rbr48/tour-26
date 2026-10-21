@@ -92,7 +92,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   // Firebase, Google Drive, fonts and weather come straight from the network.
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api') || url.pathname === '/health' || url.pathname.endsWith('.apk')) return;
+  if (url.pathname.startsWith('/api') || url.pathname.startsWith('/uploads') || url.pathname === '/health' || url.pathname.endsWith('.apk')) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirst(request));

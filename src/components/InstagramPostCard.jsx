@@ -277,10 +277,15 @@ export default function InstagramPostCard({
                 style={{ filter: getFilterCss(post.filter) }}
                 loading={idx === 0 ? 'eager' : 'lazy'}
                 onError={(e) => {
-                  if (post.thumb && e.target.src !== post.thumb) {
-                    e.target.src = resolveMediaUrl(post.thumb, post.driveFileId);
-                  } else if (post.driveFileId) {
-                    e.target.src = `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1600`;
+                  const cur = e.currentTarget.getAttribute('data-error-stage') || '0';
+                  if (cur === '0' && post.thumb) {
+                    e.currentTarget.setAttribute('data-error-stage', '1');
+                    e.currentTarget.src = resolveMediaUrl(post.thumb, post.driveFileId);
+                  } else if (cur !== '2' && post.driveFileId) {
+                    e.currentTarget.setAttribute('data-error-stage', '2');
+                    e.currentTarget.src = `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1600`;
+                  } else {
+                    e.currentTarget.onerror = null;
                   }
                 }}
               />
