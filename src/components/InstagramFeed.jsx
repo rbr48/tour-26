@@ -53,9 +53,9 @@ import InstagramCommentSheet from './InstagramCommentSheet';
 import InstagramPostCard from './InstagramPostCard';
 import UserAvatar from './UserAvatar';
 import { triggerHaptic } from '../utils/haptics';
-import { formatDuration, PRODUCTION_ORIGIN } from '../utils/videoHelper';
+import { formatDuration, PRODUCTION_ORIGIN, resolveMediaUrl } from '../utils/videoHelper';
 import { saveLocalVideo } from '../utils/localVideoCache';
-import { uploadReelVideo } from '../utils/reelUploader';
+import { uploadReelVideo, uploadMedia } from '../utils/reelUploader';
 import { compressImageFile } from '../utils/imageCompressor';
 import {
   getDriveAccessToken,
@@ -120,7 +120,17 @@ export function isSafeMediaUrl(url) {
 export const getPostImages = (post) => {
   if (!post) return [];
   if (Array.isArray(post.images) && post.images.length > 0) {
-    return post.images.filter((img) => typeof img === 'string' && isSafeMediaUrl(img));
+    const list = post.images
+      .filter((img) => typeof img === 'string' && isSafeMediaUrl(img))
+      .map((img) => {
+        if (img.includes('drive.google.com/file/d/')) {
+          const m = img.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+          if (m && m[1]) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w1600`;
+        }
+        return resolveMediaUrl(img, post.driveFileId);
+      })
+      .filter(Boolean);
+    if (list.length > 0) return list;
   }
   const single = photoSource(post);
   return single ? [single] : [];
@@ -129,7 +139,7 @@ export const getPostImages = (post) => {
 export const photoSource = (post) => {
   if (!post) return null;
   let raw = null;
-  if (Array.isArray(post.images) && post.images.length > 0 && typeof post.images[0] === 'string') {
+  if (Array.isArray(post.images) && post.images.length > 0 && typeof post.images[0] === 'string' && !post.images[0].includes('drive.google.com/file/d/')) {
     raw = post.images[0];
   } else if (post.thumb && typeof post.thumb === 'string') {
     raw = post.thumb;
@@ -146,7 +156,17 @@ export const photoSource = (post) => {
   } else {
     raw = post.image || post.thumb || null;
   }
-  return isSafeMediaUrl(raw) ? raw : null;
+
+  // Handle raw Google Drive file links
+  if (typeof raw === 'string' && raw.includes('drive.google.com/file/d/')) {
+    const match = raw.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1600`;
+    }
+  }
+
+  const resolved = resolveMediaUrl(raw, post.driveFileId);
+  return isSafeMediaUrl(resolved) ? resolved : null;
 };
 
 // Preset Default Locations for Tour
@@ -854,9 +874,9 @@ export default function InstagramFeed({
         endTime: trimmedReelData.endTime || trimmedReelData.duration || 0,
         duration: trimmedReelData.duration || 0,
         totalDuration: trimmedReelData.totalDuration || 0,
-        thumb: trimmedReelData.thumb,
-        image: trimmedReelData.thumb,
-        images: [trimmedReelData.thumb],
+        thumb: (await makeThumbnail(trimmedReelData.thumb).catch(() => trimmedReelData.thumb)),
+        image: (await makeThumbnail(trimmedReelData.thumb).catch(() => trimmedReelData.thumb)),
+        images: [(await makeThumbnail(trimmedReelData.thumb).catch(() => trimmedReelData.thumb))],
         driveBackedUp: false,
         driveFileId: null,
         driveViewUrl: null,
@@ -967,7 +987,9 @@ export default function InstagramFeed({
     setPostError('');
     const postCaption = caption || 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬ এর আনন্দঘন মুহূর্ত! 🏖️✨';
 
-    // Generate thumbnails for all images
+    const postId = newId();
+
+    // 1. Generate lightweight thumbnails for all images (fast offline viewing & instant feed render)
     const thumbnailImages = await Promise.all(
       finalImages.map(async (img) => {
         try {
@@ -979,14 +1001,40 @@ export default function InstagramFeed({
       })
     );
 
-    const postId = newId();
+    // 2. Upload photos to VPS server storage for permanent high-speed hosting
+    let serverImages = thumbnailImages;
+    if (typeof navigator === 'undefined' || navigator.onLine) {
+      try {
+        const uploaded = await Promise.all(
+          finalImages.map(async (img, idx) => {
+            if (isDataImage(img)) {
+              try {
+                const res = await uploadMedia(img, {
+                  postId,
+                  fileName: `Tour2026_${authorName.replace(/\s+/g, '_')}_${Date.now()}_${idx + 1}.jpg`,
+                });
+                return res?.url || null;
+              } catch (upErr) {
+                console.warn(`VPS upload skipped for image ${idx + 1}:`, upErr);
+                return null;
+              }
+            }
+            return img;
+          })
+        );
+        serverImages = finalImages.map((img, idx) => uploaded[idx] || thumbnailImages[idx] || img);
+      } catch (err) {
+        console.warn('Image server upload skipped, using local thumbnails:', err);
+      }
+    }
+
     const profilePhoto = currentProfile?.customPhotoURL;
     const finalTourDay = selectedTourDay === 'auto' ? getCurrentTourDay().id : selectedTourDay;
 
     const newPost = {
       id: postId,
       author: authorName,
-      authorEmail: currentUser?.email || 'member@tour.family',
+      authorEmail: (currentUser?.email ? currentUser.email.toLowerCase() : null) || 'member@tour.family',
       authorPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:')
         ? profilePhoto
         : (currentUser?.photoURL || null),
@@ -998,9 +1046,9 @@ export default function InstagramFeed({
       comments: [],
       views: 0,
       filter: selectedFilter || 'normal',
-      images: thumbnailImages,
-      thumb: thumbnailImages[0] || null,
-      image: thumbnailImages[0] || null,
+      images: serverImages,
+      thumb: thumbnailImages[0] || serverImages[0] || null,
+      image: serverImages[0] || thumbnailImages[0] || null,
       driveBackedUp: false,
       driveFileId: null,
       driveViewUrl: null,
@@ -1409,10 +1457,15 @@ export default function InstagramFeed({
                     className="relative aspect-[9/16] bg-slate-900 rounded-2xl overflow-hidden cursor-pointer group shadow-md border border-slate-200 select-none"
                   >
                     <img
-                      src={reel.thumb || photoSource(reel)}
+                      src={resolveMediaUrl(reel.thumb, reel.driveFileId) || photoSource(reel)}
                       alt={reel.caption}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                       loading="lazy"
+                      onError={(e) => {
+                        if (reel.driveFileId) {
+                          e.target.src = `https://drive.google.com/thumbnail?id=${reel.driveFileId}&sz=w1600`;
+                        }
+                      }}
                     />
 
                     {/* Gradient shadows */}

@@ -103,12 +103,16 @@ service cloud.firestore {
           && textWithin('thumb', 350000)
           && (
             isAdmin() ||
+            resource.data.authorEmail == null ||
+            resource.data.authorEmail.lower() == 'member@tour.family' ||
             (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower()) ||
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comments', 'views'])
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comments', 'views', 'driveBackedUp', 'driveFileId', 'driveViewUrl', 'driveDownloadUrl'])
           );
         allow delete: if isAuthenticated()
           && (
             isAdmin() ||
+            resource.data.authorEmail == null ||
+            resource.data.authorEmail.lower() == 'member@tour.family' ||
             (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower())
           );
       }

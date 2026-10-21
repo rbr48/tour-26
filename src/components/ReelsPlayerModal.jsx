@@ -434,7 +434,7 @@ export default function ReelsPlayerModal({
               ref={videoRef}
               key={videoSource || currentReel?.id}
               src={videoSource}
-              poster={currentReel.thumb || undefined}
+              poster={resolveMediaUrl(currentReel.thumb, currentReel?.driveFileId) || undefined}
               preload="auto"
               playsInline
               webkit-playsinline="true"
@@ -461,7 +461,7 @@ export default function ReelsPlayerModal({
               {currentReel?.thumb ? (
                 <div className="relative mb-4">
                   <img
-                    src={currentReel.thumb}
+                    src={resolveMediaUrl(currentReel.thumb, currentReel?.driveFileId) || currentReel.thumb}
                     alt="Reel preview"
                     className="w-full max-h-72 object-cover rounded-2xl opacity-75 shadow-lg"
                   />

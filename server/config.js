@@ -3,6 +3,11 @@ import path from 'node:path';
 export const DEFAULT_ALLOWED_ORIGINS = [
   'https://tour2026.izhaanintellect.fun',
   'https://localhost',
+  'http://localhost',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
   'capacitor://localhost',
 ];
 

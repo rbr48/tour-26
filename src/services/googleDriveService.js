@@ -197,7 +197,7 @@ export const uploadViaAppsScript = async (webhookUrl, { imageDataUrl, fileName, 
   };
 
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeoutId = controller ? setTimeout(() => controller.abort(), 8000) : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 30000) : null;
 
   try {
     const response = await fetch(webhookUrl, {

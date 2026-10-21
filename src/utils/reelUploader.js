@@ -1,5 +1,7 @@
 import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { auth } from '../firebase';
+import { dataUrlToBlob } from '../services/googleDriveService';
 
 export const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB chunks (well below Cloudflare 100MB body limit)
 
@@ -10,27 +12,53 @@ export function getUploadApiUrl() {
 }
 
 /**
- * Uploads a video file or blob in chunks with real-time progress callbacks.
+ * Uploads a video, image, file or blob in chunks or single request with real-time progress callbacks.
  * Supports resume-safe chunking, automatic retries per chunk, and handles
- * large phone camera files without hitting Cloudflare body limits.
+ * large files without hitting Cloudflare body limits.
  *
- * @param {Blob|File} file - The video file or blob to upload
+ * @param {Blob|File|string} fileOrDataUrl - The file, blob or data URL to upload
  * @param {Object} options
- * @param {string} options.postId - Post identifier
+ * @param {string} [options.postId] - Post identifier
  * @param {string} [options.fileName] - Original file name
  * @param {function} [options.onProgress] - Callback: ({ percent, stage, loadedBytes, totalBytes, chunkIndex, totalChunks })
  * @param {number} [options.chunkSize] - Size of each chunk in bytes (default 8MB)
- * @returns {Promise<{ url: string, fileName: string, compressed: boolean, originalSize: number, compressedSize: number }>}
+ * @returns {Promise<{ url: string, fileName: string, type: string, size?: number, compressed?: boolean, originalSize?: number, compressedSize?: number }>}
  */
-export async function uploadReelVideo(file, { postId, fileName, onProgress, chunkSize = CHUNK_SIZE } = {}) {
-  if (!file) throw new Error('No video file provided for upload');
+export async function uploadMedia(fileOrDataUrl, { postId, fileName, onProgress, chunkSize = CHUNK_SIZE } = {}) {
+  if (!fileOrDataUrl) throw new Error('No media file provided for upload');
 
+  let file;
+  if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
+    file = await dataUrlToBlob(fileOrDataUrl);
+  } else {
+    file = fileOrDataUrl;
+  }
+
+  const isVideo = file.type?.includes('video') || /\.(mp4|mov|webm|m4v|mkv)$/i.test(fileName || file.name || '');
+  const defaultExt = isVideo ? '.mp4' : (file.type?.includes('png') ? '.png' : '.jpg');
+  const defaultPrefix = isVideo ? 'reel' : 'photo';
   const totalSize = file.size;
-  const resolvedFileName = fileName || file.name || `reel_${postId || Date.now()}.mp4`;
+  const resolvedFileName = fileName || file.name || `${defaultPrefix}_${postId || Date.now()}${defaultExt}`;
   const uploadApiUrl = getUploadApiUrl();
 
   const user = auth?.currentUser;
-  const token = user ? await user.getIdToken().catch(() => null) : null;
+  let token = null;
+  if (user) {
+    try {
+      token = await user.getIdToken();
+    } catch (err) {
+      console.warn('Could not retrieve token from auth.currentUser:', err);
+    }
+  }
+
+  if (!token && Capacitor.isNativePlatform()) {
+    try {
+      const res = await FirebaseAuthentication.getIdToken();
+      token = res?.token || null;
+    } catch (nativeErr) {
+      console.warn('Could not retrieve token from native FirebaseAuthentication:', nativeErr);
+    }
+  }
 
   // If file is 5MB or less, upload in 1 request without chunking overhead
   if (totalSize <= 5 * 1024 * 1024) {
@@ -71,7 +99,7 @@ export async function uploadReelVideo(file, { postId, fileName, onProgress, chun
         }
       };
 
-      xhr.onerror = () => reject(new Error('Network error during video upload'));
+      xhr.onerror = () => reject(new Error('Network error during media upload'));
       xhr.send(file);
     });
   }
@@ -157,3 +185,6 @@ export async function uploadReelVideo(file, { postId, fileName, onProgress, chun
     }
   }
 }
+
+/** Backward compatibility alias */
+export const uploadReelVideo = uploadMedia;

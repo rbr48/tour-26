@@ -45,6 +45,7 @@ export default defineConfig({
     // Local development: the backup API runs on the Node server.
     proxy: {
       '/api': 'http://localhost:3000',
+      '/uploads': 'http://localhost:3000',
       '/health': 'http://localhost:3000',
     },
   },

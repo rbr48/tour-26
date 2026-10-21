@@ -42,7 +42,7 @@ export function resolveMediaUrl(url, driveFileId = null) {
     return url;
   }
 
-  // Relative path (e.g. /uploads/reel_123.mp4)
+  // Relative path (e.g. /uploads/reel_123.mp4 or /uploads/photo_123.jpg)
   if (url.startsWith('/')) {
     if (Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port !== '3000')) {
       return `${PRODUCTION_ORIGIN}${url}`;
@@ -98,58 +98,51 @@ export function formatDuration(seconds, { bengali = false } = {}) {
 }
 
 /**
- * Ensures startTime and endTime stay within [0, totalDuration]
- * and that (endTime - startTime) <= maxDuration (default 180s).
+ * Clamps start and end times to adhere to max 3 minutes (180s) trimming limit.
+ *
+ * @param {number} start - Requested start time in seconds
+ * @param {number} end - Requested end time in seconds
+ * @param {number} totalDuration - Full duration of original video
+ * @returns {{ startTime: number, endTime: number, duration: number }}
  */
-export function clampSegmentBounds(startTime, endTime, totalDuration = Infinity, maxDuration = MAX_REEL_DURATION) {
-  let s = Math.max(0, Number(startTime) || 0);
-  let e = Number(endTime);
+export function clampSegmentBounds(start, end, totalDuration) {
+  const maxDur = MAX_REEL_DURATION;
+  const safeTotal = Math.max(0, totalDuration || 0);
 
-  if (isNaN(e) || e <= s) {
-    e = s + Math.min(maxDuration, totalDuration - s);
+  let s = Math.max(0, Math.min(start || 0, safeTotal));
+  let e = Math.max(s, Math.min(end || s + maxDur, safeTotal));
+
+  if (e - s > maxDur) {
+    e = Math.min(safeTotal, s + maxDur);
   }
 
-  // Cap e by total duration if available
-  if (totalDuration > 0 && e > totalDuration) {
-    e = totalDuration;
-  }
-
-  // Cap length by maxDuration
-  if (e - s > maxDuration) {
-    e = s + maxDuration;
-  }
-
-  // If s became greater than totalDuration - 1
-  if (totalDuration > 0 && s >= totalDuration) {
-    s = Math.max(0, totalDuration - 1);
-    e = totalDuration;
+  if (e <= s) {
+    e = Math.min(safeTotal, s + Math.min(maxDur, safeTotal));
   }
 
   const duration = Math.max(0, e - s);
   return {
-    startTime: Number(s.toFixed(2)),
-    endTime: Number(e.toFixed(2)),
-    duration: Number(duration.toFixed(2)),
+    startTime: Math.round(s * 10) / 10,
+    endTime: Math.round(e * 10) / 10,
+    duration: Math.round(duration * 10) / 10,
   };
 }
 
 /**
- * Read duration, dimensions, and aspect ratio from a video File or Blob.
+ * Extracts metadata (duration, width, height) from a video file or blob.
+ *
+ * @param {File|Blob|string} fileOrBlobOrUrl
+ * @returns {Promise<{ duration: number, width: number, height: number, isPortrait: boolean }>}
  */
-export function getVideoMetadata(fileOrBlob) {
+export function getVideoMetadata(fileOrBlobOrUrl) {
   return new Promise((resolve, reject) => {
-    if (!fileOrBlob) {
-      return reject(new Error('No video file provided'));
-    }
-
     const video = document.createElement('video');
     video.preload = 'metadata';
-    video.playsInline = true;
-    video.muted = true;
+    video.crossOrigin = 'anonymous';
 
-    const objectUrl = typeof fileOrBlob === 'string'
-      ? fileOrBlob
-      : URL.createObjectURL(fileOrBlob);
+    const objectUrl = typeof fileOrBlobOrUrl === 'string'
+      ? fileOrBlobOrUrl
+      : URL.createObjectURL(fileOrBlobOrUrl);
 
     let cleanedUp = false;
     const cleanup = () => {
@@ -157,26 +150,23 @@ export function getVideoMetadata(fileOrBlob) {
       cleanedUp = true;
       video.removeAttribute('src');
       video.load();
-      if (typeof fileOrBlob !== 'string') {
+      if (typeof fileOrBlobOrUrl !== 'string') {
         URL.revokeObjectURL(objectUrl);
       }
     };
 
     video.onloadedmetadata = () => {
-      const duration = Number(video.duration) || 0;
-      const width = video.videoWidth || 720;
-      const height = video.videoHeight || 1280;
-      const isVertical = height >= width;
-      const aspectRatio = width / (height || 1);
+      const duration = video.duration || 0;
+      const width = video.videoWidth || 0;
+      const height = video.videoHeight || 0;
+      const isPortrait = height > width;
 
       cleanup();
       resolve({
-        duration,
+        duration: Math.round(duration * 10) / 10,
         width,
         height,
-        isVertical,
-        aspectRatio,
-        formattedDuration: formatDuration(duration, { bengali: true }),
+        isPortrait,
       });
     };
 
@@ -198,10 +188,10 @@ export function getVideoMetadata(fileOrBlob) {
 }
 
 /**
- * Captures a video frame at a given time and outputs a compressed JPEG DataURL.
- * Suitable for instant cover thumbnail display in Firestore.
+ * Captures a video frame at a given time and outputs a compact, compressed JPEG DataURL.
+ * Suitable for instant cover thumbnail display in Firestore without exceeding limits.
  */
-export function captureVideoFrame(fileOrBlobOrUrl, seekTime = 0.5, { maxWidth = 720, maxHeight = 1280, quality = 0.82 } = {}) {
+export function captureVideoFrame(fileOrBlobOrUrl, seekTime = 0.5, { maxWidth = 480, maxHeight = 854, quality = 0.72 } = {}) {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     video.preload = 'auto';
@@ -231,8 +221,8 @@ export function captureVideoFrame(fileOrBlobOrUrl, seekTime = 0.5, { maxWidth = 
 
     video.onseeked = () => {
       try {
-        const vw = video.videoWidth || 720;
-        const vh = video.videoHeight || 1280;
+        const vw = video.videoWidth || 480;
+        const vh = video.videoHeight || 854;
 
         // Calculate aspect-ratio preserved dimensions
         let width = vw;
@@ -257,7 +247,21 @@ export function captureVideoFrame(fileOrBlobOrUrl, seekTime = 0.5, { maxWidth = 
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+        // Keep thumbnail string strictly bounded (< 75,000 chars) for Firestore safety
+        if (dataUrl.length > 75000) {
+          try {
+            const smallCanvas = document.createElement('canvas');
+            smallCanvas.width = Math.max(1, Math.round(canvas.width * 0.75));
+            smallCanvas.height = Math.max(1, Math.round(canvas.height * 0.75));
+            const sCtx = smallCanvas.getContext('2d');
+            if (sCtx) {
+              sCtx.drawImage(canvas, 0, 0, smallCanvas.width, smallCanvas.height);
+              dataUrl = smallCanvas.toDataURL('image/jpeg', 0.65);
+            }
+          } catch {}
+        }
 
         cleanup();
         resolve(dataUrl);

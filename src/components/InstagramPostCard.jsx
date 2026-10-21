@@ -25,7 +25,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { triggerHaptic } from '../utils/haptics';
-import { formatDuration } from '../utils/videoHelper';
+import { formatDuration, resolveMediaUrl } from '../utils/videoHelper';
 import { resolveCommenterName } from '../utils/members';
 import { getTourDayById, getPostTourDay } from '../utils/tourSchedule';
 import UserAvatar from './UserAvatar';
@@ -96,7 +96,10 @@ export default function InstagramPostCard({
     return () => observer.disconnect();
   }, [post.id, onViewPost]);
 
-  const postImages = getPostImages(post);
+  const rawImages = getPostImages(post);
+  const postImages = rawImages.length > 0
+    ? rawImages
+    : (photoSource(post) ? [photoSource(post)] : (post.thumb ? [resolveMediaUrl(post.thumb, post.driveFileId)] : []));
   const totalImages = postImages.length;
   const currentMediaSrc = postImages[activeImageIdx] || photoSource(post);
   const postIsReel = Boolean(post.isReel || post.reel || post.videoUrl || post.video || post.type === 'reel');
@@ -273,6 +276,13 @@ export default function InstagramPostCard({
                 className="w-full h-full object-cover select-none pointer-events-none"
                 style={{ filter: getFilterCss(post.filter) }}
                 loading={idx === 0 ? 'eager' : 'lazy'}
+                onError={(e) => {
+                  if (post.thumb && e.target.src !== post.thumb) {
+                    e.target.src = resolveMediaUrl(post.thumb, post.driveFileId);
+                  } else if (post.driveFileId) {
+                    e.target.src = `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1600`;
+                  }
+                }}
               />
             </div>
           ))}

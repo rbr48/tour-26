@@ -1,23 +1,23 @@
 import { compressImage } from '../utils/imageCompressor';
 import { uploadToGoogleDrive } from './googleDriveService';
 
-// Firestore subcollection document keeps a sharp, high-definition preview of each photo.
-// The original/full-size copy lives in the shared Google Drive folder.
-const THUMB_MAX_SIDE = 800;
-const THUMB_MAX_CHARS = 180000;
-const PROFILE_PHOTO_MAX_CHARS = 180000;
+// Firestore subcollection document keeps a sharp, fast preview of each photo.
+// The original/full-size copy lives on the VPS and the shared Google Drive folder.
+const THUMB_MAX_SIDE = 600;
+const THUMB_MAX_CHARS = 75000;
+const PROFILE_PHOTO_MAX_CHARS = 120000;
 const PROFILE_PHOTO_SIDE = 384;
 
 export const isDataImage = (value) => typeof value === 'string' && value.startsWith('data:image');
 
-/** High-definition JPEG preview (up to 1080px Instagram standard, at most ~240 KB). */
+/** High-definition JPEG preview (up to 600px mobile standard, ~50 KB). */
 export async function makeThumbnail(dataUrl) {
   let side = THUMB_MAX_SIDE;
-  let quality = 0.82;
+  let quality = 0.78;
   let result = await compressImage(dataUrl, side, side, quality);
   for (let attempt = 0; attempt < 3 && result.length > THUMB_MAX_CHARS; attempt += 1) {
-    side = Math.round(side * 0.88);
-    quality = Math.max(0.68, quality - 0.05);
+    side = Math.round(side * 0.85);
+    quality = Math.max(0.62, quality - 0.05);
     result = await compressImage(result, side, side, quality);
   }
   return result;
@@ -33,8 +33,8 @@ export async function shrinkProfilePhoto(value) {
 
 /**
  * Fields a new photo post stores, from an image already compressed for upload. The
- * full-size copy goes to Drive first. If that upload fails, nothing is saved, so no
- * photo is lost and no half-finished post appears in the feed.
+ * full-size copy goes to Drive first. If that upload fails, nothing is lost and the
+ * thumbnail preview is saved.
  */
 export async function preparePhotoFromDataUrl({ dataUrl, authorName, caption }) {
   const thumb = await makeThumbnail(dataUrl);

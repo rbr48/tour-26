@@ -15,7 +15,15 @@ import { createReelsArchiver } from './reels-archiver.js';
 const API_METHODS = 'GET, PUT, POST, OPTIONS';
 
 function corsHeaders(origin, allowedOrigins) {
-  if (!origin || !allowedOrigins.has(origin)) {
+  if (!origin) {
+    return {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': API_METHODS,
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-File-Name, X-Post-Id, X-Upload-Id, X-Chunk-Index, X-Total-Chunks',
+      'Access-Control-Max-Age': '600',
+    };
+  }
+  if (!allowedOrigins.has(origin)) {
     return { Vary: 'Origin' };
   }
   return {
@@ -305,14 +313,16 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
           chunkFiles.push(expected);
         }
 
-        const ext = path.extname(clientName) || '.mp4';
+        const isImage = /\.(jpg|jpeg|png|webp|gif|heic)$/i.test(clientName);
+        const prefix = isImage ? 'photo_' : 'reel_';
+        const ext = path.extname(clientName) || (isImage ? '.jpg' : '.mp4');
         const randomSuffix = Math.random().toString(36).slice(2, 8);
-        const safeName = `reel_${Date.now()}_${randomSuffix}${ext}`;
+        const safeName = `${prefix}${Date.now()}_${randomSuffix}${ext}`;
         const rawName = `raw_${Date.now()}_${randomSuffix}${ext}`;
         const rawPath = path.join(uploadsDir, rawName);
         const targetPath = path.join(uploadsDir, safeName);
 
-        const destStream = fs.createWriteStream(rawPath);
+        const destStream = fs.createWriteStream(isImage ? targetPath : rawPath);
         for (const cf of chunkFiles) {
           const chunkData = await fs.promises.readFile(cf);
           destStream.write(chunkData);
@@ -326,6 +336,18 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
           await fs.promises.unlink(cf).catch(() => {});
         }
         await fs.promises.rmdir(chunkDir).catch(() => {});
+
+        if (isImage) {
+          const imgSize = fs.existsSync(targetPath) ? fs.statSync(targetPath).size : 0;
+          sendJson(res, 200, {
+            success: true,
+            url: `/uploads/${safeName}`,
+            fileName: safeName,
+            type: 'image',
+            size: imgSize,
+          }, headers);
+          return;
+        }
 
         // Compress video to 720p H.264
         const compResult = await compressVideo(rawPath, targetPath);
@@ -344,6 +366,7 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
           success: true,
           url: `/uploads/${safeName}`,
           fileName: safeName,
+          type: 'video',
           compressed: compResult.compressed,
           originalSize: compResult.originalSize,
           compressedSize: compResult.compressedSize,
@@ -352,12 +375,27 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
       }
 
       // Single non-chunked stream fallback
-      const ext = path.extname(clientName) || '.mp4';
+      const isImage = /\.(jpg|jpeg|png|webp|gif|heic)$/i.test(clientName);
+      const prefix = isImage ? 'photo_' : 'reel_';
+      const ext = path.extname(clientName) || (isImage ? '.jpg' : '.mp4');
       const randomSuffix = Math.random().toString(36).slice(2, 8);
-      const safeName = `reel_${Date.now()}_${randomSuffix}${ext}`;
+      const safeName = `${prefix}${Date.now()}_${randomSuffix}${ext}`;
       const rawName = `raw_${Date.now()}_${randomSuffix}${ext}`;
       const rawPath = path.join(uploadsDir, rawName);
       const targetPath = path.join(uploadsDir, safeName);
+
+      if (isImage) {
+        await pipeline(req, fs.createWriteStream(targetPath));
+        const imgSize = fs.existsSync(targetPath) ? fs.statSync(targetPath).size : 0;
+        sendJson(res, 200, {
+          success: true,
+          url: `/uploads/${safeName}`,
+          fileName: safeName,
+          type: 'image',
+          size: imgSize,
+        }, headers);
+        return;
+      }
 
       // 1. Stream incoming video to temporary raw file
       await pipeline(req, fs.createWriteStream(rawPath));
@@ -379,6 +417,7 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
         success: true,
         url: `/uploads/${safeName}`,
         fileName: safeName,
+        type: 'video',
         compressed: compResult.compressed,
         originalSize: compResult.originalSize,
         compressedSize: compResult.compressedSize,
