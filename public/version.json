@@ -1,10 +1,10 @@
 {
-  "versionCode": 25,
-  "versionName": "2.25",
+  "versionCode": 26,
+  "versionName": "2.26",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v25.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v26.apk",
   "apkSize": "8.9 MB",
-  "releaseNotes": "আপডেট v2.25: একাধিক ছবির পোস্টে পরবর্তী ছবি পরিবর্তন ত্রুটি সমাধান, স্টোরি হাইলাইটস বার, ট্যাগড ফটোস ট্যাব, পিন করা পোস্ট, ২৪ ঘণ্টার মুড নোট ও লাইভ বিচ ওয়েভ অডিও সুবিধা।",
-  "releasedAt": "2026-10-22T14:46:00.000Z",
+  "releaseNotes": "আপডেট v2.26: সুপার-স্মুথ ও বাফারলেস ইনস্ট্যান্ট রিলস প্লেয়ার (প্রি-ওয়ার্মড ভিডিও স্লট, ব্যাকগ্রাউন্ড ফুল কোয়ালিটি ক্যাশিং ও ৬০ FPS স্ক্রাবার)।",
+  "releasedAt": "2026-10-22T15:12:46.279Z",
   "forceUpdate": false
 }

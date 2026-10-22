@@ -1640,7 +1640,7 @@ export default function UserProfileModal({
                 controls
                 autoPlay
                 playsInline
-                className="w-full h-full object-contain"
+                preload="auto" playsInline webkit-playsinline="true" x5-video-player-type="h5" className="w-full h-full object-contain transform-gpu"
               />
 
               <div className="absolute bottom-12 left-3 right-3 z-20 pointer-events-none drop-shadow-md">

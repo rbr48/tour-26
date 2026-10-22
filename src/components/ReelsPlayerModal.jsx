@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Heart,
   MessageCircle,
@@ -8,12 +8,10 @@ import {
   Volume2,
   VolumeX,
   Play,
-  Pause,
   ChevronUp,
   ChevronDown,
   MapPin,
   Send,
-  Sparkles,
   Music,
   Eye,
   RotateCcw,
@@ -22,7 +20,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { formatDuration, toBnNum, resolveMediaUrl, getDriveEmbedUrl, PRODUCTION_ORIGIN } from '../utils/videoHelper';
-import { getLocalVideo, getLocalVideoUrl } from '../utils/localVideoCache';
+import { getLocalVideo, getLocalVideoUrl, prewarmReelsQueue, prefetchAndCacheVideo } from '../utils/localVideoCache';
 import { uploadReelVideo } from '../utils/reelUploader';
 import { useBackHandler } from '../utils/backNavigation';
 import { triggerHaptic } from '../utils/haptics';
@@ -45,6 +43,7 @@ export default function ReelsPlayerModal({
   onViewPost,
   onCommentReaction,
   onUpdatePost,
+  onOpenUserProfile,
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -53,12 +52,20 @@ export default function ReelsPlayerModal({
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [videoLoadError, setVideoLoadError] = useState(false);
+  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
   const [localVideoUrl, setLocalVideoUrl] = useState(null);
 
+  // Swipe animation state for silky smooth dragging
+  const [touchDeltaY, setTouchDeltaY] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
   const videoRef = useRef(null);
+  const nextVideoRef = useRef(null);
+  const prevVideoRef = useRef(null);
+  const progressBarRef = useRef(null);
   const touchStartY = useRef(null);
+  const touchStartTime = useRef(0);
   const lastTapRef = useRef(0);
 
   useEffect(() => {
@@ -70,24 +77,41 @@ export default function ReelsPlayerModal({
   useBackHandler(isOpen && !showComments, onClose, 20);
 
   const currentReel = reels[currentIndex] || null;
+  const nextIndex = (currentIndex + 1) % (reels.length || 1);
+  const prevIndex = (currentIndex - 1 + (reels.length || 1)) % (reels.length || 1);
+  const nextReel = reels.length > 1 ? reels[nextIndex] : null;
+  const prevReel = reels.length > 2 ? reels[prevIndex] : null;
 
-  // Resolve local IndexedDB video if available on this device
+  // Background Pre-warm queue: ensures next 2 reels & prev reel are cached locally
+  useEffect(() => {
+    if (!isOpen || !reels.length) return;
+    prewarmReelsQueue(reels, currentIndex, 2);
+  }, [isOpen, reels, currentIndex]);
+
+  // Resolve local IndexedDB or Memory cached video for current reel
   useEffect(() => {
     let active = true;
-    let objectUrl = null;
 
     if (currentReel?.id) {
       getLocalVideoUrl(currentReel.id).then((url) => {
-        if (!active) {
-          if (url) URL.revokeObjectURL(url);
-          return;
-        }
+        if (!active) return;
         if (url) {
-          objectUrl = url;
           setLocalVideoUrl(url);
           setVideoLoadError(false);
         } else {
           setLocalVideoUrl(null);
+          // Kick off background cache if remote
+          const raw = currentReel.videoUrl || currentReel.video;
+          if (raw && !raw.startsWith('blob:')) {
+            const resolved = resolveMediaUrl(raw, currentReel.driveFileId);
+            if (resolved && resolved.startsWith('http')) {
+              prefetchAndCacheVideo(currentReel.id, resolved).then((cached) => {
+                if (active && cached) {
+                  setLocalVideoUrl(cached);
+                }
+              }).catch(() => {});
+            }
+          }
         }
       });
     } else {
@@ -96,11 +120,8 @@ export default function ReelsPlayerModal({
 
     return () => {
       active = false;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
     };
-  }, [currentReel?.id]);
+  }, [currentReel?.id, currentReel?.videoUrl, currentReel?.video, currentReel?.driveFileId]);
 
   // Video source resolution: prioritize local device cache, then server/cloud URL
   const rawVideoSource = currentReel?.videoUrl || currentReel?.video || null;
@@ -112,35 +133,20 @@ export default function ReelsPlayerModal({
   const videoSource = localVideoUrl || resolvedRemoteSource;
   const embedUrl = getDriveEmbedUrl(validRawSource, currentReel?.driveFileId);
 
-  // Next Reel resolution for background pre-buffering
-  const nextReel = reels[currentIndex + 1] || null;
-  const rawNextSource = nextReel?.videoUrl || nextReel?.video || null;
-  const isNextDeadBlob = typeof rawNextSource === 'string' && rawNextSource.startsWith('blob:');
-  const validNextSource = isNextDeadBlob ? null : rawNextSource;
-  const resolvedNextSource = validNextSource
-    ? resolveMediaUrl(validNextSource, nextReel?.driveFileId)
-    : (nextReel?.driveFileId ? resolveMediaUrl(null, nextReel.driveFileId) : null);
+  // Pre-resolved sources for Next and Prev pre-warmed standby slots
+  const nextVideoSource = useMemo(() => {
+    if (!nextReel) return null;
+    const raw = nextReel.videoUrl || nextReel.video;
+    if (typeof raw === 'string' && raw.startsWith('blob:')) return null;
+    return resolveMediaUrl(raw, nextReel.driveFileId);
+  }, [nextReel]);
 
-  // Pre-buffer next reel headers and initial frames for instant swipe transitions
-  useEffect(() => {
-    if (!isOpen || !resolvedNextSource || typeof window === 'undefined') return;
-
-    if (nextReel?.id) {
-      getLocalVideo(nextReel.id).catch(() => {});
-    }
-
-    if (resolvedNextSource.startsWith('http')) {
-      try {
-        const controller = new AbortController();
-        fetch(resolvedNextSource, {
-          method: 'GET',
-          headers: { Range: 'bytes=0-524288' },
-          signal: controller.signal,
-        }).catch(() => {});
-        return () => controller.abort();
-      } catch {}
-    }
-  }, [isOpen, resolvedNextSource, nextReel?.id]);
+  const prevVideoSource = useMemo(() => {
+    if (!prevReel) return null;
+    const raw = prevReel.videoUrl || prevReel.video;
+    if (typeof raw === 'string' && raw.startsWith('blob:')) return null;
+    return resolveMediaUrl(raw, prevReel.driveFileId);
+  }, [prevReel]);
 
   const isLocalOnly = Boolean(localVideoUrl && !validRawSource && !currentReel?.driveFileId);
   const [syncingState, setSyncingState] = useState(null);
@@ -191,15 +197,19 @@ export default function ReelsPlayerModal({
     }
   }, [isOpen, currentReel?.id, onViewPost]);
 
-  // Always reset error state and progress when navigating reels
+  // Reset progress and states on navigation
   useEffect(() => {
     if (!isOpen) return;
     setVideoLoadError(false);
-    setProgress(0);
+    setIsVideoLoaded(false);
     setIsCaptionExpanded(false);
+    setTouchDeltaY(0);
+    if (progressBarRef.current) {
+      progressBarRef.current.style.width = '0%';
+    }
   }, [currentIndex, isOpen]);
 
-  // Initialize playback at startTime whenever reel or source changes
+  // High-performance Autoplay with fallback to muted on restricted browsers
   useEffect(() => {
     if (!isOpen || !videoRef.current || videoLoadError) return;
 
@@ -210,9 +220,11 @@ export default function ReelsPlayerModal({
     const playPromise = vid.play();
     if (playPromise !== undefined) {
       playPromise
-        .then(() => setIsPlaying(true))
+        .then(() => {
+          setIsPlaying(true);
+        })
         .catch(() => {
-          // Autoplay policy might require mute
+          // Autoplay policy fallback: mute and play
           vid.muted = true;
           setIsMuted(true);
           vid.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
@@ -220,23 +232,65 @@ export default function ReelsPlayerModal({
     }
   }, [currentIndex, isOpen, startTime, videoSource, videoLoadError]);
 
-  // Keep playback looped within [startTime, endTime]
-  const handleTimeUpdate = () => {
+  // 60FPS Direct DOM Progress Updates (Zero React State Reconciliation Lag)
+  const handleTimeUpdate = useCallback(() => {
     if (!videoRef.current) return;
-    const cur = videoRef.current.currentTime;
+    const vid = videoRef.current;
+    const cur = vid.currentTime;
 
     if (endTime > startTime) {
       if (cur >= endTime || cur < startTime) {
-        videoRef.current.currentTime = startTime;
+        vid.currentTime = startTime;
       }
       const played = Math.max(0, cur - startTime);
-      setProgress(Math.min(100, (played / segmentDuration) * 100));
+      const pct = Math.min(100, (played / segmentDuration) * 100);
+      if (progressBarRef.current) {
+        progressBarRef.current.style.width = `${pct}%`;
+      }
     } else {
-      if (videoRef.current.duration) {
-        setProgress((cur / videoRef.current.duration) * 100);
+      if (vid.duration) {
+        const pct = Math.min(100, (cur / vid.duration) * 100);
+        if (progressBarRef.current) {
+          progressBarRef.current.style.width = `${pct}%`;
+        }
       }
     }
-  };
+  }, [startTime, endTime, segmentDuration]);
+
+  // Navigation handlers
+  const handleNext = useCallback(() => {
+    if (!reels.length) return;
+    triggerHaptic('light');
+    setIsTransitioning(true);
+    setTouchDeltaY(-80);
+    setTimeout(() => {
+      setCurrentIndex((prev) => (prev < reels.length - 1 ? prev + 1 : 0));
+      setTouchDeltaY(0);
+      setIsTransitioning(false);
+    }, 150);
+  }, [reels.length]);
+
+  const handlePrev = useCallback(() => {
+    if (!reels.length) return;
+    triggerHaptic('light');
+    setIsTransitioning(true);
+    setTouchDeltaY(80);
+    setTimeout(() => {
+      setCurrentIndex((prev) => (prev > 0 ? prev - 1 : reels.length - 1));
+      setTouchDeltaY(0);
+      setIsTransitioning(false);
+    }, 150);
+  }, [reels.length]);
+
+  const togglePlay = useCallback(() => {
+    if (!videoRef.current) return;
+    if (videoRef.current.paused) {
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+    } else {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    }
+  }, []);
 
   // Keyboard navigation (ArrowUp, ArrowDown, Space, Escape)
   useEffect(() => {
@@ -256,42 +310,38 @@ export default function ReelsPlayerModal({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, currentIndex, reels.length, showComments]);
+  }, [isOpen, showComments, handleNext, handlePrev, togglePlay, onClose]);
 
-  const handleNext = () => {
-    if (currentIndex < reels.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-    } else {
-      // Loop back to first reel
-      setCurrentIndex(0);
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
-    } else {
-      setCurrentIndex(reels.length - 1);
-    }
-  };
-
-  // Touch Swipe for mobile gestures
+  // Modern Touch Drag & Swipe Gestures (Fluid Vertical Pull)
   const handleTouchStart = (e) => {
     if (!e.touches?.[0]) return;
     touchStartY.current = e.touches[0].clientY;
+    touchStartTime.current = Date.now();
+  };
+
+  const handleTouchMove = (e) => {
+    if (touchStartY.current === null || !e.touches?.[0] || showComments) return;
+    const diff = e.touches[0].clientY - touchStartY.current;
+    // Damped elastic drag
+    setTouchDeltaY(diff * 0.7);
   };
 
   const handleTouchEnd = (e) => {
     if (touchStartY.current === null || !e.changedTouches?.[0]) return;
     const diff = touchStartY.current - e.changedTouches[0].clientY;
+    const elapsed = Math.max(1, Date.now() - touchStartTime.current);
+    const velocity = diff / elapsed;
     touchStartY.current = null;
 
-    if (diff > 50) {
+    if (diff > 50 || velocity > 0.4) {
       // Swiped UP -> Next reel
       handleNext();
-    } else if (diff < -50) {
+    } else if (diff < -50 || velocity < -0.4) {
       // Swiped DOWN -> Prev reel
       handlePrev();
+    } else {
+      // Snap back to neutral
+      setTouchDeltaY(0);
     }
   };
 
@@ -300,8 +350,8 @@ export default function ReelsPlayerModal({
     const now = Date.now();
     const DOUBLE_TAP_DELAY = 300;
     if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
-      // Double tap!
-      triggerHaptic('medium');
+      // Double tap detected!
+      triggerHaptic('heavy');
       handleLike();
       setShowHeartAnim(true);
       setTimeout(() => setShowHeartAnim(false), 850);
@@ -311,15 +361,7 @@ export default function ReelsPlayerModal({
     lastTapRef.current = now;
   };
 
-  const togglePlay = () => {
-    if (!videoRef.current) return;
-    if (videoRef.current.paused) {
-      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-    } else {
-      videoRef.current.pause();
-      setIsPlaying(false);
-    }
-  };
+
 
   const toggleMute = () => {
     if (!videoRef.current) return;
@@ -381,22 +423,30 @@ export default function ReelsPlayerModal({
   const isLiked = (currentReel.likes || []).includes(myName);
   const likesCount = (currentReel.likes || []).length;
   const commentsList = currentReel.comments || [];
+  const posterUrl = resolveMediaUrl(currentReel.thumb, currentReel?.driveFileId) || currentReel.thumb;
 
   return (
     <div
       className="fixed inset-0 z-50 bg-black/95 backdrop-blur-lg flex items-center justify-center select-none sm:gap-4 p-0 sm:p-4"
       onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Container: 9:16 vertical Reels player */}
-      <div className="relative w-full h-full max-w-md max-h-[100dvh] sm:max-h-[92vh] sm:rounded-3xl overflow-hidden bg-black flex flex-col justify-between shadow-2xl border border-white/10 shrink-0">
-        
+      {/* 9:16 vertical Reels player container with hardware acceleration */}
+      <div
+        className="relative w-full h-full max-w-md max-h-[100dvh] sm:max-h-[92vh] sm:rounded-3xl overflow-hidden bg-black flex flex-col justify-between shadow-2xl border border-white/10 shrink-0 transform-gpu"
+        style={{
+          transform: `translate3d(0, ${touchDeltaY}px, 0)`,
+          transition: isTransitioning || touchDeltaY === 0 ? 'transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1)' : 'none',
+        }}
+      >
         {/* Top Header Bar */}
         <div className="absolute top-0 inset-x-0 z-30 p-4 pt-[calc(1rem+env(safe-area-inset-top,0px))] flex items-center justify-between bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-auto">
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
               className="p-2 rounded-full bg-black/50 text-white/90 hover:text-white hover:bg-black/80 backdrop-blur-md transition cursor-pointer"
+              title="বন্ধ করুন"
             >
               <X size={20} />
             </button>
@@ -409,13 +459,14 @@ export default function ReelsPlayerModal({
             <button
               onClick={toggleMute}
               className="p-2 rounded-full bg-black/50 text-white/90 hover:text-white hover:bg-black/80 backdrop-blur-md transition cursor-pointer"
+              title={isMuted ? 'সাউন্ড অন করুন' : 'মিউট করুন'}
             >
-              {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+              {isMuted ? <VolumeX size={20} className="text-amber-400" /> : <Volume2 size={20} />}
             </button>
           </div>
         </div>
 
-        {/* Local-only Reel Banner (Sync to Server Action) */}
+        {/* Local-only Reel Banner */}
         {isLocalOnly && (
           <div className="absolute top-16 inset-x-3 z-30 bg-amber-950/90 border border-amber-500/40 rounded-2xl p-2.5 backdrop-blur-md flex items-center justify-between text-white shadow-xl pointer-events-auto animate-in fade-in">
             <div className="flex items-center gap-2 min-w-0 pr-2">
@@ -454,44 +505,84 @@ export default function ReelsPlayerModal({
           </div>
         )}
 
-        {/* Video Surface Area */}
+        {/* Video Surface Area with Pre-Warmed Background Slots */}
         <div
-          className="relative w-full h-full flex items-center justify-center bg-black cursor-pointer overflow-hidden"
+          className="relative w-full h-full flex items-center justify-center bg-black cursor-pointer overflow-hidden transform-gpu"
           onClick={handleVideoTap}
         >
-          {/* Background Pre-buffer for Next Reel */}
-          {resolvedNextSource && (
+          {/* 1. Standby Pre-Warmed NEXT Video (Decoded & waiting at frame 0) */}
+          {nextVideoSource && (
             <video
-              key={`prefetch_${nextReel?.id || currentIndex + 1}`}
-              src={resolvedNextSource}
+              ref={nextVideoRef}
+              key={`next_slot_${nextReel?.id || nextIndex}`}
+              src={nextVideoSource}
               preload="auto"
               muted
               playsInline
-              aria-hidden="true"
-              className="hidden pointer-events-none"
-              style={{ display: 'none' }}
+              webkit-playsinline="true"
+              x5-video-player-type="h5"
+              className="absolute inset-0 w-full h-full object-cover pointer-events-none opacity-0 -z-10"
+              style={{ transform: 'translate3d(0, 0, 0)', backfaceVisibility: 'hidden' }}
             />
           )}
 
+          {/* 2. Standby Pre-Warmed PREV Video */}
+          {prevVideoSource && (
+            <video
+              ref={prevVideoRef}
+              key={`prev_slot_${prevReel?.id || prevIndex}`}
+              src={prevVideoSource}
+              preload="auto"
+              muted
+              playsInline
+              webkit-playsinline="true"
+              x5-video-player-type="h5"
+              className="absolute inset-0 w-full h-full object-cover pointer-events-none opacity-0 -z-10"
+              style={{ transform: 'translate3d(0, 0, 0)', backfaceVisibility: 'hidden' }}
+            />
+          )}
+
+          {/* 3. Instant HD Poster Underneath (Zero Black Frames) */}
+          {posterUrl && (
+            <img
+              src={posterUrl}
+              alt="Reel poster"
+              className={`absolute inset-0 w-full h-full object-cover sm:object-contain transition-opacity duration-300 ${
+                isVideoLoaded ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              }`}
+            />
+          )}
+
+          {/* 4. Active Main Video */}
           {(videoSource && !videoLoadError) ? (
             <video
               ref={videoRef}
-              key={videoSource || currentReel?.id}
+              key={`active_${videoSource || currentReel?.id}`}
               src={videoSource}
-              poster={resolveMediaUrl(currentReel.thumb, currentReel?.driveFileId) || undefined}
+              poster={posterUrl || undefined}
               preload="auto"
               playsInline
               webkit-playsinline="true"
+              x5-video-player-type="h5"
+              x5-video-orientation="portrait"
               loop={endTime <= startTime}
               onTimeUpdate={handleTimeUpdate}
-              onCanPlay={() => {
+              onPlaying={() => {
+                setIsVideoLoaded(true);
+                setIsPlaying(true);
                 setVideoLoadError(false);
+              }}
+              onWaiting={() => {
+                // Buffer stall resilience
               }}
               onError={(e) => {
                 console.warn('Reel video failed to load, trying fallback:', e?.target?.error, videoSource);
                 setVideoLoadError(true);
               }}
-              className="w-full h-full object-cover sm:object-contain"
+              className={`w-full h-full object-cover sm:object-contain transition-opacity duration-200 ${
+                isVideoLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+              style={{ transform: 'translate3d(0, 0, 0)', backfaceVisibility: 'hidden' }}
             />
           ) : embedUrl ? (
             <iframe
@@ -502,10 +593,10 @@ export default function ReelsPlayerModal({
             />
           ) : (
             <div className="text-center p-6 text-white/80 max-w-sm flex flex-col items-center select-none">
-              {currentReel?.thumb ? (
+              {currentReel?.thumb && (
                 <div className="relative mb-4">
                   <img
-                    src={resolveMediaUrl(currentReel.thumb, currentReel?.driveFileId) || currentReel.thumb}
+                    src={posterUrl}
                     alt="Reel preview"
                     className="w-full max-h-72 object-cover rounded-2xl opacity-75 shadow-lg"
                   />
@@ -517,13 +608,12 @@ export default function ReelsPlayerModal({
                         setVideoLoadError(false);
                       }}
                       className="absolute inset-0 m-auto w-14 h-14 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-md shadow-2xl transition active:scale-95 cursor-pointer"
-                      title="প্লে করার চেষ্টা করুন"
                     >
                       <Play size={28} className="ml-1 text-pink-400" />
                     </button>
                   )}
                 </div>
-              ) : null}
+              )}
               <p className="text-sm font-medium text-amber-300 mb-1">ভিডিওটি সার্ভারে প্রস্তুত হচ্ছে</p>
               <p className="text-xs text-white/60 mb-3">ভিডিওটি মূল আপলোডকারীর ডিভাইসে সংরক্ষিত রয়েছে। সার্ভারে আপলোড সম্পন্ন হলে এখানে স্বয়ংক্রিয়ভাবে প্লে হবে।</p>
               <button
@@ -544,12 +634,12 @@ export default function ReelsPlayerModal({
 
           {/* Animated Heart pop on double tap */}
           {showHeartAnim && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
-              <Heart size={100} className="fill-white text-white drop-shadow-2xl animate-ig-heart" />
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30 animate-in zoom-in-50 fade-in duration-200">
+              <Heart size={100} className="fill-white text-white drop-shadow-2xl animate-bounce" />
             </div>
           )}
 
-          {/* Play / Pause toggle overlay badge (only when video is valid and paused) */}
+          {/* Play / Pause toggle badge */}
           {!isPlaying && !videoLoadError && videoSource && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
               <div className="w-16 h-16 rounded-full bg-black/60 text-white flex items-center justify-center backdrop-blur-md shadow-2xl">
@@ -621,6 +711,7 @@ export default function ReelsPlayerModal({
               target="_blank"
               rel="noreferrer"
               className="flex flex-col items-center gap-1 cursor-pointer"
+              title="ভিডিও ডাউনলোড"
             >
               <div className="p-2.5 sm:p-3 rounded-full bg-black/50 hover:bg-black/70 text-white backdrop-blur-md transition transform active:scale-75">
                 <Download size={20} />
@@ -634,25 +725,31 @@ export default function ReelsPlayerModal({
         <div className="absolute bottom-3 inset-x-0 z-20 p-4 pr-20 sm:pr-24 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-auto">
           {/* Author Badge */}
           <div className="flex items-center gap-2.5 mb-2">
-            <UserAvatar
-              photoUrl={currentReel.authorPhoto}
-              name={currentReel.author}
-              size="w-9 h-9"
-              ring="ring-2 ring-amber-400/80 shadow-md"
-              className="shrink-0"
-            />
+            <button
+              type="button"
+              onClick={() => onOpenUserProfile?.(currentReel.author)}
+              className="text-left flex items-center gap-2.5 cursor-pointer group"
+            >
+              <UserAvatar
+                photoUrl={currentReel.authorPhoto}
+                name={currentReel.author}
+                size="w-9 h-9"
+                ring="ring-2 ring-amber-400/80 shadow-md group-hover:ring-amber-300"
+                className="shrink-0"
+              />
 
-            <div className="min-w-0">
-              <h4 className="text-sm font-bold text-white drop-shadow truncate">
-                {currentReel.author || 'পরিবারের সদস্য'}
-              </h4>
-              {currentReel.location && (
-                <div className="flex items-center gap-1 text-[11px] text-pink-300 drop-shadow">
-                  <MapPin size={11} className="shrink-0" />
-                  <span className="truncate">{currentReel.location}</span>
-                </div>
-              )}
-            </div>
+              <div className="min-w-0">
+                <h4 className="text-sm font-bold text-white drop-shadow truncate group-hover:text-amber-300 transition">
+                  {currentReel.author || 'পরিবারের সদস্য'}
+                </h4>
+                {currentReel.location && (
+                  <div className="flex items-center gap-1 text-[11px] text-pink-300 drop-shadow">
+                    <MapPin size={11} className="shrink-0" />
+                    <span className="truncate">{currentReel.location}</span>
+                  </div>
+                )}
+              </div>
+            </button>
           </div>
 
           {/* Caption */}
@@ -685,11 +782,12 @@ export default function ReelsPlayerModal({
           </div>
         </div>
 
-        {/* Bottom Progress Scrubber */}
-        <div className="absolute bottom-0 inset-x-0 z-30 h-1 bg-white/20">
+        {/* 60FPS Direct Progress Scrubber */}
+        <div className="absolute bottom-0 inset-x-0 z-30 h-1 bg-white/20 pointer-events-none">
           <div
-            className="h-full bg-gradient-to-r from-pink-500 via-rose-500 to-purple-500 transition-all duration-150"
-            style={{ width: `${progress}%` }}
+            ref={progressBarRef}
+            className="h-full bg-gradient-to-r from-pink-500 via-rose-500 to-purple-500 transition-all duration-75 origin-left"
+            style={{ width: '0%' }}
           />
         </div>
 
@@ -697,7 +795,6 @@ export default function ReelsPlayerModal({
         {showComments && (
           <div className="absolute inset-0 z-40 bg-black/60 backdrop-blur-xs flex flex-col justify-end">
             <div className="bg-slate-900 border-t border-slate-700 rounded-t-3xl p-4 max-h-[65%] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
-              {/* Drawer Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <h4 className="font-bold text-sm text-white flex items-center gap-2">
                   <MessageCircle size={16} className="text-pink-400" />
@@ -721,7 +818,7 @@ export default function ReelsPlayerModal({
                   commentsList.map((c, idx) => {
                     const commentId = (c && typeof c === 'object' && c.id !== undefined && c.id !== null) ? c.id : idx;
                     const userName = resolveCommenterName(c, { userProfiles, members, currentUser, currentProfile });
-                    const commentText = typeof c === 'string' ? c : (c.text || c.comment || c.message || c.body || '');
+                    const text = typeof c === 'string' ? c : (c.text || c.comment || c.message || c.body || '');
                     const timeDisplay = (typeof c === 'object' && (c.time || c.createdAt)) ? (c.time || c.createdAt) : 'এইমাত্র';
                     const reactions = (typeof c === 'object' && c.reactions) ? c.reactions : {};
                     const myIdentifier = (currentUser?.email || currentProfile?.displayName || currentUser?.displayName || 'user').toLowerCase();
@@ -731,7 +828,7 @@ export default function ReelsPlayerModal({
                           <span className="font-bold text-pink-300">{userName}</span>
                           <span className="text-[10px] text-slate-500">{timeDisplay}</span>
                         </div>
-                        <p className="text-slate-200 leading-relaxed">{commentText}</p>
+                        <p className="text-slate-200 leading-relaxed">{text}</p>
 
                         {/* Comment Reactions */}
                         <div className="flex items-center flex-wrap gap-1 pt-1 border-t border-slate-700/40">
@@ -785,10 +882,9 @@ export default function ReelsPlayerModal({
             </div>
           </div>
         )}
-
       </div>
 
-      {/* Desktop External Next/Prev Navigation Buttons (Floating outside player on PC - Zero overlap!) */}
+      {/* Desktop External Next/Prev Navigation Buttons */}
       <div className="hidden sm:flex flex-col gap-3 shrink-0 z-50">
         <button
           onClick={handlePrev}
