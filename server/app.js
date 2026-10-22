@@ -241,8 +241,8 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
       return;
     }
 
-    if (req.method !== 'POST') {
-      sendJson(res, 405, { error: 'method not allowed' }, { ...headers, Allow: 'POST, OPTIONS' });
+    if (req.method !== 'POST' && req.method !== 'GET') {
+      sendJson(res, 405, { error: 'method not allowed' }, { ...headers, Allow: 'GET, POST, OPTIONS' });
       return;
     }
 
@@ -263,6 +263,35 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
       const uploadsDir = path.join(config.dataDir, 'uploads');
       if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+
+      if (req.method === 'GET') {
+        const { searchParams } = new URL(req.url || '/', 'http://localhost');
+        const uploadId = (searchParams.get('uploadId') || req.headers['x-upload-id'] || '').replace(/[^a-zA-Z0-9_-]/g, '');
+        if (!uploadId) {
+          sendJson(res, 400, { error: 'uploadId parameter required' }, headers);
+          return;
+        }
+        const chunkDir = path.join(uploadsDir, 'chunks_' + uploadId);
+        if (!fs.existsSync(chunkDir)) {
+          sendJson(res, 200, { success: true, uploadId, chunks: [], exists: false }, headers);
+          return;
+        }
+        try {
+          const files = await fs.promises.readdir(chunkDir);
+          const chunks = files
+            .map((f) => {
+              const m = f.match(/^part_(\d+)$/);
+              return m ? parseInt(m[1], 10) : null;
+            })
+            .filter((n) => n !== null)
+            .sort((a, b) => a - b);
+          sendJson(res, 200, { success: true, uploadId, chunks, exists: true }, headers);
+          return;
+        } catch (err) {
+          sendJson(res, 500, { error: 'Failed to inspect chunks' }, headers);
+          return;
+        }
       }
 
       const clientName = req.headers['x-file-name'] ? decodeURIComponent(req.headers['x-file-name']) : 'video.mp4';

@@ -1,10 +1,10 @@
 {
-  "versionCode": 20,
-  "versionName": "2.20",
+  "versionCode": 21,
+  "versionName": "2.21",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v20.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v21.apk",
   "apkSize": "8.9 MB",
-  "releaseNotes": "আপডেট v2.20: ছবি ও রিলস মিডিয়া আপলোড, সার্ভিস ওয়ার্কার বাইপাস, গ্রিড ও ফুলস্ক্রিন প্রিভিউ রেজোলিউশন এবং ফায়ারস্টোর থাম্বনেইল লিমিট সম্পূর্ণ ফিক্স।",
-  "releasedAt": "2026-10-21T14:39:35.524676+00:00",
+  "releaseNotes": "আপডেট v2.21: রিজিউমেবল চাঙ্কড আপলোড, ইনডেক্সডডিবি চেকপয়েন্ট রিকভারি, ৪-স্তর ওয়াটারফল ফলব্যাক, ইনস্টাগ্রাম-স্টাইল ব্লার-আপ প্রিভিউ এবং অফলাইন ব্যাকগ্রাউন্ড অটো-সিঙ্ক।",
+  "releasedAt": "2026-10-22T03:35:07.381Z",
   "forceUpdate": false
 }

@@ -106,7 +106,7 @@ service cloud.firestore {
             resource.data.authorEmail == null ||
             resource.data.authorEmail.lower() == 'member@tour.family' ||
             (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower()) ||
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comments', 'views', 'driveBackedUp', 'driveFileId', 'driveViewUrl', 'driveDownloadUrl'])
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comments', 'views', 'driveBackedUp', 'driveFileId', 'driveViewUrl', 'driveDownloadUrl', 'driveFileIds', 'driveViewUrls', 'thumbs'])
           );
         allow delete: if isAuthenticated()
           && (

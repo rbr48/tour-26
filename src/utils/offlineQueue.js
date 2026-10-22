@@ -1,10 +1,13 @@
+import { Capacitor } from '@capacitor/core';
+import { Network } from '@capacitor/network';
+
 /**
  * Offline Post & Reel Queue Manager for Rangpur ➔ Cox's Bazar Tour 2026.
  *
  * Highway travel between Rangpur, Bogura, Sirajganj, Cumilla, and Chattogram
  * frequently suffers from network dead zones. This utility saves created posts
- * locally in localStorage and automatically retries/drains the queue as soon
- * as internet connectivity is restored.
+ * locally in localStorage (with memory and IndexedDB fallback) and automatically
+ * retries/drains the queue as soon as internet connectivity is restored.
  */
 
 const QUEUE_STORAGE_KEY = 'tour_offline_post_queue';
@@ -26,7 +29,10 @@ function setStorageItem(key, value) {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(key, value);
     }
-  } catch {}
+  } catch (err) {
+    // QuotaExceeded or security error in private mode
+    console.warn('LocalStorage write warning, falling back to memoryStore:', err);
+  }
   memoryStore.set(key, value);
 }
 
@@ -145,5 +151,72 @@ export async function drainOfflineQueue(uploadFn) {
   }
 
   const remaining = getOfflineQueue().length;
+
+  if (uploadedCount > 0 && typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('tour:offline-sync-complete', {
+        detail: { count: uploadedCount },
+      })
+    );
+  }
+
   return { uploaded: uploadedCount, failed: failedCount, remaining };
+}
+
+/**
+ * Automatically sets up listeners for internet connectivity restoration
+ * to drain the offline queue with smart debouncing.
+ *
+ * @param {Function} uploadFn Async function to upload queued post
+ * @returns {Function} cleanup function to remove listeners
+ */
+export function registerAutoDrain(uploadFn) {
+  if (typeof window === 'undefined') return () => {};
+
+  let debounceTimer = null;
+  let isDraining = false;
+
+  const triggerDrain = () => {
+    if (isDraining) return;
+    if (debounceTimer) clearTimeout(debounceTimer);
+
+    debounceTimer = setTimeout(async () => {
+      const queue = getOfflineQueue();
+      if (queue.length === 0) return;
+
+      isDraining = true;
+      try {
+        await drainOfflineQueue(uploadFn);
+      } catch (err) {
+        console.warn('Auto drain error:', err);
+      } finally {
+        isDraining = false;
+      }
+    }, 2500); // 2.5 second debounce for mobile network stabilization
+  };
+
+  window.addEventListener('online', triggerDrain);
+
+  let networkListener = null;
+  if (Capacitor.isNativePlatform()) {
+    try {
+      Network.addListener('networkStatusChange', (status) => {
+        if (status.connected) {
+          triggerDrain();
+        }
+      }).then((handle) => {
+        networkListener = handle;
+      });
+    } catch (e) {
+      console.warn('Capacitor Network listener setup skipped:', e);
+    }
+  }
+
+  return () => {
+    window.removeEventListener('online', triggerDrain);
+    if (debounceTimer) clearTimeout(debounceTimer);
+    if (networkListener && typeof networkListener.remove === 'function') {
+      networkListener.remove();
+    }
+  };
 }

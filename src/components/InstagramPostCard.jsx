@@ -30,6 +30,7 @@ import { resolveCommenterName } from '../utils/members';
 import { getTourDayById, getPostTourDay } from '../utils/tourSchedule';
 import UserAvatar from './UserAvatar';
 import { toBnNum, getPostImages, photoSource, getFilterCss } from './InstagramFeed';
+import ProgressiveImage from './ProgressiveImage';
 
 export default function InstagramPostCard({
   post,
@@ -265,32 +266,26 @@ export default function InstagramPostCard({
           onClick={handleMediaTouchOrClick}
           className="w-full h-full flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory scrollbar-none cursor-pointer"
         >
-          {postImages.map((src, idx) => (
-            <div
-              key={idx}
-              className="w-full h-full shrink-0 snap-center relative flex items-center justify-center bg-neutral-950"
-            >
-              <img
-                src={src}
-                alt={post.caption || 'Tour photo'}
-                className="w-full h-full object-cover select-none pointer-events-none"
-                style={{ filter: getFilterCss(post.filter) }}
-                loading={idx === 0 ? 'eager' : 'lazy'}
-                onError={(e) => {
-                  const cur = e.currentTarget.getAttribute('data-error-stage') || '0';
-                  if (cur === '0' && post.thumb) {
-                    e.currentTarget.setAttribute('data-error-stage', '1');
-                    e.currentTarget.src = resolveMediaUrl(post.thumb, post.driveFileId);
-                  } else if (cur !== '2' && post.driveFileId) {
-                    e.currentTarget.setAttribute('data-error-stage', '2');
-                    e.currentTarget.src = `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1600`;
-                  } else {
-                    e.currentTarget.onerror = null;
-                  }
-                }}
-              />
-            </div>
-          ))}
+          {postImages.map((src, idx) => {
+            const itemThumb = (Array.isArray(post.thumbs) ? post.thumbs[idx] : null) || (idx === 0 ? post.thumb : null);
+            const itemDriveId = post.driveFileIds?.[idx] || post.driveFileId || null;
+            return (
+              <div
+                key={idx}
+                className="w-full h-full shrink-0 snap-center relative flex items-center justify-center bg-neutral-950"
+              >
+                <ProgressiveImage
+                  src={src}
+                  thumb={itemThumb}
+                  driveFileId={itemDriveId}
+                  alt={post.caption || 'Tour photo'}
+                  className="w-full h-full pointer-events-none"
+                  style={{ filter: getFilterCss(post.filter) }}
+                  loading={idx === 0 ? 'eager' : 'lazy'}
+                />
+              </div>
+            );
+          })}
         </div>
 
         {/* Big Centered Heart Burst Animation on Double Tap */}

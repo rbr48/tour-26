@@ -5,6 +5,7 @@ import { triggerHaptic } from '../utils/haptics';
 import { getTourDayById, getPostTourDay } from '../utils/tourSchedule';
 import UserAvatar from './UserAvatar';
 import { photoSource, toBnNum, getFilterCss } from './InstagramFeed';
+import ProgressiveImage from './ProgressiveImage';
 
 const STORY_DURATION = 5000; // 5 seconds per story slide
 const QUICK_EMOJI_REACTIONS = ['❤️', '🔥', '😂', '😍', '👏', '🏖️'];
@@ -273,21 +274,14 @@ export default function StoryViewerModal({
           onTouchEnd={() => setIsPaused(false)}
         >
           {mediaUrl ? (
-            <img
+            <ProgressiveImage
               src={mediaUrl}
+              thumb={currentStory?.thumb}
+              driveFileId={currentStory?.driveFileId}
               alt={currentStory.caption || 'Story'}
               className="w-full h-full object-cover select-none pointer-events-none"
               style={{ filter: getFilterCss(currentStory.filter) }}
               loading="eager"
-              onError={(e) => {
-                if (currentStory?.thumb && e.currentTarget.src !== currentStory.thumb) {
-                  e.currentTarget.src = currentStory.thumb;
-                } else if (currentStory?.driveFileId) {
-                  e.currentTarget.src = `https://drive.google.com/thumbnail?id=${currentStory.driveFileId}&sz=w1600`;
-                } else {
-                  e.currentTarget.onerror = null;
-                }
-              }}
             />
           ) : (
             <div className="p-6 text-center text-white/60 text-xs">ছবি লোড হতে পারেনি</div>

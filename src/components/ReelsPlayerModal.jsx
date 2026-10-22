@@ -112,6 +112,36 @@ export default function ReelsPlayerModal({
   const videoSource = localVideoUrl || resolvedRemoteSource;
   const embedUrl = getDriveEmbedUrl(validRawSource, currentReel?.driveFileId);
 
+  // Next Reel resolution for background pre-buffering
+  const nextReel = reels[currentIndex + 1] || null;
+  const rawNextSource = nextReel?.videoUrl || nextReel?.video || null;
+  const isNextDeadBlob = typeof rawNextSource === 'string' && rawNextSource.startsWith('blob:');
+  const validNextSource = isNextDeadBlob ? null : rawNextSource;
+  const resolvedNextSource = validNextSource
+    ? resolveMediaUrl(validNextSource, nextReel?.driveFileId)
+    : (nextReel?.driveFileId ? resolveMediaUrl(null, nextReel.driveFileId) : null);
+
+  // Pre-buffer next reel headers and initial frames for instant swipe transitions
+  useEffect(() => {
+    if (!isOpen || !resolvedNextSource || typeof window === 'undefined') return;
+
+    if (nextReel?.id) {
+      getLocalVideo(nextReel.id).catch(() => {});
+    }
+
+    if (resolvedNextSource.startsWith('http')) {
+      try {
+        const controller = new AbortController();
+        fetch(resolvedNextSource, {
+          method: 'GET',
+          headers: { Range: 'bytes=0-524288' },
+          signal: controller.signal,
+        }).catch(() => {});
+        return () => controller.abort();
+      } catch {}
+    }
+  }, [isOpen, resolvedNextSource, nextReel?.id]);
+
   const isLocalOnly = Boolean(localVideoUrl && !validRawSource && !currentReel?.driveFileId);
   const [syncingState, setSyncingState] = useState(null);
 
@@ -429,6 +459,20 @@ export default function ReelsPlayerModal({
           className="relative w-full h-full flex items-center justify-center bg-black cursor-pointer overflow-hidden"
           onClick={handleVideoTap}
         >
+          {/* Background Pre-buffer for Next Reel */}
+          {resolvedNextSource && (
+            <video
+              key={`prefetch_${nextReel?.id || currentIndex + 1}`}
+              src={resolvedNextSource}
+              preload="auto"
+              muted
+              playsInline
+              aria-hidden="true"
+              className="hidden pointer-events-none"
+              style={{ display: 'none' }}
+            />
+          )}
+
           {(videoSource && !videoLoadError) ? (
             <video
               ref={videoRef}

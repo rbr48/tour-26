@@ -56,6 +56,8 @@ import { triggerHaptic } from '../utils/haptics';
 import { formatDuration, PRODUCTION_ORIGIN, resolveMediaUrl } from '../utils/videoHelper';
 import { saveLocalVideo } from '../utils/localVideoCache';
 import { uploadReelVideo, uploadMedia } from '../utils/reelUploader';
+import { uploadWithQueue } from '../utils/uploadQueue';
+import ProgressiveImage from './ProgressiveImage';
 import { compressImageFile } from '../utils/imageCompressor';
 import {
   getDriveAccessToken,
@@ -122,12 +124,13 @@ export const getPostImages = (post) => {
   if (Array.isArray(post.images) && post.images.length > 0) {
     const list = post.images
       .filter((img) => typeof img === 'string' && isSafeMediaUrl(img))
-      .map((img) => {
+      .map((img, idx) => {
         if (img.includes('drive.google.com/file/d/')) {
           const m = img.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
           if (m && m[1]) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w1600`;
         }
-        return resolveMediaUrl(img, post.driveFileId);
+        const itemDriveId = post.driveFileIds?.[idx] || post.driveFileId;
+        return resolveMediaUrl(img, itemDriveId);
       })
       .filter(Boolean);
     if (list.length > 0) return list;
@@ -640,6 +643,25 @@ export default function InstagramFeed({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Auto-drain offline post queue whenever device reconnects to internet
+  useEffect(() => {
+    const unregister = registerAutoDrain(async (post) => {
+      await onAddPost(post);
+    });
+
+    const handleSyncComplete = (e) => {
+      setOfflineQueueCount(getOfflineQueue().length);
+      console.log(`Offline queue drained: ${e.detail?.count || 1} post(s) uploaded successfully!`);
+    };
+
+    window.addEventListener('tour:offline-sync-complete', handleSyncComplete);
+
+    return () => {
+      unregister();
+      window.removeEventListener('tour:offline-sync-complete', handleSyncComplete);
+    };
+  }, [onAddPost]);
+
   // Handle local file uploads (converts & compresses to web-optimized DataURL)
   const handleFileChange = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -912,7 +934,7 @@ export default function InstagramFeed({
 
         // 2. Upload to server storage using chunked uploader (safe under Cloudflare 100MB body limit)
         try {
-          const resData = await uploadReelVideo(fileToUpload, {
+          const resData = await uploadWithQueue(fileToUpload, {
             postId,
             fileName: fileToUpload.name,
             onProgress: ({ percent, stage }) => {
@@ -1001,27 +1023,26 @@ export default function InstagramFeed({
       })
     );
 
-    // 2. Upload photos to VPS server storage for permanent high-speed hosting
+    // 2. Upload photos to VPS server storage with controlled concurrency queue
     let serverImages = thumbnailImages;
     if (typeof navigator === 'undefined' || navigator.onLine) {
       try {
-        const uploaded = await Promise.all(
-          finalImages.map(async (img, idx) => {
-            if (isDataImage(img)) {
-              try {
-                const res = await uploadMedia(img, {
-                  postId,
-                  fileName: `Tour2026_${authorName.replace(/\s+/g, '_')}_${Date.now()}_${idx + 1}.jpg`,
-                });
-                return res?.url || null;
-              } catch (upErr) {
-                console.warn(`VPS upload skipped for image ${idx + 1}:`, upErr);
-                return null;
-              }
+        const uploadPromises = finalImages.map(async (img, idx) => {
+          if (isDataImage(img)) {
+            try {
+              const res = await uploadWithQueue(img, {
+                postId,
+                fileName: `Tour2026_${authorName.replace(/\s+/g, '_')}_${Date.now()}_${idx + 1}.jpg`,
+              });
+              return res?.url || null;
+            } catch (upErr) {
+              console.warn(`VPS queue upload skipped for image ${idx + 1}:`, upErr);
+              return null;
             }
-            return img;
-          })
-        );
+          }
+          return img;
+        });
+        const uploaded = await Promise.all(uploadPromises);
         serverImages = finalImages.map((img, idx) => uploaded[idx] || thumbnailImages[idx] || null).filter(Boolean);
       } catch (err) {
         console.warn('Image server upload skipped, using local thumbnails:', err);
@@ -1047,11 +1068,14 @@ export default function InstagramFeed({
       views: 0,
       filter: selectedFilter || 'normal',
       images: serverImages,
+      thumbs: thumbnailImages,
       thumb: thumbnailImages[0] || serverImages[0] || null,
       image: serverImages[0] || thumbnailImages[0] || null,
       driveBackedUp: false,
       driveFileId: null,
+      driveFileIds: {},
       driveViewUrl: null,
+      driveViewUrls: {},
       createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' }),
     };
 
@@ -1087,11 +1111,13 @@ export default function InstagramFeed({
     } catch {}
     setShowCreateModal(false);
 
-    // 2. Upload to Google Drive in the background (zero blocking)
+    // 2. Upload to Google Drive in the background (zero blocking) with per-image mapping
     const filesToUpload = finalImages.filter((img) => isDataImage(img));
     if (filesToUpload.length > 0) {
       (async () => {
         let firstUploaded = null;
+        const driveFileIds = {};
+        const driveViewUrls = {};
         for (let i = 0; i < filesToUpload.length; i++) {
           try {
             const upload = await uploadToGoogleDrive({
@@ -1099,8 +1125,12 @@ export default function InstagramFeed({
               fileName: `Tour2026_${authorName.replace(/\s+/g, '_')}_${Date.now()}_${i + 1}.jpg`,
               caption: `${postCaption} (${i + 1}/${filesToUpload.length})`,
             });
-            if (upload?.success && !firstUploaded) {
-              firstUploaded = upload;
+            if (upload?.success && upload.fileId) {
+              driveFileIds[i] = upload.fileId;
+              if (upload.webViewLink) driveViewUrls[i] = upload.webViewLink;
+              if (!firstUploaded) {
+                firstUploaded = upload;
+              }
             }
           } catch (err) {
             console.warn(`Background Drive backup skipped for image ${i + 1}:`, err);
@@ -1111,6 +1141,8 @@ export default function InstagramFeed({
             driveBackedUp: true,
             driveFileId: firstUploaded.fileId,
             driveViewUrl: firstUploaded.webViewLink,
+            driveFileIds,
+            driveViewUrls,
           });
         }
       })();
@@ -1628,24 +1660,14 @@ export default function InstagramFeed({
                       }}
                       className="relative aspect-square bg-slate-900 rounded-xl overflow-hidden cursor-pointer group shadow-2xs select-none"
                     >
-                      <img
+                      <ProgressiveImage
                         src={mediaSrc}
+                        thumb={post.thumb}
+                        driveFileId={post.driveFileId}
                         alt={post.caption || 'Saved post'}
-                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300 pointer-events-none"
                         style={{ filter: getFilterCss(post.filter) }}
                         loading="lazy"
-                        onError={(e) => {
-                          const cur = e.currentTarget.getAttribute('data-error-stage') || '0';
-                          if (cur === '0' && post.thumb) {
-                            e.currentTarget.setAttribute('data-error-stage', '1');
-                            e.currentTarget.src = resolveMediaUrl(post.thumb, post.driveFileId);
-                          } else if (cur !== '2' && post.driveFileId) {
-                            e.currentTarget.setAttribute('data-error-stage', '2');
-                            e.currentTarget.src = `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1600`;
-                          } else {
-                            e.currentTarget.onerror = null;
-                          }
-                        }}
                       />
                       {isCarousel && (
                         <span className="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-xs text-white p-1 rounded-md text-[10px]">
@@ -1994,24 +2016,14 @@ export default function InstagramFeed({
                         }}
                         className="relative aspect-square bg-slate-900 rounded-xl overflow-hidden cursor-pointer group shadow-2xs select-none"
                       >
-                        <img
+                        <ProgressiveImage
                           src={mediaSrc}
+                          thumb={post.thumb}
+                          driveFileId={post.driveFileId}
                           alt={post.caption || 'Tour photo'}
-                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300 pointer-events-none"
                           style={{ filter: getFilterCss(post.filter) }}
                           loading="lazy"
-                          onError={(e) => {
-                            const cur = e.currentTarget.getAttribute('data-error-stage') || '0';
-                            if (cur === '0' && post.thumb) {
-                              e.currentTarget.setAttribute('data-error-stage', '1');
-                              e.currentTarget.src = resolveMediaUrl(post.thumb, post.driveFileId);
-                            } else if (cur !== '2' && post.driveFileId) {
-                              e.currentTarget.setAttribute('data-error-stage', '2');
-                              e.currentTarget.src = `https://drive.google.com/thumbnail?id=${post.driveFileId}&sz=w1600`;
-                            } else {
-                              e.currentTarget.onerror = null;
-                            }
-                          }}
                         />
                         {isCarousel && (
                           <span className="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-xs text-white p-1 rounded-md text-[10px]">
@@ -2965,16 +2977,18 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   }}
                 >
                   <img
-                    src={resolveMediaUrl(currentImg, previewMedia.post?.driveFileId) || currentImg}
+                    src={resolveMediaUrl(currentImg, previewMedia.post?.driveFileIds?.[currentGalleryIdx] || previewMedia.post?.driveFileId) || currentImg}
                     alt="Fullscreen Preview"
                     onError={(e) => {
                       const cur = e.currentTarget.getAttribute('data-error-stage') || '0';
-                      if (cur === '0' && previewMedia.post?.thumb) {
+                      const itemDriveId = previewMedia.post?.driveFileIds?.[currentGalleryIdx] || previewMedia.post?.driveFileId;
+                      const itemThumb = (Array.isArray(previewMedia.post?.thumbs) ? previewMedia.post.thumbs[currentGalleryIdx] : null) || previewMedia.post?.thumb;
+                      if (cur === '0' && itemThumb) {
                         e.currentTarget.setAttribute('data-error-stage', '1');
-                        e.currentTarget.src = resolveMediaUrl(previewMedia.post.thumb, previewMedia.post.driveFileId);
-                      } else if (cur !== '2' && previewMedia.post?.driveFileId) {
+                        e.currentTarget.src = resolveMediaUrl(itemThumb, itemDriveId);
+                      } else if (cur !== '2' && itemDriveId) {
                         e.currentTarget.setAttribute('data-error-stage', '2');
-                        e.currentTarget.src = `https://drive.google.com/thumbnail?id=${previewMedia.post.driveFileId}&sz=w1600`;
+                        e.currentTarget.src = `https://drive.google.com/thumbnail?id=${itemDriveId}&sz=w1600`;
                       } else {
                         e.currentTarget.onerror = null;
                       }
