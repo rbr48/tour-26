@@ -122,7 +122,22 @@ export default function InstagramCommentSheet({
               ring="ring-1 ring-slate-200"
             />
             <div className="text-xs text-slate-800 leading-relaxed">
-              <span className="font-bold text-slate-900 mr-1.5">{post.author}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOpenUserProfile) {
+                    triggerHaptic('light');
+                    onOpenUserProfile({
+                      displayName: post.author,
+                      email: post.authorEmail,
+                      photoURL: post.authorPhoto,
+                    });
+                  }
+                }}
+                className="font-bold text-slate-900 mr-1.5 hover:underline cursor-pointer"
+              >
+                {post.author}
+              </button>
               <span>{post.caption}</span>
               <p className="text-[10px] text-slate-400 mt-0.5">{post.createdAt || 'পোস্ট'}</p>
             </div>
@@ -156,7 +171,22 @@ export default function InstagramCommentSheet({
                   />
                   <div className="flex-1 space-y-1">
                     <div className="text-xs text-slate-800 leading-relaxed">
-                      <span className="font-bold text-slate-900 mr-1.5">{userName}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onOpenUserProfile) {
+                            triggerHaptic('light');
+                            onOpenUserProfile({
+                              displayName: userName,
+                              email: typeof c === 'object' ? c.authorEmail : '',
+                              photoURL: userAvatar,
+                            });
+                          }
+                        }}
+                        className="font-bold text-slate-900 mr-1.5 hover:underline cursor-pointer"
+                      >
+                        {userName}
+                      </button>
                       <span>{commentText}</span>
                     </div>
 

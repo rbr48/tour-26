@@ -205,6 +205,7 @@ export default function InstagramFeed({
   onViewPost,
   onCommentReaction,
   onShareToDiscussion = null,
+  onOpenUserProfile = null,
 }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeStoryFilter, setActiveStoryFilter] = useState('all');
@@ -1742,6 +1743,7 @@ export default function InstagramFeed({
                       currentProfile={currentProfile}
                       members={members}
                       userProfiles={userProfiles}
+                      onOpenUserProfile={onOpenUserProfile}
                       onLikePost={onLikePost}
                       onViewPost={recordPostView}
                       onOpenComments={(p) => {
@@ -2098,7 +2100,8 @@ export default function InstagramFeed({
                         currentProfile={currentProfile}
                         members={members}
                         userProfiles={userProfiles}
-                        onLikePost={onLikePost}
+                        onOpenUserProfile={onOpenUserProfile}
+                      onLikePost={onLikePost}
                         onViewPost={recordPostView}
                         onOpenComments={(p) => {
                           triggerHaptic('light');
@@ -3297,6 +3300,10 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         onViewPost={recordPostView}
         onCommentReaction={onCommentReaction}
         onUpdatePost={onUpdatePost}
+        onOpenUserProfile={(author) => {
+          setReelsPlayer({ isOpen: false, initialIndex: 0 });
+          onOpenUserProfile?.(author);
+        }}
       />
 
       {/* EDIT POST / REEL MODAL */}
@@ -3402,6 +3409,10 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         onClose={() => setActiveCommentPost(null)}
         onAddComment={onAddComment}
         onCommentReaction={onCommentReaction}
+        onOpenUserProfile={(author) => {
+          setActiveCommentPost(null);
+          onOpenUserProfile?.(author);
+        }}
       />
 
       {/* FULLSCREEN INSTAGRAM STORY VIEWER MODAL */}

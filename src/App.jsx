@@ -206,6 +206,7 @@ export default function App() {
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [showPrintReport, setShowPrintReport] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [selectedProfileUser, setSelectedProfileUser] = useState(null);
   const [editingMember, setEditingMember] = useState(null);
 
   // Feature Modals
@@ -405,7 +406,7 @@ export default function App() {
   useBackHandler(showJourneyModal, () => setShowJourneyModal(false), 20);
   useBackHandler(showBeachGuideModal, () => setShowBeachGuideModal(false), 20);
   useBackHandler(showScrapbookModal, () => setShowScrapbookModal(false), 20);
-  useBackHandler(showProfileModal, () => setShowProfileModal(false), 20);
+  useBackHandler(showProfileModal, () => { setShowProfileModal(false); setSelectedProfileUser(null); }, 20);
   useBackHandler(showPrintReport, () => setShowPrintReport(false), 20);
   useBackHandler(isCommandOpen, () => setIsCommandOpen(false), 20);
   useBackHandler(isMobileSidebarOpen, () => setIsMobileSidebarOpen(false), 15);
@@ -697,6 +698,60 @@ export default function App() {
       setIsSyncing(false);
     }
   }, [isSyncing, currentUser, backupNow, activeTab]);
+
+  // Open Specific User's Profile Modal (Instagram-style)
+  const handleOpenUserProfile = useCallback((authorInfo) => {
+    if (!authorInfo) return;
+    const authorEmail = (authorInfo.email || authorInfo.authorEmail || '').toLowerCase().trim();
+    const authorName = (authorInfo.displayName || authorInfo.name || authorInfo.author || '').trim();
+
+    // 1. Match from registered data.userProfiles
+    let profile = null;
+    if (authorEmail && data.userProfiles?.[authorEmail]) {
+      profile = data.userProfiles[authorEmail];
+    } else {
+      profile = Object.values(data.userProfiles || {}).find((p) => {
+        const pEmail = String(p?.email || p?.id || '').toLowerCase().trim();
+        const pName = String(p?.displayName || '').trim().toLowerCase();
+        if (authorEmail && pEmail && pEmail === authorEmail) return true;
+        if (authorName && pName && (pName === authorName.toLowerCase() || pName.includes(authorName.toLowerCase()))) return true;
+        return false;
+      });
+    }
+
+    // 2. Match linked tour member from data.members
+    const matchedMember = (data.members || []).find((m) => {
+      const mEmail = String(m?.email || '').toLowerCase().trim();
+      const mName = String(m?.name || '').trim().toLowerCase();
+      if (authorEmail && mEmail && mEmail === authorEmail) return true;
+      if (authorName && mName && (mName === authorName.toLowerCase() || mName.includes(authorName.toLowerCase()))) return true;
+      return false;
+    });
+
+    const targetUserObj = {
+      displayName: profile?.displayName || authorName || matchedMember?.name || 'পরিবারের সদস্য',
+      email: authorEmail || profile?.email || matchedMember?.email || '',
+      photoURL: profile?.customPhotoURL || profile?.photoURL || authorInfo.photoURL || authorInfo.authorPhoto || '',
+    };
+
+    const resolvedProfile = profile || {
+      displayName: targetUserObj.displayName,
+      email: targetUserObj.email,
+      memberId: matchedMember?.id ?? null,
+      phone: matchedMember?.phone || '',
+      role: matchedMember?.role || 'সদস্য',
+      seat: matchedMember?.seat || '',
+      room: matchedMember?.room || '',
+      customPhotoURL: targetUserObj.photoURL,
+      avatarEmoji: '👑',
+    };
+
+    setSelectedProfileUser({
+      user: targetUserObj,
+      profile: resolvedProfile,
+    });
+    setShowProfileModal(true);
+  }, [data.userProfiles, data.members]);
 
   // Profile Lookup with robust case-insensitivity & linked member fallback
   const currentProfileKey = currentUser?.email ? currentUser.email.toLowerCase().trim() : null;
@@ -1823,7 +1878,7 @@ export default function App() {
             </button>
 
             <a
-              href="/Tour2026.apk?v=23"
+              href="/Tour2026.apk?v=24"
               download="Tour2026.apk"
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-950 hover:bg-emerald-900 text-emerald-200 hover:text-white transition cursor-pointer border border-emerald-500/50 shadow-xs"
             >
@@ -2084,7 +2139,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </button>
 
                 <a
-                  href="/Tour2026.apk?v=23"
+                  href="/Tour2026.apk?v=24"
                   download="Tour2026.apk"
                   className="w-full py-2 px-3 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 rounded-xl text-xs font-semibold flex items-center justify-between border border-emerald-600/60 transition cursor-pointer"
                 >
@@ -2970,6 +3025,14 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                           </div>
 
                           <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenUserProfile({ displayName: member.name, email: member.email, phone: member.phone })}
+                              className="p-1.5 bg-pink-50 hover:bg-pink-100 text-pink-700 rounded-lg transition cursor-pointer"
+                              title="প্রোফাইল ও ছবি দেখুন"
+                            >
+                              <Camera size={14} />
+                            </button>
                             {member.phone && member.phone !== '01700000000' && (
                               <a
                                 href={`tel:${member.phone}`}
@@ -3040,6 +3103,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
               onViewPost={handleViewPost}
               onCommentReaction={handleCommentReaction}
               onShareToDiscussion={handleSendMessage}
+              onOpenUserProfile={handleOpenUserProfile}
             />
           )}
 
@@ -3242,14 +3306,33 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
         <Suspense fallback={null}>
           <UserProfileModal
             isOpen={showProfileModal}
-            onClose={() => setShowProfileModal(false)}
+            onClose={() => {
+              setShowProfileModal(false);
+              setSelectedProfileUser(null);
+            }}
             currentUser={currentUser}
-            currentProfile={currentProfile}
+            currentProfile={selectedProfileUser?.profile || currentProfile}
+            targetUser={selectedProfileUser?.user || currentUser}
+            isOwnProfile={
+              !selectedProfileUser ||
+              Boolean(
+                currentUser?.email &&
+                selectedProfileUser.user?.email &&
+                selectedProfileUser.user.email.toLowerCase().trim() === currentUser.email.toLowerCase().trim()
+              )
+            }
             members={data.members || []}
+            posts={data.posts || []}
             ledger={ledger}
             onNavigateToExpenses={() => {
               setShowProfileModal(false);
+              setSelectedProfileUser(null);
               setActiveTab('expenses');
+            }}
+            onNavigateToFeed={() => {
+              setShowProfileModal(false);
+              setSelectedProfileUser(null);
+              setActiveTab('feed');
             }}
             onSaveProfile={handleSaveProfile}
             onOpenUpdateModal={(info) => {

@@ -51,6 +51,7 @@ export default function InstagramPostCard({
   manualDriveUploadId,
   hasStory = false,
   onOpenStory,
+  onOpenUserProfile = null,
 }) {
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [showHeartAnim, setShowHeartAnim] = useState(false);
@@ -206,7 +207,18 @@ export default function InstagramPostCard({
       <div className="px-3.5 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div
-            onClick={hasStory && onOpenStory ? () => onOpenStory(post.author) : undefined}
+            onClick={() => {
+              if (hasStory && onOpenStory) {
+                onOpenStory(post.author);
+              } else if (onOpenUserProfile) {
+                triggerHaptic('light');
+                onOpenUserProfile({
+                  displayName: post.author,
+                  email: post.authorEmail,
+                  photoURL: post.authorPhoto,
+                });
+              }
+            }}
             className={`cursor-pointer ${
               hasStory
                 ? 'p-0.5 rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888]'
@@ -224,9 +236,22 @@ export default function InstagramPostCard({
 
           <div className="leading-tight">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <h4 className="font-extrabold text-[13px] text-slate-900 tracking-tight">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOpenUserProfile) {
+                    triggerHaptic('light');
+                    onOpenUserProfile({
+                      displayName: post.author,
+                      email: post.authorEmail,
+                      photoURL: post.authorPhoto,
+                    });
+                  }
+                }}
+                className="font-extrabold text-[13px] text-slate-900 tracking-tight hover:underline cursor-pointer text-left"
+              >
                 {post.author}
-              </h4>
+              </button>
               {tourDayInfo && (
                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shadow-2xs ${tourDayInfo.badgeColor || 'bg-sky-50 text-sky-700 border-sky-200'}`}>
                   {tourDayInfo.emoji} {tourDayInfo.shortLabel || tourDayInfo.name}
@@ -528,7 +553,22 @@ export default function InstagramPostCard({
         {/* Caption */}
         {post.caption && (
           <div className="text-[13px] leading-snug pt-0.5">
-            <span className="font-extrabold text-slate-900 mr-2">{post.author}</span>
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenUserProfile) {
+                  triggerHaptic('light');
+                  onOpenUserProfile({
+                    displayName: post.author,
+                    email: post.authorEmail,
+                    photoURL: post.authorPhoto,
+                  });
+                }
+              }}
+              className="font-extrabold text-slate-900 mr-2 hover:underline cursor-pointer"
+            >
+              {post.author}
+            </button>
             <span className="text-slate-800 font-normal break-words">
               {isCaptionExpanded || post.caption.length <= 110
                 ? post.caption
