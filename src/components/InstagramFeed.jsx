@@ -429,15 +429,43 @@ export default function InstagramFeed({
     }, 1200);
   };
 
+  // Upload offline images to VPS before pushing queued post to Firestore
+  const processAndUploadQueuedPost = async (queuedPost) => {
+    let postToUpload = { ...queuedPost };
+    if (Array.isArray(postToUpload._offlineImages) && postToUpload._offlineImages.length > 0) {
+      const serverUrls = [];
+      for (let i = 0; i < postToUpload._offlineImages.length; i++) {
+        const img = postToUpload._offlineImages[i];
+        if (isDataImage(img)) {
+          try {
+            const res = await uploadWithQueue(img, {
+              postId: postToUpload.id,
+              fileName: `Tour2026_${postToUpload.author?.replace(/\s+/g, '_')}_${Date.now()}_${i + 1}.jpg`,
+            });
+            if (res?.url) serverUrls.push(res.url);
+          } catch (e) {
+            console.warn(`Offline drain image upload failed for item ${i + 1}:`, e);
+          }
+        } else if (typeof img === 'string') {
+          serverUrls.push(img);
+        }
+      }
+      if (serverUrls.length > 0) {
+        postToUpload.images = serverUrls;
+        postToUpload.image = serverUrls[0];
+      }
+      delete postToUpload._offlineImages;
+    }
+    await onAddPost(postToUpload);
+  };
+
   // Offline Upload Queue Drain Handler
   const handleDrainOfflineQueue = async () => {
     if (isDrainingQueue) return;
     setIsDrainingQueue(true);
     setOfflineNotification('অফলাইন পোস্ট আপলোড হচ্ছে...');
     try {
-      await drainOfflineQueue(async (queuedPost) => {
-        await onAddPost(queuedPost);
-      });
+      await drainOfflineQueue(processAndUploadQueuedPost);
       const remaining = getOfflineQueue().length;
       setOfflineQueueCount(remaining);
       if (remaining === 0) {
@@ -513,6 +541,8 @@ export default function InstagramFeed({
   const [batchSyncProgress, setBatchSyncProgress] = useState('');
   const [isUploadingReel, setIsUploadingReel] = useState(false);
   const [reelUploadProgress, setReelUploadProgress] = useState(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoUploadProgress, setPhotoUploadProgress] = useState(null);
 
   const handleConnectDrive = async () => {
     try {
@@ -646,9 +676,7 @@ export default function InstagramFeed({
 
   // Auto-drain offline post queue whenever device reconnects to internet
   useEffect(() => {
-    const unregister = registerAutoDrain(async (post) => {
-      await onAddPost(post);
-    });
+    const unregister = registerAutoDrain(processAndUploadQueuedPost);
 
     const handleSyncComplete = (e) => {
       setOfflineQueueCount(getOfflineQueue().length);
@@ -898,8 +926,8 @@ export default function InstagramFeed({
         duration: trimmedReelData.duration || 0,
         totalDuration: trimmedReelData.totalDuration || 0,
         thumb: (await makeThumbnail(trimmedReelData.thumb).catch(() => trimmedReelData.thumb)),
-        image: (await makeThumbnail(trimmedReelData.thumb).catch(() => trimmedReelData.thumb)),
-        images: [(await makeThumbnail(trimmedReelData.thumb).catch(() => trimmedReelData.thumb))],
+        image: null,
+        images: [],
         driveBackedUp: false,
         driveFileId: null,
         driveViewUrl: null,
@@ -1012,43 +1040,48 @@ export default function InstagramFeed({
 
     const postId = newId();
 
-    // 1. Generate lightweight thumbnails for all images (fast offline viewing & instant feed render)
-    const thumbnailImages = await Promise.all(
-      finalImages.map(async (img) => {
-        try {
-          return await makeThumbnail(img);
-        } catch (e) {
-          console.warn('Thumbnail generation warning:', e);
-          return img;
-        }
-      })
-    );
+    // 1. Generate single lightweight cover thumbnail for feed preview (< 100KB)
+    let coverThumb = null;
+    try {
+      coverThumb = await makeThumbnail(finalImages[0]);
+    } catch (e) {
+      console.warn('Cover thumbnail generation fallback:', e);
+      coverThumb = finalImages[0];
+    }
 
-    // 2. Upload photos to VPS server storage with controlled concurrency queue
-    let serverImages = thumbnailImages;
+    // 2. Upload photos to VPS server storage with progress indicator
+    setIsUploadingPhoto(true);
+    setPhotoUploadProgress({ current: 0, total: finalImages.length });
+
+    const serverImages = [];
     if (typeof navigator === 'undefined' || navigator.onLine) {
       try {
-        const uploadPromises = finalImages.map(async (img, idx) => {
+        for (let idx = 0; idx < finalImages.length; idx++) {
+          const img = finalImages[idx];
+          setPhotoUploadProgress({ current: idx + 1, total: finalImages.length });
           if (isDataImage(img)) {
             try {
               const res = await uploadWithQueue(img, {
                 postId,
                 fileName: `Tour2026_${authorName.replace(/\s+/g, '_')}_${Date.now()}_${idx + 1}.jpg`,
               });
-              return res?.url || null;
+              if (res?.url) {
+                serverImages.push(res.url);
+              }
             } catch (upErr) {
-              console.warn(`VPS queue upload skipped for image ${idx + 1}:`, upErr);
-              return null;
+              console.warn(`VPS queue upload failed for image ${idx + 1}:`, upErr);
             }
+          } else if (typeof img === 'string') {
+            serverImages.push(img);
           }
-          return img;
-        });
-        const uploaded = await Promise.all(uploadPromises);
-        serverImages = finalImages.map((img, idx) => uploaded[idx] || thumbnailImages[idx] || null).filter(Boolean);
+        }
       } catch (err) {
-        console.warn('Image server upload skipped, using local thumbnails:', err);
+        console.warn('Image server upload skipped or failed:', err);
       }
     }
+
+    setIsUploadingPhoto(false);
+    setPhotoUploadProgress(null);
 
     const profilePhoto = currentProfile?.customPhotoURL;
     const finalTourDay = selectedTourDay === 'auto' ? getCurrentTourDay().id : selectedTourDay;
@@ -1069,9 +1102,8 @@ export default function InstagramFeed({
       views: 0,
       filter: selectedFilter || 'normal',
       images: serverImages,
-      thumbs: thumbnailImages,
-      thumb: thumbnailImages[0] || serverImages[0] || null,
-      image: serverImages[0] || thumbnailImages[0] || null,
+      thumb: coverThumb || serverImages[0] || null,
+      image: serverImages[0] || null,
       driveBackedUp: false,
       driveFileId: null,
       driveFileIds: {},
@@ -1081,7 +1113,10 @@ export default function InstagramFeed({
     };
 
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      enqueueOfflinePost(newPost);
+      enqueueOfflinePost({
+        ...newPost,
+        _offlineImages: finalImages,
+      });
       setOfflineQueueCount(getOfflineQueue().length);
       setCaption('');
       setImageInput('');
@@ -2802,7 +2837,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  disabled={isDriveUploading || isUploadingReel}
+                  disabled={isDriveUploading || isUploadingReel || isUploadingPhoto}
                   className="px-4 py-2 bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
                 >
                   বাতিল
@@ -2814,7 +2849,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 )}
                 <button
                   type="submit"
-                  disabled={isDriveUploading || isUploadingReel}
+                  disabled={isDriveUploading || isUploadingReel || isUploadingPhoto}
                   className="px-5 py-2 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-sm active:scale-95"
                 >
                   {isUploadingReel ? (
@@ -2824,6 +2859,13 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                         {reelUploadProgress?.stage === 'processing'
                           ? 'এইচডি প্রসেস হচ্ছে...'
                           : `আপলোড হচ্ছে (${toBnNum(reelUploadProgress?.percent || 0)}%)`}
+                      </span>
+                    </>
+                  ) : isUploadingPhoto ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>
+                        ছবি আপলোড হচ্ছে (${toBnNum(photoUploadProgress?.current || 1)}/${toBnNum(photoUploadProgress?.total || 1)})...
                       </span>
                     </>
                   ) : isDriveUploading ? (

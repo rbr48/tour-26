@@ -149,15 +149,21 @@ export async function uploadMedia(fileOrDataUrl, { postId, uploadId: customUploa
         xhr.send(file);
       });
 
-    try {
-      return await performSingleUpload(token);
-    } catch (err) {
-      if (err?.isAuthError) {
-        console.warn('Received 401 on single upload. Refreshing token and retrying...');
-        token = await getAuthToken(true);
+    let attempts = 0;
+    while (attempts < 3) {
+      attempts++;
+      try {
         return await performSingleUpload(token);
+      } catch (err) {
+        if (err?.isAuthError) {
+          console.warn('Received 401 on single upload. Refreshing token and retrying...');
+          token = await getAuthToken(true);
+          return await performSingleUpload(token);
+        }
+        if (attempts >= 3) throw err;
+        console.warn(`Single upload attempt ${attempts} failed (${err?.message || 'network error'}), retrying in ${attempts * 1000}ms...`);
+        await new Promise((r) => setTimeout(r, attempts * 1000));
       }
-      throw err;
     }
   }
 

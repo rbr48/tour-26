@@ -1,10 +1,10 @@
 {
-  "versionCode": 22,
-  "versionName": "2.22",
+  "versionCode": 23,
+  "versionName": "2.23",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v22.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v23.apk",
   "apkSize": "8.9 MB",
-  "releaseNotes": "আপডেট v2.22: ইন্সটাগ্রাম ফিড অটো-সিঙ্ক ইম্পোর্ট ফিক্স, ইউজার প্রোফাইল রুলস অফ হুক্স ফিক্স এবং সামগ্রিক স্ট্যাবিলিটি আপডেট।",
-  "releasedAt": "2026-10-22T04:08:13.076Z",
+  "releaseNotes": "আপডেট v2.23: মিডিয়া ও অ্যালবাম আপলোড ফিক্স, ফায়ারস্টোর সাইজ অপটিমাইজেশন, প্রগ্রেসিভ ইমেজ সার্ভিং এবং রিলস আপলোডার স্ট্যাবিলিটি আপডেট।",
+  "releasedAt": "2026-10-22T12:31:00.909Z",
   "forceUpdate": false
 }

@@ -30,10 +30,20 @@ export default function ProgressiveImage({
   // Construct the comprehensive waterfall candidate list
   const candidates = React.useMemo(() => {
     const list = [];
-    if (src) list.push(src);
+    if (src) {
+      const resolved = resolveMediaUrl(src, driveFileId);
+      if (resolved) list.push(resolved);
+      if (src !== resolved && typeof src === 'string' && src.startsWith('http')) {
+        list.push(src);
+      }
+    }
 
     if (Array.isArray(fallbackSrcs)) {
-      list.push(...fallbackSrcs.filter(Boolean));
+      list.push(
+        ...fallbackSrcs
+          .map((s) => resolveMediaUrl(s, driveFileId))
+          .filter(Boolean)
+      );
     }
 
     if (driveFileId) {

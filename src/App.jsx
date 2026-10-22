@@ -833,12 +833,12 @@ export default function App() {
     const userEmail = emailRef.current || (currentUser?.email ? currentUser.email.toLowerCase() : null) || 'member@tour.family';
     const postImages = Array.isArray(post.images) && post.images.length > 0
       ? post.images
-      : (post.image || post.thumb ? [post.image || post.thumb] : []);
+      : (post.image && !post.image.startsWith('data:') ? [post.image] : []);
     const completePost = {
       ...post,
       authorEmail: userEmail,
-      thumb: post.thumb || post.image || (postImages[0] || null),
-      image: post.image || post.thumb || (postImages[0] || null),
+      thumb: post.thumb || (post.image && post.image.startsWith('data:') ? post.image : (postImages[0] || null)),
+      image: post.image || (postImages[0] || null),
       images: postImages,
     };
 
@@ -1823,7 +1823,7 @@ export default function App() {
             </button>
 
             <a
-              href="/Tour2026.apk?v=22"
+              href="/Tour2026.apk?v=23"
               download="Tour2026.apk"
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-950 hover:bg-emerald-900 text-emerald-200 hover:text-white transition cursor-pointer border border-emerald-500/50 shadow-xs"
             >
@@ -2084,7 +2084,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </button>
 
                 <a
-                  href="/Tour2026.apk?v=22"
+                  href="/Tour2026.apk?v=23"
                   download="Tour2026.apk"
                   className="w-full py-2 px-3 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 rounded-xl text-xs font-semibold flex items-center justify-between border border-emerald-600/60 transition cursor-pointer"
                 >

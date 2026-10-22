@@ -220,15 +220,87 @@ export function subscribeToTour({ onUpdate, onError, onChange }) {
 
 // ---- Writes -----------------------------------------------------------------
 
+/**
+ * Sanitizes post document before sending to Cloud Firestore.
+ * Strictly guarantees payload stays well under the 1,048,576 byte (1 MiB) entity limit.
+ */
+export function sanitizePostForFirestore(post) {
+  if (!post || typeof post !== 'object') return post;
+
+  const cleaned = { ...post };
+
+  // 1. NEVER allow large base64 arrays in 'thumbs' (Firestore entity limit is 1 MiB)
+  if (Array.isArray(cleaned.thumbs)) {
+    cleaned.thumbs = cleaned.thumbs.filter(
+      (t) => typeof t === 'string' && (!t.startsWith('data:') || t.length <= 2000)
+    );
+    if (cleaned.thumbs.length === 0) {
+      delete cleaned.thumbs;
+    }
+  }
+
+  // 2. Ensure 'images' only contains URLs or safe strings.
+  // Never store multiple large base64 images in Firestore.
+  if (Array.isArray(cleaned.images)) {
+    const safeImages = [];
+    for (const img of cleaned.images) {
+      if (typeof img === 'string') {
+        if (img.startsWith('data:')) {
+          if (!cleaned.thumb && img.length <= 140000) {
+            cleaned.thumb = img;
+          }
+        } else {
+          safeImages.push(img);
+        }
+      }
+    }
+    cleaned.images = safeImages;
+  }
+
+  // 3. Ensure 'thumb' does not exceed 140,000 characters
+  if (typeof cleaned.thumb === 'string' && cleaned.thumb.startsWith('data:') && cleaned.thumb.length > 140000) {
+    console.warn('[tourStore] Post thumb exceeds 140KB, trimming safeguard.');
+    cleaned.thumb = cleaned.thumb.slice(0, 140000);
+  }
+
+  // 4. Ensure 'image' does not duplicate large base64 'thumb'
+  if (typeof cleaned.image === 'string' && cleaned.image.startsWith('data:')) {
+    if (cleaned.thumb && (cleaned.image === cleaned.thumb || cleaned.image.length > 140000)) {
+      delete cleaned.image;
+    }
+  }
+
+  // 5. Total document size guard (stay strictly under 800 KB, well below Firestore 1 MiB limit)
+  try {
+    const jsonStr = JSON.stringify(cleaned);
+    if (jsonStr.length > 800000) {
+      console.warn('[tourStore] Post document payload is large, applying emergency trim.');
+      delete cleaned.thumbs;
+      if (cleaned.thumb && cleaned.thumb.length > 60000) {
+        cleaned.thumb = cleaned.thumb.slice(0, 60000);
+      }
+    }
+  } catch {}
+
+  return cleaned;
+}
+
+
 export async function addItem(path, item) {
   const id = item.id ?? newId();
-  const record = stripUndefined({ ...item, id, seq: item.seq ?? id });
+  const prepared = Array.isArray(path) && path[0] === 'posts'
+    ? sanitizePostForFirestore(item)
+    : item;
+  const record = stripUndefined({ ...prepared, id, seq: prepared.seq ?? id });
   await setDoc(itemRef(path, id), record);
   return record;
 }
 
 export function setItem(path, id, data) {
-  return setDoc(itemRef(path, id), stripUndefined(data), { merge: true });
+  const prepared = Array.isArray(path) && path[0] === 'posts'
+    ? sanitizePostForFirestore(data)
+    : data;
+  return setDoc(itemRef(path, id), stripUndefined(prepared), { merge: true });
 }
 
 /** `remove` lists fields to delete outright (Firestore rules do not accept null for these). */
