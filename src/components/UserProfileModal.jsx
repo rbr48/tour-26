@@ -137,7 +137,13 @@ export default function UserProfileModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  const linkedMember = members.find((member) => String(member.id) === String(profile.memberId)) ?? null;
+  const memberLedger = React.useMemo(() => {
+    if (!linkedMember || !ledger?.rows) return null;
+    return ledger.rows.find((r) => r.id === linkedMember.id) || null;
+  }, [linkedMember, ledger]);
+
+    if (!isOpen) return null;
 
   // 1. Handle File Upload (Pick from device or take photo with auto-compression)
   const handleFileChange = async (e) => {
@@ -185,12 +191,6 @@ export default function UserProfileModal({
       setTimeout(() => setPhotoNotification(''), 2500);
     }
   };
-
-  const linkedMember = members.find((member) => String(member.id) === String(profile.memberId)) ?? null;
-  const memberLedger = React.useMemo(() => {
-    if (!linkedMember || !ledger?.rows) return null;
-    return ledger.rows.find((r) => r.id === linkedMember.id) || null;
-  }, [linkedMember, ledger]);
 
   const handleSubmit = (e) => {
     e.preventDefault();

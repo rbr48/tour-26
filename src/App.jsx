@@ -903,8 +903,6 @@ export default function App() {
       createdAt: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
     } : {
       id: comment.id || Date.now(),
-      user: (comment.user && comment.user !== 'পরিবারের সদস্য') ? comment.user : authorName,
-      authorEmail: (comment.authorEmail && comment.authorEmail !== 'member@tour.family') ? comment.authorEmail : authorEmail,
       userPhoto: comment.userPhoto || (typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null)),
       text: String(comment.text || comment.comment || comment.message || comment.body || '').trim(),
       time: comment.time || 'এইমাত্র',
@@ -1825,7 +1823,7 @@ export default function App() {
             </button>
 
             <a
-              href="/Tour2026.apk?v=21"
+              href="/Tour2026.apk?v=22"
               download="Tour2026.apk"
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-950 hover:bg-emerald-900 text-emerald-200 hover:text-white transition cursor-pointer border border-emerald-500/50 shadow-xs"
             >
@@ -2086,7 +2084,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </button>
 
                 <a
-                  href="/Tour2026.apk?v=21"
+                  href="/Tour2026.apk?v=22"
                   download="Tour2026.apk"
                   className="w-full py-2 px-3 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 rounded-xl text-xs font-semibold flex items-center justify-between border border-emerald-600/60 transition cursor-pointer"
                 >

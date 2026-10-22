@@ -85,6 +85,7 @@ import {
   enqueueOfflinePost,
   getOfflineQueue,
   drainOfflineQueue,
+  registerAutoDrain,
 } from '../utils/offlineQueue';
 
 // Instagram Preset CSS Filters
