@@ -165,10 +165,8 @@ export function createStaticHandler(distDir, uploadsDir, reelsRegistry) {
     const relativePath = path.relative(root, filePath).split(path.sep).join('/');
     const stat = fs.statSync(filePath);
     const mimeType = MIME_TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
-    const isVideo = mimeType.startsWith('video/');
-    const videoCacheControl = 'public, max-age=604800, stale-while-revalidate=86400';
 
-    // Support HTTP Range Requests (essential for HTML5 video playback, seeking, and smooth streaming)
+    // Support HTTP Range Requests (essential for HTML5 video playback and seeking)
     const rangeHeader = req.headers.range;
     if (rangeHeader && req.method === 'GET') {
       const parts = rangeHeader.replace(/bytes=/, '').split('-');
@@ -184,16 +182,17 @@ export function createStaticHandler(distDir, uploadsDir, reelsRegistry) {
           'Accept-Ranges': 'bytes',
           'Content-Length': chunkSize,
           'Content-Type': mimeType,
-          'Cache-Control': isVideo ? videoCacheControl : 'public, max-age=86400',
+          'Cache-Control': 'no-cache',
           ...CORS_HEADERS,
           ...SECURITY_HEADERS,
         });
 
-        const stream = fs.createReadStream(filePath, {
-          start,
-          end: actualEnd,
-          highWaterMark: isVideo ? 256 * 1024 : 64 * 1024,
-        });
+        const stream = fs.createReadStream(filePath, { start, end: actualEnd });
+        const cleanup = () => {
+          stream.destroy();
+        };
+        req.on('close', cleanup);
+        res.on('close', cleanup);
         stream.on('error', () => res.destroy());
         stream.pipe(res);
         return;
@@ -204,7 +203,7 @@ export function createStaticHandler(distDir, uploadsDir, reelsRegistry) {
       'Content-Type': mimeType,
       'Content-Length': stat.size,
       'Accept-Ranges': 'bytes',
-      'Cache-Control': isVideo ? videoCacheControl : cacheControlFor(relativePath),
+      'Cache-Control': cacheControlFor(relativePath),
       ...CORS_HEADERS,
       ...SECURITY_HEADERS,
     });
@@ -213,7 +212,12 @@ export function createStaticHandler(distDir, uploadsDir, reelsRegistry) {
       res.end();
       return;
     }
-    const stream = fs.createReadStream(filePath, isVideo ? { highWaterMark: 256 * 1024 } : undefined);
+    const stream = fs.createReadStream(filePath);
+    const cleanup = () => {
+      stream.destroy();
+    };
+    req.on('close', cleanup);
+    res.on('close', cleanup);
     stream.on('error', () => res.destroy());
     stream.pipe(res);
   };

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Heart,
   MessageCircle,
@@ -20,7 +20,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { formatDuration, toBnNum, resolveMediaUrl, getDriveEmbedUrl, PRODUCTION_ORIGIN } from '../utils/videoHelper';
-import { getLocalVideo, getLocalVideoUrl, prewarmReelsQueue, prefetchAndCacheVideo } from '../utils/localVideoCache';
+import { getLocalVideo, getLocalVideoUrl } from '../utils/localVideoCache';
 import { uploadReelVideo } from '../utils/reelUploader';
 import { useBackHandler } from '../utils/backNavigation';
 import { triggerHaptic } from '../utils/haptics';
@@ -48,24 +48,17 @@ export default function ReelsPlayerModal({
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [showHeartAnim, setShowHeartAnim] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
   const [videoLoadError, setVideoLoadError] = useState(false);
-  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
   const [localVideoUrl, setLocalVideoUrl] = useState(null);
 
-  // Swipe animation state for silky smooth dragging
-  const [touchDeltaY, setTouchDeltaY] = useState(0);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-
   const videoRef = useRef(null);
-  const nextVideoRef = useRef(null);
-  const prevVideoRef = useRef(null);
   const progressBarRef = useRef(null);
   const touchStartY = useRef(null);
-  const touchStartTime = useRef(0);
   const lastTapRef = useRef(0);
 
   useEffect(() => {
@@ -77,41 +70,24 @@ export default function ReelsPlayerModal({
   useBackHandler(isOpen && !showComments, onClose, 20);
 
   const currentReel = reels[currentIndex] || null;
-  const nextIndex = (currentIndex + 1) % (reels.length || 1);
-  const prevIndex = (currentIndex - 1 + (reels.length || 1)) % (reels.length || 1);
-  const nextReel = reels.length > 1 ? reels[nextIndex] : null;
-  const prevReel = reels.length > 2 ? reels[prevIndex] : null;
 
-  // Background Pre-warm queue: ensures next 2 reels & prev reel are cached locally
-  useEffect(() => {
-    if (!isOpen || !reels.length) return;
-    prewarmReelsQueue(reels, currentIndex, 2);
-  }, [isOpen, reels, currentIndex]);
-
-  // Resolve local IndexedDB or Memory cached video for current reel
+  // Resolve local IndexedDB video if this device uploaded it
   useEffect(() => {
     let active = true;
+    let objectUrl = null;
 
     if (currentReel?.id) {
       getLocalVideoUrl(currentReel.id).then((url) => {
-        if (!active) return;
+        if (!active) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
         if (url) {
+          objectUrl = url;
           setLocalVideoUrl(url);
           setVideoLoadError(false);
         } else {
           setLocalVideoUrl(null);
-          // Kick off background cache if remote
-          const raw = currentReel.videoUrl || currentReel.video;
-          if (raw && !raw.startsWith('blob:')) {
-            const resolved = resolveMediaUrl(raw, currentReel.driveFileId);
-            if (resolved && resolved.startsWith('http')) {
-              prefetchAndCacheVideo(currentReel.id, resolved).then((cached) => {
-                if (active && cached) {
-                  setLocalVideoUrl(cached);
-                }
-              }).catch(() => {});
-            }
-          }
         }
       });
     } else {
@@ -120,8 +96,11 @@ export default function ReelsPlayerModal({
 
     return () => {
       active = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
-  }, [currentReel?.id, currentReel?.videoUrl, currentReel?.video, currentReel?.driveFileId]);
+  }, [currentReel?.id]);
 
   // Video source resolution: prioritize local device cache, then server/cloud URL
   const rawVideoSource = currentReel?.videoUrl || currentReel?.video || null;
@@ -132,21 +111,6 @@ export default function ReelsPlayerModal({
     : (currentReel?.driveFileId ? resolveMediaUrl(null, currentReel.driveFileId) : null);
   const videoSource = localVideoUrl || resolvedRemoteSource;
   const embedUrl = getDriveEmbedUrl(validRawSource, currentReel?.driveFileId);
-
-  // Pre-resolved sources for Next and Prev pre-warmed standby slots
-  const nextVideoSource = useMemo(() => {
-    if (!nextReel) return null;
-    const raw = nextReel.videoUrl || nextReel.video;
-    if (typeof raw === 'string' && raw.startsWith('blob:')) return null;
-    return resolveMediaUrl(raw, nextReel.driveFileId);
-  }, [nextReel]);
-
-  const prevVideoSource = useMemo(() => {
-    if (!prevReel) return null;
-    const raw = prevReel.videoUrl || prevReel.video;
-    if (typeof raw === 'string' && raw.startsWith('blob:')) return null;
-    return resolveMediaUrl(raw, prevReel.driveFileId);
-  }, [prevReel]);
 
   const isLocalOnly = Boolean(localVideoUrl && !validRawSource && !currentReel?.driveFileId);
   const [syncingState, setSyncingState] = useState(null);
@@ -197,21 +161,20 @@ export default function ReelsPlayerModal({
     }
   }, [isOpen, currentReel?.id, onViewPost]);
 
-  // Reset progress and states on navigation
+  // Reset states on navigation
   useEffect(() => {
     if (!isOpen) return;
     setVideoLoadError(false);
-    setIsVideoLoaded(false);
+    setIsBuffering(false);
     setIsCaptionExpanded(false);
-    setTouchDeltaY(0);
     if (progressBarRef.current) {
       progressBarRef.current.style.width = '0%';
     }
   }, [currentIndex, isOpen]);
 
-  // High-performance Autoplay with fallback to muted on restricted browsers
+  // Fast autoplay with fallback to muted on restricted browsers
   useEffect(() => {
-    if (!isOpen || !videoRef.current || videoLoadError) return;
+    if (!isOpen || !videoRef.current || videoLoadError || !videoSource) return;
 
     const vid = videoRef.current;
     vid.currentTime = startTime;
@@ -222,12 +185,18 @@ export default function ReelsPlayerModal({
       playPromise
         .then(() => {
           setIsPlaying(true);
+          setIsBuffering(false);
         })
         .catch(() => {
           // Autoplay policy fallback: mute and play
           vid.muted = true;
           setIsMuted(true);
-          vid.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+          vid.play()
+            .then(() => {
+              setIsPlaying(true);
+              setIsBuffering(false);
+            })
+            .catch(() => setIsPlaying(false));
         });
     }
   }, [currentIndex, isOpen, startTime, videoSource, videoLoadError]);
@@ -261,25 +230,13 @@ export default function ReelsPlayerModal({
   const handleNext = useCallback(() => {
     if (!reels.length) return;
     triggerHaptic('light');
-    setIsTransitioning(true);
-    setTouchDeltaY(-80);
-    setTimeout(() => {
-      setCurrentIndex((prev) => (prev < reels.length - 1 ? prev + 1 : 0));
-      setTouchDeltaY(0);
-      setIsTransitioning(false);
-    }, 150);
+    setCurrentIndex((prev) => (prev < reels.length - 1 ? prev + 1 : 0));
   }, [reels.length]);
 
   const handlePrev = useCallback(() => {
     if (!reels.length) return;
     triggerHaptic('light');
-    setIsTransitioning(true);
-    setTouchDeltaY(80);
-    setTimeout(() => {
-      setCurrentIndex((prev) => (prev > 0 ? prev - 1 : reels.length - 1));
-      setTouchDeltaY(0);
-      setIsTransitioning(false);
-    }, 150);
+    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : reels.length - 1));
   }, [reels.length]);
 
   const togglePlay = useCallback(() => {
@@ -312,36 +269,23 @@ export default function ReelsPlayerModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, showComments, handleNext, handlePrev, togglePlay, onClose]);
 
-  // Modern Touch Drag & Swipe Gestures (Fluid Vertical Pull)
+  // Touch Swipe for mobile gestures
   const handleTouchStart = (e) => {
     if (!e.touches?.[0]) return;
     touchStartY.current = e.touches[0].clientY;
-    touchStartTime.current = Date.now();
-  };
-
-  const handleTouchMove = (e) => {
-    if (touchStartY.current === null || !e.touches?.[0] || showComments) return;
-    const diff = e.touches[0].clientY - touchStartY.current;
-    // Damped elastic drag
-    setTouchDeltaY(diff * 0.7);
   };
 
   const handleTouchEnd = (e) => {
-    if (touchStartY.current === null || !e.changedTouches?.[0]) return;
+    if (touchStartY.current === null || !e.changedTouches?.[0] || showComments) return;
     const diff = touchStartY.current - e.changedTouches[0].clientY;
-    const elapsed = Math.max(1, Date.now() - touchStartTime.current);
-    const velocity = diff / elapsed;
     touchStartY.current = null;
 
-    if (diff > 50 || velocity > 0.4) {
+    if (diff > 50) {
       // Swiped UP -> Next reel
       handleNext();
-    } else if (diff < -50 || velocity < -0.4) {
+    } else if (diff < -50) {
       // Swiped DOWN -> Prev reel
       handlePrev();
-    } else {
-      // Snap back to neutral
-      setTouchDeltaY(0);
     }
   };
 
@@ -360,8 +304,6 @@ export default function ReelsPlayerModal({
     }
     lastTapRef.current = now;
   };
-
-
 
   const toggleMute = () => {
     if (!videoRef.current) return;
@@ -429,17 +371,11 @@ export default function ReelsPlayerModal({
     <div
       className="fixed inset-0 z-50 bg-black/95 backdrop-blur-lg flex items-center justify-center select-none sm:gap-4 p-0 sm:p-4"
       onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      {/* 9:16 vertical Reels player container with hardware acceleration */}
-      <div
-        className="relative w-full h-full max-w-md max-h-[100dvh] sm:max-h-[92vh] sm:rounded-3xl overflow-hidden bg-black flex flex-col justify-between shadow-2xl border border-white/10 shrink-0 transform-gpu"
-        style={{
-          transform: `translate3d(0, ${touchDeltaY}px, 0)`,
-          transition: isTransitioning || touchDeltaY === 0 ? 'transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1)' : 'none',
-        }}
-      >
+      {/* 9:16 vertical Reels player container */}
+      <div className="relative w-full h-full max-w-md max-h-[100dvh] sm:max-h-[92vh] sm:rounded-3xl overflow-hidden bg-black flex flex-col justify-between shadow-2xl border border-white/10 shrink-0">
+        
         {/* Top Header Bar */}
         <div className="absolute top-0 inset-x-0 z-30 p-4 pt-[calc(1rem+env(safe-area-inset-top,0px))] flex items-center justify-between bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-auto">
           <div className="flex items-center gap-2">
@@ -505,84 +441,40 @@ export default function ReelsPlayerModal({
           </div>
         )}
 
-        {/* Video Surface Area with Pre-Warmed Background Slots */}
+        {/* Single Dedicated Video Surface Area */}
         <div
-          className="relative w-full h-full flex items-center justify-center bg-black cursor-pointer overflow-hidden transform-gpu"
+          className="relative w-full h-full flex items-center justify-center bg-black cursor-pointer overflow-hidden"
           onClick={handleVideoTap}
         >
-          {/* 1. Standby Pre-Warmed NEXT Video (Decoded & waiting at frame 0) */}
-          {nextVideoSource && (
-            <video
-              ref={nextVideoRef}
-              key={`next_slot_${nextReel?.id || nextIndex}`}
-              src={nextVideoSource}
-              preload="auto"
-              muted
-              playsInline
-              webkit-playsinline="true"
-              x5-video-player-type="h5"
-              className="absolute inset-0 w-full h-full object-cover pointer-events-none opacity-0 -z-10"
-              style={{ transform: 'translate3d(0, 0, 0)', backfaceVisibility: 'hidden' }}
-            />
-          )}
-
-          {/* 2. Standby Pre-Warmed PREV Video */}
-          {prevVideoSource && (
-            <video
-              ref={prevVideoRef}
-              key={`prev_slot_${prevReel?.id || prevIndex}`}
-              src={prevVideoSource}
-              preload="auto"
-              muted
-              playsInline
-              webkit-playsinline="true"
-              x5-video-player-type="h5"
-              className="absolute inset-0 w-full h-full object-cover pointer-events-none opacity-0 -z-10"
-              style={{ transform: 'translate3d(0, 0, 0)', backfaceVisibility: 'hidden' }}
-            />
-          )}
-
-          {/* 3. Instant HD Poster Underneath (Zero Black Frames) */}
-          {posterUrl && (
-            <img
-              src={posterUrl}
-              alt="Reel poster"
-              className={`absolute inset-0 w-full h-full object-cover sm:object-contain transition-opacity duration-300 ${
-                isVideoLoaded ? 'opacity-0 pointer-events-none' : 'opacity-100'
-              }`}
-            />
-          )}
-
-          {/* 4. Active Main Video */}
+          {/* Active Main Video */}
           {(videoSource && !videoLoadError) ? (
             <video
               ref={videoRef}
-              key={`active_${videoSource || currentReel?.id}`}
+              key={videoSource || currentReel?.id}
               src={videoSource}
               poster={posterUrl || undefined}
               preload="auto"
               playsInline
               webkit-playsinline="true"
-              x5-video-player-type="h5"
-              x5-video-orientation="portrait"
               loop={endTime <= startTime}
               onTimeUpdate={handleTimeUpdate}
-              onPlaying={() => {
-                setIsVideoLoaded(true);
-                setIsPlaying(true);
+              onCanPlay={() => {
                 setVideoLoadError(false);
+                setIsBuffering(false);
+              }}
+              onPlaying={() => {
+                setIsPlaying(true);
+                setIsBuffering(false);
               }}
               onWaiting={() => {
-                // Buffer stall resilience
+                setIsBuffering(true);
               }}
               onError={(e) => {
                 console.warn('Reel video failed to load, trying fallback:', e?.target?.error, videoSource);
                 setVideoLoadError(true);
+                setIsBuffering(false);
               }}
-              className={`w-full h-full object-cover sm:object-contain transition-opacity duration-200 ${
-                isVideoLoaded ? 'opacity-100' : 'opacity-0'
-              }`}
-              style={{ transform: 'translate3d(0, 0, 0)', backfaceVisibility: 'hidden' }}
+              className="w-full h-full object-cover sm:object-contain"
             />
           ) : embedUrl ? (
             <iframe
@@ -632,6 +524,15 @@ export default function ReelsPlayerModal({
             </div>
           )}
 
+          {/* Buffering Indicator Spinner */}
+          {isBuffering && !videoLoadError && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+              <div className="w-12 h-12 rounded-full bg-black/60 flex items-center justify-center backdrop-blur-xs">
+                <Loader2 size={24} className="text-white animate-spin" />
+              </div>
+            </div>
+          )}
+
           {/* Animated Heart pop on double tap */}
           {showHeartAnim && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30 animate-in zoom-in-50 fade-in duration-200">
@@ -640,7 +541,7 @@ export default function ReelsPlayerModal({
           )}
 
           {/* Play / Pause toggle badge */}
-          {!isPlaying && !videoLoadError && videoSource && (
+          {!isPlaying && !videoLoadError && videoSource && !isBuffering && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
               <div className="w-16 h-16 rounded-full bg-black/60 text-white flex items-center justify-center backdrop-blur-md shadow-2xl">
                 <Play size={32} className="ml-1" />

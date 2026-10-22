@@ -1,10 +1,10 @@
 {
-  "versionCode": 26,
-  "versionName": "2.26",
+  "versionCode": 27,
+  "versionName": "2.27",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v26.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v27.apk",
   "apkSize": "8.9 MB",
-  "releaseNotes": "আপডেট v2.26: সুপার-স্মুথ ও বাফারলেস ইনস্ট্যান্ট রিলস প্লেয়ার (প্রি-ওয়ার্মড ভিডিও স্লট, ব্যাকগ্রাউন্ড ফুল কোয়ালিটি ক্যাশিং ও ৬০ FPS স্ক্রাবার)।",
-  "releasedAt": "2026-10-22T15:12:46.279Z",
+  "releaseNotes": "আপডেট v2.27: বাফার-মুক্ত তাৎক্ষণিক রিলস প্লেয়ার (অপ্টিমাইজড স্ট্রিমিং ও দ্রুত বাফার রিকভারি)।",
+  "releasedAt": "2026-10-22T18:45:00.000Z",
   "forceUpdate": false
 }
