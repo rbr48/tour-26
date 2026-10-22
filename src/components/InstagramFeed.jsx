@@ -3023,12 +3023,13 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                   }}
                 >
                   <img
+                    key={`preview-slide-${currentGalleryIdx}-${currentImg}`}
                     src={resolveMediaUrl(currentImg, previewMedia.post?.driveFileIds?.[currentGalleryIdx] || previewMedia.post?.driveFileId) || currentImg}
                     alt="Fullscreen Preview"
                     onError={(e) => {
                       const cur = e.currentTarget.getAttribute('data-error-stage') || '0';
                       const itemDriveId = previewMedia.post?.driveFileIds?.[currentGalleryIdx] || previewMedia.post?.driveFileId;
-                      const itemThumb = (Array.isArray(previewMedia.post?.thumbs) ? previewMedia.post.thumbs[currentGalleryIdx] : null) || previewMedia.post?.thumb;
+                      const itemThumb = (Array.isArray(previewMedia.post?.thumbs) ? previewMedia.post.thumbs[currentGalleryIdx] : null) || (currentGalleryIdx === 0 ? previewMedia.post?.thumb : null);
                       if (cur === '0' && itemThumb) {
                         e.currentTarget.setAttribute('data-error-stage', '1');
                         e.currentTarget.src = resolveMediaUrl(itemThumb, itemDriveId);

@@ -68,6 +68,8 @@ export default function InstagramPostCard({
   const [showTags, setShowTags] = useState(false);
 
   const singleTapTimerRef = useRef(null);
+  const isProgrammaticScrollRef = useRef(false);
+  const scrollTimeoutRef = useRef(null);
   const carouselRef = useRef(null);
   const cardRef = useRef(null);
 
@@ -76,6 +78,9 @@ export default function InstagramPostCard({
     return () => {
       if (singleTapTimerRef.current) {
         clearTimeout(singleTapTimerRef.current);
+      }
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
       }
     };
   }, []);
@@ -176,7 +181,7 @@ export default function InstagramPostCard({
 
   // Carousel horizontal scroll-snap position listener
   const handleCarouselScroll = useCallback(() => {
-    if (!carouselRef.current) return;
+    if (isProgrammaticScrollRef.current || !carouselRef.current) return;
     const { scrollLeft, clientWidth } = carouselRef.current;
     if (clientWidth > 0) {
       const newIndex = Math.round(scrollLeft / clientWidth);
@@ -189,12 +194,30 @@ export default function InstagramPostCard({
   const scrollToImage = (index) => {
     if (!carouselRef.current) return;
     triggerHaptic('light');
-    const clientWidth = carouselRef.current.clientWidth;
-    carouselRef.current.scrollTo({
-      left: index * clientWidth,
-      behavior: 'smooth',
-    });
-    setActiveImageIdx(index);
+    const targetIdx = Math.max(0, Math.min(totalImages - 1, index));
+    setActiveImageIdx(targetIdx);
+
+    isProgrammaticScrollRef.current = true;
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+
+    const slides = carouselRef.current.children;
+    if (slides && slides[targetIdx]) {
+      slides[targetIdx].scrollIntoView({
+        behavior: 'smooth',
+        inline: 'start',
+        block: 'nearest',
+      });
+    } else {
+      const clientWidth = carouselRef.current.clientWidth || 360;
+      carouselRef.current.scrollTo({
+        left: targetIdx * clientWidth,
+        behavior: 'smooth',
+      });
+    }
+
+    scrollTimeoutRef.current = setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+    }, 450);
   };
 
   return (

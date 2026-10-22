@@ -1,10 +1,10 @@
 {
-  "versionCode": 24,
-  "versionName": "2.24",
+  "versionCode": 25,
+  "versionName": "2.25",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v24.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v25.apk",
   "apkSize": "8.9 MB",
-  "releaseNotes": "আপডেট v2.24: ইনস্টাগ্রাম স্টাইল ইউজার প্রোফাইল (পোস্ট গ্রিড, রিলস গ্রিড, ট্যুর ইনফো, লাইটবক্স, রিলস প্লেয়ার) ও ফিড/কমেন্ট থেকে প্রোফাইল ব্রাউজিং সুবিধা।",
-  "releasedAt": "2026-10-22T14:09:39.005Z",
+  "releaseNotes": "আপডেট v2.25: একাধিক ছবির পোস্টে পরবর্তী ছবি পরিবর্তন ত্রুটি সমাধান, স্টোরি হাইলাইটস বার, ট্যাগড ফটোস ট্যাব, পিন করা পোস্ট, ২৪ ঘণ্টার মুড নোট ও লাইভ বিচ ওয়েভ অডিও সুবিধা।",
+  "releasedAt": "2026-10-22T14:46:00.000Z",
   "forceUpdate": false
 }

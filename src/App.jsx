@@ -1878,7 +1878,7 @@ export default function App() {
             </button>
 
             <a
-              href="/Tour2026.apk?v=24"
+              href="/Tour2026.apk?v=25"
               download="Tour2026.apk"
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-950 hover:bg-emerald-900 text-emerald-200 hover:text-white transition cursor-pointer border border-emerald-500/50 shadow-xs"
             >
@@ -2139,7 +2139,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                 </button>
 
                 <a
-                  href="/Tour2026.apk?v=24"
+                  href="/Tour2026.apk?v=25"
                   download="Tour2026.apk"
                   className="w-full py-2 px-3 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 rounded-xl text-xs font-semibold flex items-center justify-between border border-emerald-600/60 transition cursor-pointer"
                 >
@@ -3324,6 +3324,8 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
             members={data.members || []}
             posts={data.posts || []}
             ledger={ledger}
+            onLikePost={handleLikePost}
+            onAddComment={handleAddComment}
             onNavigateToExpenses={() => {
               setShowProfileModal(false);
               setSelectedProfileUser(null);
