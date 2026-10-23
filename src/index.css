@@ -101,8 +101,9 @@
     display: none !important;
   }
 
-  /* 2. Unhide and format the printable report modal */
-  #printable-report-backdrop {
+  /* 2. Unhide and format printable modals (Audit Report & Digital Magazine) */
+  #printable-report-backdrop,
+  #tour-scrapbook-backdrop {
     position: static !important;
     display: block !important;
     background: transparent !important;
@@ -116,7 +117,8 @@
     z-index: 9999 !important;
   }
 
-  #printable-report-modal {
+  #printable-report-modal,
+  #tour-scrapbook-modal {
     position: static !important;
     display: block !important;
     width: 100% !important;
@@ -128,15 +130,25 @@
     border: none !important;
     box-shadow: none !important;
     background: #ffffff !important;
+    color: #0f172a !important;
     overflow: visible !important;
     border-radius: 0 !important;
   }
 
-  #printable-report-content {
+  #printable-report-content,
+  #tour-scrapbook-content {
     overflow: visible !important;
     max-height: none !important;
     padding: 0 !important;
     margin: 0 !important;
+  }
+
+  /* Prevent page-break splits inside important card elements */
+  .break-inside-avoid,
+  .print\:break-inside-avoid,
+  [data-page-break-avoid] {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   /* 3. Table printing formatting */

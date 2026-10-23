@@ -4,6 +4,7 @@ import { FUND_LABEL, categoryTotals, computeLedger } from '../utils/ledger';
 import { csvRow } from '../utils/csv';
 import { localISODate } from '../utils/date';
 import { resolvePayerName } from '../utils/syncHelpers';
+import { printDocument, downloadOrShareTextFile } from '../utils/printHelper';
 
 export default function PrintableReport({
   tourInfo = {},
@@ -32,7 +33,7 @@ export default function PrintableReport({
   }, [onClose]);
 
   // COMPLETE & FLAWLESS UTF-8 CSV EXPORT (With BOM so Excel renders Bangla perfectly)
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     const rows = [];
     const line = (...values) => rows.push(csvRow(values));
     const section = (title) => {
@@ -85,12 +86,17 @@ export default function PrintableReport({
 
     const csv = rows.join('\n') + '\n';
 
-    // Prepend UTF-8 BOM ('\uFEFF') so Microsoft Excel and Windows apps display Bangla 100% cleanly!
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `CoxsBazar_Tour2026_Complete_Audit_${localISODate()}.csv`;
-    link.click();
+    const content = '\uFEFF' + csv;
+    const fileName = `CoxsBazar_Tour2026_Complete_Audit_${localISODate()}.csv`;
+    await downloadOrShareTextFile({
+      fileName,
+      content,
+      mimeType: 'text/csv',
+    });
+  };
+
+  const handlePrint = async () => {
+    await printDocument({ name: `CoxsBazar_Tour2026_Audit_${localISODate()}` });
   };
 
   return (
@@ -128,7 +134,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
             </button>
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={handlePrint}
               className="px-3.5 py-1.5 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
               title="কেবল এই রিপোর্টটি প্রিন্ট বা PDF হিসেবে সেভ করুন"
             >
@@ -301,7 +307,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
             </button>
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={handlePrint}
               className="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-sm active:scale-95"
             >
               <Printer size={15} /> প্রিন্ট / PDF সংরক্ষণ

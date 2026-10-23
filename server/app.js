@@ -522,12 +522,12 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
           return;
         }
         let versionData = {
-          versionCode: 28,
-          versionName: '2.28',
+          versionCode: 29,
+          versionName: '2.29',
           minVersionCode: 1,
-          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v28.apk',
+          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v29.apk',
           apkSize: '8.2 MB',
-          releaseNotes: 'নতুন আপডেট v2.9: PWA আইকন ও হোমস্ক্রিন মাস্কিং আপডেট, গেমিং জোনে লাইভ রিঅ্যাকশন মেনু এবং ফ্লোটিং ডায়ালগ বাবল ফিক্স।',
+          releaseNotes: 'আপডেট v2.29: অডিট শিট ও ডিজিটাল ম্যাগাজিনের নেটিভ অ্যান্ড্রয়েড প্রিন্ট ও পিডিএফ ডাউনলোড ফিক্স।',
           releasedAt: '2026-10-19T01:45:00Z',
           forceUpdate: false,
         };

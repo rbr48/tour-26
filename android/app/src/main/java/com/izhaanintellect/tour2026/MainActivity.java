@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(AppUpdatePlugin.class);
+        registerPlugin(NativePrintPlugin.class);
         super.onCreate(savedInstanceState);
         createNotificationChannel();
         customizeNativeWebView();

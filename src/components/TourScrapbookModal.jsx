@@ -1,5 +1,7 @@
 import React, { useRef } from 'react';
 import { triggerHaptic } from '../utils/haptics';
+import { printDocument } from '../utils/printHelper';
+import { resolveMediaUrl } from '../utils/videoHelper';
 import {
   Award,
   BookOpen,
@@ -36,14 +38,14 @@ export default function TourScrapbookModal({
   const photosWithImages = posts.filter((p) => p.thumb || p.fullUrl || p.mediaUrl);
   const samplePhotos = photosWithImages.slice(0, 8);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     triggerHaptic('medium');
-    window.print();
+    await printDocument({ name: 'Tour2026_Family_Scrapbook_Magazine' });
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in print:p-0 print:bg-white print:fixed print:inset-0">
-      <div className="bg-slate-900 border border-slate-800 w-full max-w-3xl max-h-[92vh] print:max-h-none print:h-auto print:border-none print:bg-white print:text-black rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-100 animate-slide-up">
+    <div id="tour-scrapbook-backdrop" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in print:p-0 print:bg-white print:static print:overflow-visible">
+      <div id="tour-scrapbook-modal" className="bg-slate-900 border border-slate-800 w-full max-w-3xl max-h-[92vh] print:max-h-none print:h-auto print:border-none print:bg-white print:text-black rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-100 animate-slide-up">
         {/* Header - Screen Only */}
         <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-600 via-rose-700 to-indigo-800 text-white flex items-center justify-between shrink-0 shadow-md print:hidden">
           <div className="flex items-center gap-3">
@@ -84,7 +86,7 @@ export default function TourScrapbookModal({
         {/* Printable & Scrollable Magazine Content */}
         <div
           ref={contentRef}
-          className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6 print:p-6 print:overflow-visible print:space-y-6"
+          id="tour-scrapbook-content" className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6 print:p-6 print:overflow-visible print:space-y-6"
         >
           {/* Magazine Cover Section */}
           <div className="text-center py-6 sm:py-8 border-b border-slate-800 print:border-black/20 bg-gradient-to-b from-amber-500/10 via-transparent to-transparent rounded-3xl p-4">
@@ -117,7 +119,7 @@ export default function TourScrapbookModal({
               <span>ট্যুরের পরিসংখ্যান ও অর্জন</span>
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-slate-800/60 print:bg-gray-100 border border-slate-700/60 print:border-gray-300 rounded-2xl p-3.5 text-center">
+              <div className="bg-slate-800/60 print:bg-gray-100 border border-slate-700/60 print:border-gray-300 rounded-2xl p-3.5 text-center break-inside-avoid print:break-inside-avoid">
                 <div className="text-xl sm:text-2xl font-black text-amber-400 print:text-amber-800">
                   {toBn(820)} কিমি
                 </div>
@@ -126,7 +128,7 @@ export default function TourScrapbookModal({
                 </div>
               </div>
 
-              <div className="bg-slate-800/60 print:bg-gray-100 border border-slate-700/60 print:border-gray-300 rounded-2xl p-3.5 text-center">
+              <div className="bg-slate-800/60 print:bg-gray-100 border border-slate-700/60 print:border-gray-300 rounded-2xl p-3.5 text-center break-inside-avoid print:break-inside-avoid">
                 <div className="text-xl sm:text-2xl font-black text-teal-400 print:text-teal-800">
                   {toBn(members.length)} জন
                 </div>
@@ -135,7 +137,7 @@ export default function TourScrapbookModal({
                 </div>
               </div>
 
-              <div className="bg-slate-800/60 print:bg-gray-100 border border-slate-700/60 print:border-gray-300 rounded-2xl p-3.5 text-center">
+              <div className="bg-slate-800/60 print:bg-gray-100 border border-slate-700/60 print:border-gray-300 rounded-2xl p-3.5 text-center break-inside-avoid print:break-inside-avoid">
                 <div className="text-xl sm:text-2xl font-black text-rose-400 print:text-rose-800">
                   {toBn(photosWithImages.length)} টি
                 </div>
@@ -144,7 +146,7 @@ export default function TourScrapbookModal({
                 </div>
               </div>
 
-              <div className="bg-slate-800/60 print:bg-gray-100 border border-slate-700/60 print:border-gray-300 rounded-2xl p-3.5 text-center">
+              <div className="bg-slate-800/60 print:bg-gray-100 border border-slate-700/60 print:border-gray-300 rounded-2xl p-3.5 text-center break-inside-avoid print:break-inside-avoid">
                 <div className="text-xl sm:text-2xl font-black text-indigo-400 print:text-indigo-800">
                   ৬ দিন ৫ রাত
                 </div>
@@ -166,11 +168,11 @@ export default function TourScrapbookModal({
                 {samplePhotos.map((p, idx) => (
                   <div
                     key={p.id || idx}
-                    className="bg-slate-800/80 print:bg-gray-50 border border-slate-700 print:border-gray-300 rounded-xl overflow-hidden shadow-sm"
+                    className="bg-slate-800/80 print:bg-gray-50 border border-slate-700 print:border-gray-300 rounded-xl overflow-hidden shadow-sm break-inside-avoid print:break-inside-avoid"
                   >
                     <div className="aspect-square bg-slate-900 overflow-hidden">
                       <img
-                        src={p.thumb || p.fullUrl || p.mediaUrl}
+                        src={resolveMediaUrl(p.thumb || p.fullUrl || p.mediaUrl, p.driveFileId)}
                         alt={p.caption || 'ট্যুর ছবি'}
                         className="w-full h-full object-cover"
                         loading="lazy"
@@ -197,7 +199,7 @@ export default function TourScrapbookModal({
               {members.map((m, idx) => (
                 <div
                   key={m.id || idx}
-                  className="bg-slate-800/40 print:bg-white border border-slate-700/60 print:border-gray-200 rounded-xl p-2.5 flex items-center justify-between"
+                  className="bg-slate-800/40 print:bg-white border border-slate-700/60 print:border-gray-200 rounded-xl p-2.5 flex items-center justify-between break-inside-avoid print:break-inside-avoid"
                 >
                   <div className="flex items-center gap-2">
                     <span className="w-6 h-6 rounded-full bg-slate-700 print:bg-gray-200 flex items-center justify-center text-[10px] font-bold text-slate-300 print:text-gray-700">
