@@ -537,10 +537,10 @@ const ALLOWED_MEDIA_EXTENSIONS = new Set([
           return;
         }
         let versionData = {
-          versionCode: 31,
-          versionName: '2.31',
+          versionCode: 32,
+          versionName: '2.32',
           minVersionCode: 1,
-          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v31.apk',
+          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v32.apk',
           apkSize: '8.2 MB',
           releaseNotes: 'আপডেট v2.31: ফায়ারস্টোর ও সার্ভার নিরাপত্তা হার্ডেনিং, লেজার আইডি নরমালাইজেশন, ইনডেক্সড-ডিবি ভিডিও ক্যাশ ও রিঅ্যাক্ট লাইফসাইকেল অপ্টিমাইজেশন।',
           releasedAt: '2026-10-19T01:45:00Z',

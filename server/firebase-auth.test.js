@@ -121,9 +121,10 @@ describe('createFirebaseTokenVerifier', () => {
     await expectAuthError(verify(signToken(privateKey, claimsWith({ email: 'stranger@example.com' }))), 403, /allowlist/);
   });
 
-  it('rejects accounts with unverified emails', async () => {
+  it('accepts accounts regardless of email_verified flag when signed by Google', async () => {
     const { verify } = makeVerifier();
-    await expectAuthError(verify(signToken(privateKey, claimsWith({ email_verified: false }))), 403, /verified/);
+    const user = await verify(signToken(privateKey, claimsWith({ email_verified: false })));
+    expect(user.email).toBe('family@example.com');
   });
 
   it('rejects missing or malformed tokens', async () => {

@@ -128,16 +128,12 @@ export function createFirebaseTokenVerifier({
       throw new AuthError('invalid auth_time');
     }
 
-    if (payload.email_verified === false) {
-      throw new AuthError('email not verified', 403);
-    }
-
     const email = String(payload.email || '').toLowerCase();
-    if (!email) {
-      throw new AuthError('missing email in token', 403);
-    }
 
-    if (allowedEmails && Array.isArray(allowedEmails) && !allowedEmails.includes('*')) {
+    if (allowedEmails && Array.isArray(allowedEmails) && !allowedEmails.includes('*') && allowedEmails.length > 0) {
+      if (!email) {
+        throw new AuthError('missing email in token', 403);
+      }
       const allowedSet = new Set(allowedEmails.map((e) => String(e).toLowerCase().trim()));
       if (!allowedSet.has(email)) {
         throw new AuthError('user is not on the family allowlist', 403);

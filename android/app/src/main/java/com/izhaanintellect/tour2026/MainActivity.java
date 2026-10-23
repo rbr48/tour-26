@@ -65,7 +65,7 @@ public class MainActivity extends BridgeActivity {
 
             // Essential for Reels and HTML5 video playback in native Android
             settings.setMediaPlaybackRequiresUserGesture(false);
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
             settings.setAllowFileAccess(true);
             settings.setAllowContentAccess(true);
 
