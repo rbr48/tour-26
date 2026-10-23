@@ -1790,7 +1790,7 @@ export default function UserProfileModal({
                 <button
                   type="button"
                   onClick={() => {
-                    const shareUrl = window.location.origin;
+                    const shareUrl = getPublicAppOrigin();
                     if (navigator.clipboard) {
                       navigator.clipboard.writeText(shareUrl);
                       setCopiedLink(true);

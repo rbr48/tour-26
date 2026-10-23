@@ -7,6 +7,8 @@ import {
   resolveMediaUrl,
   getDriveEmbedUrl,
   PRODUCTION_ORIGIN,
+  getPublicAppOrigin,
+  getShareableUrl,
 } from './videoHelper';
 
 describe('videoHelper', () => {
@@ -114,6 +116,37 @@ describe('videoHelper', () => {
     it('returns null if not a drive url and no driveFileId provided', () => {
       expect(getDriveEmbedUrl('/uploads/reel.mp4')).toBeNull();
       expect(getDriveEmbedUrl(null)).toBeNull();
+    });
+  });
+
+  describe('getPublicAppOrigin', () => {
+    it('returns the production origin if on localhost or Android native', () => {
+      const origin = getPublicAppOrigin();
+      expect(origin).toBe('https://tour2026.izhaanintellect.fun');
+    });
+  });
+
+  describe('getShareableUrl', () => {
+    it('creates standard feed tab url when no ids given', () => {
+      expect(getShareableUrl()).toBe('https://tour2026.izhaanintellect.fun/#feed');
+    });
+
+    it('creates deep link url for posts with ?post= query', () => {
+      expect(getShareableUrl({ tab: 'feed', postId: 'post_123' })).toBe(
+        'https://tour2026.izhaanintellect.fun/#feed?post=post_123'
+      );
+    });
+
+    it('creates deep link url for reels with ?reel= query', () => {
+      expect(getShareableUrl({ tab: 'feed', reelId: 'reel_456' })).toBe(
+        'https://tour2026.izhaanintellect.fun/#feed?reel=reel_456'
+      );
+    });
+
+    it('properly encodes special characters in IDs', () => {
+      expect(getShareableUrl({ tab: 'feed', postId: 'item 123&foo=bar' })).toBe(
+        'https://tour2026.izhaanintellect.fun/#feed?post=item%20123%26foo%3Dbar'
+      );
     });
   });
 });

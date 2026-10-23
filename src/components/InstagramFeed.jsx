@@ -53,7 +53,7 @@ import InstagramCommentSheet from './InstagramCommentSheet';
 import InstagramPostCard from './InstagramPostCard';
 import UserAvatar from './UserAvatar';
 import { triggerHaptic } from '../utils/haptics';
-import { formatDuration, PRODUCTION_ORIGIN, resolveMediaUrl } from '../utils/videoHelper';
+import { formatDuration, PRODUCTION_ORIGIN, resolveMediaUrl, getShareableUrl, getPublicAppOrigin } from '../utils/videoHelper';
 import { saveLocalVideo } from '../utils/localVideoCache';
 import { uploadReelVideo, uploadMedia } from '../utils/reelUploader';
 import { uploadWithQueue } from '../utils/uploadQueue';
@@ -412,7 +412,7 @@ export default function InstagramFeed({
       author: authorName,
       senderEmail: (currentUser?.email || '').toLowerCase() || 'member@tour.family',
       userPhoto: typeof profilePhoto === 'string' && !profilePhoto.startsWith('data:') ? profilePhoto : (currentUser?.photoURL || null),
-      text: `📸 [ইনস্টাফিড শেয়ার]\n${post.author}: "${post.caption || 'আনন্দঘন স্মৃতি'}"\n📍 ${post.location || 'কক্সবাজার'}\n\n👉 ফিডে দেখুন: ${window.location.origin}/#feed`,
+      text: `📸 [ইনস্টাফিড শেয়ার]\n${post.author}: "${post.caption || 'আনন্দঘন স্মৃতি'}"\n📍 ${post.location || 'কক্সবাজার'}\n\n👉 ফিডে দেখুন: ${getShareableUrl({ tab: 'feed', postId: post.id })}`,
       photoUrl: media || null,
       time: new Date().toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' }),
       timestamp: Date.now(),
@@ -1221,6 +1221,44 @@ export default function InstagramFeed({
 
   const filteredReelPosts = filteredPosts.filter(isPostReel);
   const filteredPhotoPosts = filteredPosts.filter((p) => !isPostReel(p));
+
+  // Auto-scroll to Post if URL has ?post=<id> (from deep-link or shared post)
+  useEffect(() => {
+    if (!posts || posts.length === 0) return;
+
+    const getPostIdFromUrl = () => {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        if (searchParams.get('post')) return searchParams.get('post');
+
+        const hash = window.location.hash || '';
+        const qIdx = hash.indexOf('?');
+        if (qIdx !== -1) {
+          const hashParams = new URLSearchParams(hash.slice(qIdx));
+          if (hashParams.get('post')) return hashParams.get('post');
+        }
+      } catch (err) {
+        console.warn('Error reading post ID from URL:', err);
+      }
+      return null;
+    };
+
+    const targetPostId = getPostIdFromUrl();
+    if (!targetPostId) return;
+
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`post-${targetPostId}`) || document.querySelector(`[data-post-id="${targetPostId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-2', 'ring-teal-500', 'ring-offset-2', 'transition-all', 'duration-500');
+        setTimeout(() => {
+          el.classList.remove('ring-2', 'ring-teal-500', 'ring-offset-2');
+        }, 3000);
+      }
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [posts]);
 
   // Auto-open Reel if URL has ?reel=<id> (from deep-link or shared reel)
   useEffect(() => {
@@ -3245,7 +3283,8 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                     type="button"
                     onClick={() => {
                       triggerHaptic('light');
-                      const shareText = `রংপুর ➔ কক্সবাজার ট্যুর ২০২৬\n${shareModalPost.author}: "${shareModalPost.caption || 'আনন্দঘন মুহূর্ত'}"\n📍 ${shareModalPost.location || 'কক্সবাজার'}\n\n👉 ফিডে দেখুন: ${window.location.origin}/#feed`;
+                      const shareUrl = getShareableUrl({ tab: 'feed', postId: shareModalPost.id });
+                      const shareText = `রংপুর ➔ কক্সবাজার ট্যুর ২০২৬\n${shareModalPost.author}: "${shareModalPost.caption || 'আনন্দঘন মুহূর্ত'}"\n📍 ${shareModalPost.location || 'কক্সবাজার'}\n\n👉 ফিডে দেখুন: ${shareUrl}`;
                       window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank');
                     }}
                     className="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
@@ -3263,12 +3302,12 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                           await navigator.share({
                             title: 'কক্সবাজার ট্যুর ২০২৬',
                             text: shareText,
-                            url: `${window.location.origin}/#feed`,
+                            url: getShareableUrl({ tab: 'feed', postId: shareModalPost.id }),
                           });
                         } catch {}
                       } else {
                         try {
-                          await navigator.clipboard.writeText(`${shareText}\n${window.location.origin}/#feed`);
+                          await navigator.clipboard.writeText(`${shareText}\n${getShareableUrl({ tab: 'feed', postId: shareModalPost.id })}`);
                           setShareFeedback('✓ লিঙ্ক ক্লিপবোর্ডে কপি হয়েছে!');
                           setTimeout(() => setShareFeedback(''), 2000);
                         } catch {}

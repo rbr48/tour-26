@@ -10,6 +10,45 @@ export const MAX_REEL_DURATION = 180; // 3 minutes in seconds
 export const PRODUCTION_ORIGIN = 'https://tour2026.izhaanintellect.fun';
 
 /**
+ * Resolves the public web origin for external sharing (WhatsApp, Web Share API, Clipboard, Discord).
+ * In native Capacitor or localhost environments, window.location.origin is 'https://localhost',
+ * which cannot be opened by other users or external apps.
+ * This guarantees all shared links always point to the live production web app.
+ */
+export function getPublicAppOrigin() {
+  if (typeof window === 'undefined') return PRODUCTION_ORIGIN;
+  if (Capacitor.isNativePlatform()) return PRODUCTION_ORIGIN;
+  const origin = window.location?.origin;
+  if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+    return PRODUCTION_ORIGIN;
+  }
+  return origin;
+}
+
+/**
+ * Constructs a deep-link shareable URL for a post, reel, or specific tab.
+ * Ensures the generated URL is universally accessible across devices and platforms.
+ *
+ * Examples:
+ *   getShareableUrl({ tab: 'feed', postId: '1792694581788_yarbm' })
+ *   -> 'https://tour2026.izhaanintellect.fun/#feed?post=1792694581788_yarbm'
+ *
+ *   getShareableUrl({ tab: 'feed', reelId: 'reel_123' })
+ *   -> 'https://tour2026.izhaanintellect.fun/#feed?reel=reel_123'
+ *
+ *   getShareableUrl({ tab: 'feed' })
+ *   -> 'https://tour2026.izhaanintellect.fun/#feed'
+ */
+export function getShareableUrl({ tab = 'feed', postId = null, reelId = null } = {}) {
+  const base = getPublicAppOrigin();
+  const params = [];
+  if (postId) params.push(`post=${encodeURIComponent(postId)}`);
+  if (reelId) params.push(`reel=${encodeURIComponent(reelId)}`);
+  const query = params.length > 0 ? `?${params.join('&')}` : '';
+  return `${base}/#${tab}${query}`;
+}
+
+/**
  * Resolves a video or media URL for both Web and native Capacitor Android.
  * In native Capacitor, relative URLs like '/uploads/xyz.mp4' must be resolved
  * against the production host, otherwise the WebView attempts to look up 'https://localhost/uploads/xyz.mp4'

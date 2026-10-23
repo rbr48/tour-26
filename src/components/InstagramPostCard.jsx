@@ -25,7 +25,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { triggerHaptic } from '../utils/haptics';
-import { formatDuration, resolveMediaUrl } from '../utils/videoHelper';
+import { formatDuration, resolveMediaUrl, getShareableUrl } from '../utils/videoHelper';
 import { resolveCommenterName } from '../utils/members';
 import { getTourDayById, getPostTourDay } from '../utils/tourSchedule';
 import UserAvatar from './UserAvatar';
@@ -223,6 +223,7 @@ export default function InstagramPostCard({
   return (
     <article
       ref={cardRef}
+      id={`post-${post.id}`}
       data-post-id={post.id}
       className="bg-white border-b border-slate-200/90 sm:border sm:rounded-2xl sm:shadow-2xs overflow-hidden max-w-[470px] mx-auto select-none"
     >
@@ -719,7 +720,7 @@ export default function InstagramPostCard({
             </button>
 
             <a
-              href={`https://wa.me/?text=${encodeURIComponent(`📸 *কক্সবাজার ট্যুর ২০২৬*\n${post.author}: "${post.caption || 'পারিবারিক আনন্দঘন মুহূর্ত'}"\n📍 ${post.location || 'কক্সবাজার'}\n\n👉 দেখুন: ${window.location.origin}/#feed`)}`}
+              href={`https://wa.me/?text=${encodeURIComponent(`📸 *কক্সবাজার ট্যুর ২০২৬*\n${post.author}: "${post.caption || 'পারিবারিক আনন্দঘন মুহূর্ত'}"\n📍 ${post.location || 'কক্সবাজার'}\n\n👉 দেখুন: ${getShareableUrl({ tab: 'feed', postId: post.id })}`)}`}
               target="_blank"
               rel="noreferrer"
               onClick={() => setShowOptionsMenu(false)}
