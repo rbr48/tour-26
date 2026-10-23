@@ -180,5 +180,20 @@ describe('Reels Tiered Storage System', () => {
       fs.rmdirSync(chunkDir);
       expect(fs.existsSync(chunkDir)).toBe(false);
     });
+
+    it('cleans up stale chunk directories older than threshold', async () => {
+      const registry = createReelsRegistry(tmpDir);
+      const archiver = createReelsArchiver({ dataDir: tmpDir, registry });
+      const staleDir = path.join(uploadsDir, 'chunks_stale_123');
+      fs.mkdirSync(staleDir, { recursive: true });
+      fs.writeFileSync(path.join(staleDir, 'part_00000'), 'abandoned');
+
+      // Set mtime to 3 hours ago
+      const threeHoursAgo = new Date(Date.now() - 3 * 3600 * 1000);
+      fs.utimesSync(staleDir, threeHoursAgo, threeHoursAgo);
+
+      await archiver.archiveExpiredReels();
+      expect(fs.existsSync(staleDir)).toBe(false);
+    });
   });
 });

@@ -241,6 +241,7 @@ export default function InstagramFeed({
 
   // Deduplicated view tracker per session
   const viewedPostsRef = useRef(new Set());
+  const draftReelPostIdRef = useRef(null);
 
   const recordPostView = (postId) => {
     if (!postId || !onViewPost) return;
@@ -901,7 +902,10 @@ export default function InstagramFeed({
       setPostError('');
 
       const postCaption = caption || 'রংপুর ➔ কক্সবাজার ফ্যামিলি ট্যুর ২০২৬ এর আনন্দঘন রিলস! 🏖️🎬';
-      const postId = newId();
+      if (!draftReelPostIdRef.current) {
+        draftReelPostIdRef.current = String(newId());
+      }
+      const postId = draftReelPostIdRef.current;
       const profilePhoto = currentProfile?.customPhotoURL;
 
       const finalTourDay = selectedTourDay === 'auto' ? getCurrentTourDay().id : selectedTourDay;
@@ -1011,6 +1015,7 @@ export default function InstagramFeed({
 
       // Save post to Firestore
       onAddPost(newReelPost);
+      draftReelPostIdRef.current = null;
       setCaption('');
       setTrimmedReelData(null);
       setVideoSourceForTrimmer(null);
@@ -2853,7 +2858,7 @@ onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.click(); }}
                       <span className="flex items-center gap-1.5">
                         <Loader2 size={13} className="animate-spin text-pink-600" />
                         {reelUploadProgress?.stage === 'processing'
-                          ? 'সার্ভারে কমপ্রেস ও অপ্টিমাইজ করা হচ্ছে...'
+                          ? 'সার্ভারে ভিডিও প্রসেসিং ও অপটিমাইজেশন চলছে...'
                           : `ভিডিও সার্ভারে আপলোড হচ্ছে... (${toBnNum(reelUploadProgress?.percent || 0)}%)`}
                       </span>
                       <span className="font-mono text-pink-700">{toBnNum(reelUploadProgress?.percent || 0)}%</span>

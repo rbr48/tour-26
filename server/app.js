@@ -59,6 +59,29 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
   const serveStatic = createStaticHandler(config.distDir, path.join(config.dataDir, 'uploads'), registry);
   const allowedOrigins = new Set(config.allowedOrigins);
 
+  const activeAssemblies = new Map();
+  const completedUploads = new Map();
+
+  function getCompletedUpload(uploadId) {
+    if (!uploadId) return null;
+    const item = completedUploads.get(uploadId);
+    if (!item) return null;
+    if (Date.now() - item.timestamp > 3600000) {
+      completedUploads.delete(uploadId);
+      return null;
+    }
+    return item.result;
+  }
+
+  function setCompletedUpload(uploadId, result) {
+    if (!uploadId) return;
+    completedUploads.set(uploadId, { result, timestamp: Date.now() });
+    if (completedUploads.size > 200) {
+      const oldest = completedUploads.keys().next().value;
+      completedUploads.delete(oldest);
+    }
+  }
+
   // Start background cron check for 7-day retention
   archiver.startSchedule();
 
@@ -287,6 +310,18 @@ const ALLOWED_MEDIA_EXTENSIONS = new Set([
           sendJson(res, 400, { error: 'uploadId parameter required' }, headers);
           return;
         }
+
+        const completed = getCompletedUpload(uploadId);
+        if (completed) {
+          sendJson(res, 200, { success: true, uploadId, completed: true, result: completed }, headers);
+          return;
+        }
+
+        if (activeAssemblies.has(uploadId)) {
+          sendJson(res, 200, { success: true, uploadId, assembling: true, chunks: [] }, headers);
+          return;
+        }
+
         const chunkDir = path.join(uploadsDir, 'chunks_' + uploadId);
         if (!fs.existsSync(chunkDir)) {
           sendJson(res, 200, { success: true, uploadId, chunks: [], exists: false }, headers);
@@ -332,6 +367,26 @@ const ALLOWED_MEDIA_EXTENSIONS = new Set([
           fs.mkdirSync(chunkDir, { recursive: true });
         }
 
+        // 1. If this upload already finished assembling, return the completed result immediately
+        const alreadyDone = getCompletedUpload(uploadId);
+        if (alreadyDone) {
+          req.resume();
+          sendJson(res, 200, alreadyDone, headers);
+          return;
+        }
+
+        // 2. If assembly is already in progress, wait for it and return the result
+        if (activeAssemblies.has(uploadId)) {
+          req.resume();
+          try {
+            const assembledResult = await activeAssemblies.get(uploadId);
+            sendJson(res, 200, assembledResult, headers);
+          } catch (assemblyErr) {
+            sendJson(res, 500, { error: assemblyErr?.message || 'Video assembly failed' }, headers);
+          }
+          return;
+        }
+
         const chunkPath = path.join(chunkDir, `part_${String(chunkIndex).padStart(5, '0')}`);
         await pipeline(req, fs.createWriteStream(chunkPath));
 
@@ -346,7 +401,22 @@ const ALLOWED_MEDIA_EXTENSIONS = new Set([
           return;
         }
 
-        // Final chunk: assemble all parts in numerical order
+        // Final chunk arrived: check again if assembly was started concurrently
+        if (getCompletedUpload(uploadId)) {
+          sendJson(res, 200, getCompletedUpload(uploadId), headers);
+          return;
+        }
+        if (activeAssemblies.has(uploadId)) {
+          try {
+            const assembledResult = await activeAssemblies.get(uploadId);
+            sendJson(res, 200, assembledResult, headers);
+          } catch (assemblyErr) {
+            sendJson(res, 500, { error: assemblyErr?.message || 'Video assembly failed' }, headers);
+          }
+          return;
+        }
+
+        // Assemble all parts in numerical order
         const chunkFiles = [];
         for (let i = 0; i < totalChunks; i++) {
           const expected = path.join(chunkDir, `part_${String(i).padStart(5, '0')}`);
@@ -357,64 +427,81 @@ const ALLOWED_MEDIA_EXTENSIONS = new Set([
           chunkFiles.push(expected);
         }
 
-        const isImage = /\.(jpg|jpeg|png|webp|gif|heic)$/i.test(clientName);
-        const prefix = isImage ? 'photo_' : 'reel_';
-        const ext = path.extname(clientName) || (isImage ? '.jpg' : '.mp4');
-        const randomSuffix = Math.random().toString(36).slice(2, 8);
-        const safeName = `${prefix}${Date.now()}_${randomSuffix}${ext}`;
-        const rawName = `raw_${Date.now()}_${randomSuffix}${ext}`;
-        const rawPath = path.join(uploadsDir, rawName);
-        const targetPath = path.join(uploadsDir, safeName);
+        const assemblyPromise = (async () => {
+          try {
+            const isImage = /\.(jpg|jpeg|png|webp|gif|heic)$/i.test(clientName);
+            const prefix = isImage ? 'photo_' : 'reel_';
+            const ext = path.extname(clientName) || (isImage ? '.jpg' : '.mp4');
+            const randomSuffix = Math.random().toString(36).slice(2, 8);
+            const safeName = `${prefix}${Date.now()}_${randomSuffix}${ext}`;
+            const rawName = `raw_${Date.now()}_${randomSuffix}${ext}`;
+            const rawPath = path.join(uploadsDir, rawName);
+            const targetPath = path.join(uploadsDir, safeName);
 
-        const destStream = fs.createWriteStream(isImage ? targetPath : rawPath);
-        for (const cf of chunkFiles) {
-          const chunkData = await fs.promises.readFile(cf);
-          destStream.write(chunkData);
+            const destStream = fs.createWriteStream(isImage ? targetPath : rawPath);
+            for (const cf of chunkFiles) {
+              const chunkData = await fs.promises.readFile(cf);
+              destStream.write(chunkData);
+            }
+            await new Promise((resolve, reject) => {
+              destStream.end((err) => (err ? reject(err) : resolve()));
+            });
+
+            // Clean up temporary chunks
+            for (const cf of chunkFiles) {
+              await fs.promises.unlink(cf).catch(() => {});
+            }
+            await fs.promises.rmdir(chunkDir).catch(() => {});
+
+            if (isImage) {
+              const imgSize = fs.existsSync(targetPath) ? fs.statSync(targetPath).size : 0;
+              const result = {
+                success: true,
+                url: `/uploads/${safeName}`,
+                fileName: safeName,
+                type: 'image',
+                size: imgSize,
+              };
+              setCompletedUpload(uploadId, result);
+              return result;
+            }
+
+            // Compress video to 720p H.264
+            const compResult = await compressVideo(rawPath, targetPath);
+
+            // Register in retention tracker
+            registry.addReel({
+              id: safeName,
+              fileName: safeName,
+              postId,
+              originalSize: compResult.originalSize,
+              compressedSize: compResult.compressedSize,
+              uploadedAt: Date.now(),
+            });
+
+            const result = {
+              success: true,
+              url: `/uploads/${safeName}`,
+              fileName: safeName,
+              type: 'video',
+              compressed: compResult.compressed,
+              originalSize: compResult.originalSize,
+              compressedSize: compResult.compressedSize,
+            };
+            setCompletedUpload(uploadId, result);
+            return result;
+          } finally {
+            activeAssemblies.delete(uploadId);
+          }
+        })();
+
+        activeAssemblies.set(uploadId, assemblyPromise);
+        try {
+          const result = await assemblyPromise;
+          sendJson(res, 200, result, headers);
+        } catch (assemblyErr) {
+          sendJson(res, 500, { error: assemblyErr?.message || 'Video assembly failed' }, headers);
         }
-        await new Promise((resolve, reject) => {
-          destStream.end((err) => (err ? reject(err) : resolve()));
-        });
-
-        // Clean up temporary chunks
-        for (const cf of chunkFiles) {
-          await fs.promises.unlink(cf).catch(() => {});
-        }
-        await fs.promises.rmdir(chunkDir).catch(() => {});
-
-        if (isImage) {
-          const imgSize = fs.existsSync(targetPath) ? fs.statSync(targetPath).size : 0;
-          sendJson(res, 200, {
-            success: true,
-            url: `/uploads/${safeName}`,
-            fileName: safeName,
-            type: 'image',
-            size: imgSize,
-          }, headers);
-          return;
-        }
-
-        // Compress video to 720p H.264
-        const compResult = await compressVideo(rawPath, targetPath);
-
-        // Register in retention tracker
-        registry.addReel({
-          id: safeName,
-          fileName: safeName,
-          postId,
-          originalSize: compResult.originalSize,
-          compressedSize: compResult.compressedSize,
-          uploadedAt: Date.now(),
-        });
-
-        sendJson(res, 200, {
-          success: true,
-          url: `/uploads/${safeName}`,
-          fileName: safeName,
-          type: 'video',
-          compressed: compResult.compressed,
-          originalSize: compResult.originalSize,
-          compressedSize: compResult.compressedSize,
-        }, headers);
         return;
       }
 
@@ -537,8 +624,8 @@ const ALLOWED_MEDIA_EXTENSIONS = new Set([
           return;
         }
         let versionData = {
-          versionCode: 32,
-          versionName: '2.32',
+          versionCode: 33,
+          versionName: '2.33',
           minVersionCode: 1,
           apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v32.apk',
           apkSize: '8.2 MB',

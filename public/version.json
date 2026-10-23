@@ -1,10 +1,10 @@
 {
-  "versionCode": 32,
-  "versionName": "2.32",
+  "versionCode": 33,
+  "versionName": "2.33",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v32.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v33.apk",
   "apkSize": "8.9 MB",
-  "releaseNotes": "আপডেট v2.32: মিডিয়া আপলোড ও ইনস্টাফিড পোস্ট অনুমতি পারমিশন ফিক্স এবং অ্যান্ড্রয়েড নেটিভ ওয়েবভিউ মিডিয়া সেটিংস রিস্টোরেশন।",
-  "releasedAt": "2026-10-23T03:54:00.000Z",
+  "releaseNotes": "আপডেট v2.33: বড় রিলস ভিডিও আপলোড ও সার্ভার এসেম্বলি বাফারলেস রেস-কন্ডিশন ফিক্স, ফাস্টার 720p কম্প্রেশন এবং নেটওয়ার্ক টাইমআউট রেজিলিয়েন্স।",
+  "releasedAt": "2026-10-23T11:15:00.000Z",
   "forceUpdate": false
 }

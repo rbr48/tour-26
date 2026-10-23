@@ -107,7 +107,7 @@ export async function uploadMedia(fileOrDataUrl, { postId, uploadId: customUploa
       new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', uploadApiUrl);
-        xhr.timeout = 40000;
+        xhr.timeout = 120000; // 120s for single upload <= 5MB
         if (authToken) xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
         xhr.setRequestHeader('X-File-Name', encodeURIComponent(resolvedFileName));
         if (postId) xhr.setRequestHeader('X-Post-Id', encodeURIComponent(postId));
@@ -169,7 +169,7 @@ export async function uploadMedia(fileOrDataUrl, { postId, uploadId: customUploa
 
   // Chunked upload for larger files
   const totalChunks = Math.ceil(totalSize / chunkSize);
-  const uploadId = customUploadId || `up_${postId || Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const uploadId = customUploadId || (postId ? `up_${postId}` : `up_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
 
   // Restore existing checkpoint if present
   let localCheckpoint = await getCheckpoint(uploadId);
@@ -221,7 +221,8 @@ export async function uploadMedia(fileOrDataUrl, { postId, uploadId: customUploa
         const chunkResult = await new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open('POST', uploadApiUrl);
-          xhr.timeout = 40000; // 40 seconds per chunk
+          // Final chunk triggers server assembly & 720p HD compression: allow 4 minutes. Intermediate: 2.5 minutes.
+          xhr.timeout = isFinalChunk ? 240000 : 150000;
           if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
           xhr.setRequestHeader('X-Upload-Id', encodeURIComponent(uploadId));
           xhr.setRequestHeader('X-Chunk-Index', String(chunkIndex));
@@ -260,6 +261,23 @@ export async function uploadMedia(fileOrDataUrl, { postId, uploadId: customUploa
                 reject(new Error('Invalid JSON: ' + err.message));
               }
             } else {
+              if (isFinalChunk) {
+                try {
+                  const checkUrl = `${uploadApiUrl}?uploadId=${encodeURIComponent(uploadId)}`;
+                  const checkRes = await fetch(checkUrl, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                  });
+                  if (checkRes.ok) {
+                    const checkData = await checkRes.json();
+                    if (checkData?.completed && checkData?.result?.url) {
+                      resolve(checkData.result);
+                      return;
+                    }
+                  }
+                } catch (checkErr) {
+                  console.warn('Could not verify server completion status:', checkErr);
+                }
+              }
               reject(new Error(`Server error (${xhr.status}): ${xhr.responseText || xhr.statusText}`));
             }
           };
@@ -288,6 +306,42 @@ export async function uploadMedia(fileOrDataUrl, { postId, uploadId: customUploa
           console.warn('Received 401 during chunk upload, requesting fresh token...');
           token = await getAuthToken(true);
         } else {
+          // If final chunk encountered network timeout or drop, check if server completed or is assembling
+          if (isFinalChunk) {
+            try {
+              const checkUrl = `${uploadApiUrl}?uploadId=${encodeURIComponent(uploadId)}`;
+              const checkRes = await fetch(checkUrl, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+              });
+              if (checkRes.ok) {
+                const checkData = await checkRes.json();
+                if (checkData?.completed && checkData?.result?.url) {
+                  uploadedBytes += (end - start);
+                  await removeCheckpoint(uploadId);
+                  return checkData.result;
+                }
+                // If the server is currently assembling in background, poll until completion
+                if (checkData?.assembling) {
+                  for (let p = 0; p < 15; p++) {
+                    await new Promise((r) => setTimeout(r, 4000));
+                    const pollRes = await fetch(checkUrl, {
+                      headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    });
+                    if (pollRes.ok) {
+                      const pollData = await pollRes.json();
+                      if (pollData?.completed && pollData?.result?.url) {
+                        uploadedBytes += (end - start);
+                        await removeCheckpoint(uploadId);
+                        return pollData.result;
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (pollErr) {
+              console.warn('Could not poll server completed status:', pollErr);
+            }
+          }
           // Exponential backoff
           await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempts - 1)));
         }

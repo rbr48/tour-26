@@ -121,6 +121,7 @@ export function createReelsArchiver({ dataDir, registry, webhookUrl = DEFAULT_WE
     }
 
     isRunning = false;
+    cleanStaleChunkDirs();
     return {
       status: 'completed',
       processed: expired.length,
@@ -128,6 +129,27 @@ export function createReelsArchiver({ dataDir, registry, webhookUrl = DEFAULT_WE
       failed: failedCount,
       results,
     };
+  }
+
+  function cleanStaleChunkDirs(maxAgeMs = 2 * 60 * 60 * 1000) {
+    if (!fs.existsSync(uploadsDir)) return;
+    try {
+      const entries = fs.readdirSync(uploadsDir);
+      const now = Date.now();
+      for (const entry of entries) {
+        if (!entry.startsWith('chunks_')) continue;
+        const dirPath = path.join(uploadsDir, entry);
+        try {
+          const stats = fs.statSync(dirPath);
+          if (stats.isDirectory() && now - stats.mtimeMs > maxAgeMs) {
+            fs.rmSync(dirPath, { recursive: true, force: true });
+            console.log(`[ReelsArchiver] Cleaned up stale chunks directory: ${entry}`);
+          }
+        } catch {}
+      }
+    } catch (err) {
+      console.warn('[ReelsArchiver] Error cleaning stale chunks:', err?.message);
+    }
   }
 
   function startSchedule(intervalMs = 6 * 60 * 60 * 1000) {
