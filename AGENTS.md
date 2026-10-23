@@ -1,90 +1,139 @@
 # Rangpur ➔ Cox's Bazar Tour 2026 — Agent Operational Memory & Guidelines
 
-## 1. Architecture
+## 1. Architecture & Tech Stack
 
 - **Web app**: Vite 8 + React 19 + Tailwind 4 (`src/`). Production output is `dist/`.
-- **Server**: `server.js` with modules in `server/`. It serves `dist/` and the backup API at `/api`. It runs in Docker (`Dockerfile`, `docker-compose.yml`, port `127.0.0.1:8190 → 3000`).
-- **Data**: Firestore project `tour-26` (`asia-south1`). The trip lives in `tours/coxsbazar2026`. Each list is a subcollection: `itinerary`, `members`, `expenses`, `checklist`, `notices`, `posts`, `channels/{general|food|sightseeing|emergency}/messages`, `locations/{email}`, `profiles/{email}`. Schema marker: `schemaVersion: 2`.
-- **Access**: Google sign-in only. Family allowlist: Firestore `config/access` with `emails` and `admins` (set in the Firebase console; family members can read it, nobody can change it from the app). The server has its own allowlist in the `ALLOWED_EMAILS` environment variable. Keep both lists in sync.
-- **Photos**: full-size copies go to the shared Drive folder through the Apps Script webhook. Firestore keeps only a 640px thumbnail per photo (`src/services/photos.js`). A photo post is saved only after its Drive upload succeeds.
-- **Money**: `src/utils/ledger.js` is the single source of truth (integer paisa; the fund is a party in the settlement). Do not re-implement it in components.
-- **Offline**: Firestore uses IndexedDB persistence. The service worker (`public/sw.js`) caches only the app shell, under a per-build cache name. It never caches `/api` or trip data.
-- **Native**: Capacitor 8 Android project in `android/`. Its release build is minified and not debuggable. APK downloads are served at `/Tour2026.apk`.
+- **Server**: Node.js HTTP server in `server.js` with modules in `server/`. It serves `dist/` and the authenticated API under `/api`. Runs in Docker container `tour2026-app` on VPS (`Dockerfile`, `docker-compose.yml`, internal port 3000 mapped to host 127.0.0.1:8190 behind Nginx/Cloudflare).
+- **Data (Firestore Asia-South1, project `tour-26`)**:
+  - The trip root document is `tours/coxsbazar2026`.
+  - Subcollections: `itinerary`, `members`, `expenses`, `checklist`, `notices`, `posts`, `channels/{general|food|sightseeing|emergency|plans}/messages`, `locations/{email}`, `profiles/{email}`.
+  - Schema marker: `schemaVersion: 2`.
+- **Access & Authentication**:
+  - Google sign-in only. Per project requirements, **any valid Google account can sign in and enjoy the app** (reading tour data, posting media, joining chats, recording locations, updating their profile).
+  - Administrative collections (`expenses`, `members`, `itinerary`, `checklist`, `notices`) are strictly restricted to admin (`rajbrur@gmail.com` and `config/access.admins`).
+  - **CRITICAL**: Never require `email_verified == true` or restrict `posts` by strict email allowlists in `firestore.rules` or `server/firebase-auth.js`. Mobile Android Google Sign-In tokens frequently omit or lag `email_verified`, which previously broke post creation (`সংরক্ষণ হয়নি: আপনার এই কাজটি করার অনুমতি নেই।`).
+- **Money**: `src/utils/ledger.js` is the single source of truth (integer paisa; the fund is a party in settlement). Unit tested in `src/utils/ledger.test.js`.
+- **Offline & Local-First**: IndexedDB persistence for Firestore. Service worker (`public/sw.js`) caches app shell only under a per-build cache name. Post creation offline queues to IndexedDB (`src/utils/offlineQueue.js`) and auto-drains upon reconnect.
+- **Native Android**: Capacitor 8 project in `android/`. Uses ProGuard minification in release. Releases are served directly at `/Tour2026.apk` and `/Tour2026-v{code}.apk`.
 
-## 2. Standard Deployment & Mandatory Version Increments
+---
+
+## 2. Media & Reels Tiered Storage Architecture
+
+Reels videos up to 3 minutes (180s) can be up to 400MB from high-resolution phone cameras. The app uses a resilient tiered pipeline:
+
+1. **Chunked Upload ([src/utils/reelUploader.js](file:///d:/Software_and_Apps/Tour-2026/src/utils/reelUploader.js))**:
+   - Files > 5MB are split into 8MB chunks (`CHUNK_SIZE = 8 * 1024 * 1024`), bypassing Cloudflare's 100MB body limit.
+   - Upload concurrency is limited to 2 by `src/utils/uploadQueue.js` to prevent mobile network socket exhaustion.
+   - Resumable upload checkpoints are persisted in IndexedDB and localStorage by `src/utils/mediaUploadCheckpoint.js`.
+   - Uses a deterministic session `uploadId` (`up_${postId}`) so retries don't re-upload already uploaded chunks.
+   - Timeouts: 120s for single uploads, 150s for intermediate chunks, 240s for final chunk assembly/compression.
+   - On final chunk timeout/drop, client polls `GET /api/upload?uploadId=...` to automatically recover completed uploads without re-uploading.
+2. **Server Assembly & Race-Condition Lock ([server/app.js](file:///d:/Software_and_Apps/Tour-2026/server/app.js))**:
+   - `activeAssemblies` and `completedUploads` in-memory maps prevent duplicate assembly and race conditions.
+   - If an assembly is in progress or completed when a retry chunk arrives, the server returns the cached result instead of failing with `Missing chunk 0`.
+3. **FFmpeg Video Compression ([server/video-compressor.js](file:///d:/Software_and_Apps/Tour-2026/server/video-compressor.js))**:
+   - Compresses raw video to 720p H.264 vertical HD (`-preset veryfast -threads 0 -crf 23 -c:a aac -b:a 128k -movflags +faststart`).
+   - Cuts raw file size by 75-90% with instant progressive playback.
+4. **7-Day Hot Storage & Automatic Drive Archiving ([server/reels-archiver.js](file:///d:/Software_and_Apps/Tour-2026/server/reels-archiver.js))**:
+   - Recent reels live in hot VPS storage (`data/uploads/`, served via `/uploads/`).
+   - Reels older than 7 days are automatically archived to Google Drive via the Apps Script webhook, registered in `data/reels-registry.json`, and deleted from VPS disk.
+   - [server/static-files.js](file:///d:/Software_and_Apps/Tour-2026/server/static-files.js) seamlessly issues HTTP 302 redirects to Google Drive stream URLs for archived files.
+   - `cleanStaleChunkDirs()` automatically purges abandoned `chunks_*` temporary folders older than 2 hours.
+
+---
+
+## 3. Standard Deployment & Mandatory Version Increments
 
 **MANDATORY RULE FOR EVERY APK BUILD**:
-Each and every time the Android APK is built and deployed, you MUST increment the version code and version name:
-1. Bump `versionCode` (+1) and `versionName` in `android/app/build.gradle`.
-2. Update `public/version.json` (`versionCode`, `versionName`, `apkUrl: "https://tour2026.izhaanintellect.fun/Tour2026-v{code}.apk"`).
-3. Update `CURRENT_WEB_VERSION` and `CURRENT_WEB_BUILD` in `src/utils/appUpdater.js`.
-4. Update the APK download links in `src/App.jsx` (`/Tour2026.apk?v={code}`).
-5. After `gradlew assembleRelease`, copy the APK to both `public/Tour2026.apk` and `public/Tour2026-v{code}.apk`, then rebuild the web bundle.
+Each and every time the Android APK is built and deployed, you MUST increment the version code (+1) and version name across all 5 files:
+1. `android/app/build.gradle`: `versionCode {code}`, `versionName "{name}"`.
+2. `public/version.json`: `versionCode: {code}`, `versionName: "{name}"`, `apkUrl: "https://tour2026.izhaanintellect.fun/Tour2026-v{code}.apk"`, release notes and timestamp.
+3. `src/utils/appUpdater.js`: `CURRENT_WEB_VERSION = '{name}'`, `CURRENT_WEB_BUILD = {code}`.
+4. `src/App.jsx`: `/Tour2026.apk?v={code}` (in download buttons).
+5. `server/app.js`: default `versionCode` and `versionName` in `/api/app-version`.
 
-Run from the repository root in PowerShell:
+### Exact Build & Deploy Commands (Run from root in PowerShell):
 
 ```powershell
-# 1. Tests and build
+# 1. Run full test suite and build web bundle
 npm test
 npm run build
 
-# 2. Sync and build the Android app (release)
+# 2. Sync Capacitor and build Android release APK
+# Note: JAVA_HOME must point to JDK 17
 npx cap sync
-cmd /c "cd /d e:\Projects\Tour\android && gradlew assembleRelease"
+cmd /c "set JAVA_HOME=C:\Program Files\Microsoft\jdk-17.0.18.8-hotspot&& cd /d d:\Software_and_Apps\Tour-2026\android && gradlew assembleRelease"
 
-# 3. Publish the APK under the name the app links to, then rebuild the web dist
+# 3. Publish APK to public directory and rebuild web bundle
 Copy-Item -Path "android/app/build/outputs/apk/release/app-release.apk" -Destination "public/Tour2026.apk" -Force
+Copy-Item -Path "android/app/build/outputs/apk/release/app-release.apk" -Destination "public/Tour2026-v{code}.apk" -Force
 npm run build
 
-# 4. Archive the web dist and the server
+# 4. Create deployment tar archives
 tar -cf dist.tar dist
 tar -cf server.tar server.js server package.json
 
-# 5. Upload both archives to the VPS
-python3 -c "import subprocess; [subprocess.run(['ssh','banglaqr-vps','cat > /opt/tour2026/'+n], input=open(n,'rb').read(), check=True) for n in ['dist.tar','server.tar']]; print('Uploaded')"
+# 5. Upload archives to VPS (SFTP is disabled on port 2222; use Python stdin pipe)
+python -c "import subprocess; [subprocess.run(['ssh','banglaqr-vps','cat > /opt/tour2026/'+n], input=open(n,'rb').read(), check=True) for n in ['dist.tar','server.tar']]; print('Uploaded')"
 
-# 6. Unpack, copy into the container, and restart it
-ssh banglaqr-vps "cd /opt/tour2026 && tar -xf dist.tar && tar -xf server.tar && docker cp dist/. tour2026-app:/app/dist/ && docker cp server.js tour2026-app:/app/ && docker cp server tour2026-app:/app/ && docker restart tour2026-app"
+# 6. Unpack on VPS, update container, restart, and clean up
+ssh banglaqr-vps "cd /opt/tour2026 && tar -xf dist.tar && tar -xf server.tar && docker cp dist/. tour2026-app:/app/dist/ && docker cp server.js tour2026-app:/app/ && docker cp server tour2026-app:/app/ && docker restart tour2026-app && rm dist.tar server.tar"
 Remove-Item -Force dist.tar, server.tar
+
+# 7. Commit, tag, and push
+git add .
+git commit -m "release: v{name} (build {code})"
+git tag -a v{name} -m "Release v{name} (Build {code})"
+git push origin main --tags
 ```
 
-Requirements on the VPS:
-- `/opt/tour2026/.env` contains `ALLOWED_EMAILS=` with the family Google accounts (comma-separated). Without it, `docker compose` refuses to start and the backup API refuses every request.
-- A release keystore is optional. Without `TOUR_RELEASE_KEYSTORE` (and its passwords), the release build is signed with the debug key so that the registered Google Sign-In SHA-1 keeps working. Before publishing to people outside the family, create a release keystore and register its SHA-1 in Firebase.
+---
 
-## 3. Firestore Rules and First-Time Upgrade
+## 4. Android Native Layer & WebView Specifics
 
-The rules in `firestore.rules` deny everyone outside the allowlist. Run them against the emulator with `npm run test:rules` (needs Java).
+- **Java Environment**: JDK 17 installed at `C:\Program Files\Microsoft\jdk-17.0.18.8-hotspot`.
+- **WebView Media Settings ([MainActivity.java](file:///d:/Software_and_Apps/Tour-2026/android/app/src/main/java/com/izhaanintellect/tour2026/MainActivity.java))**:
+  - `settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW)` is REQUIRED for HTML5 video, blob URLs, and media playback.
+  - Hardware acceleration, DOM storage, and media autoplay without user gesture must remain enabled.
+- **PDF Generation & Printing ([src/utils/printHelper.js](file:///d:/Software_and_Apps/Tour-2026/src/utils/printHelper.js))**:
+  - Handles audit sheet, journey itinerary, and digital scrapbook printing on both Web and Android WebView.
+  - Android uses hidden print iframe / WebView print adapter and `@capacitor/filesystem`. Ensures web fonts and images are fully rendered before triggering `window.print()` to avoid blank sheets.
+- **Sharing Links**:
+  - NEVER share `localhost` or `http://localhost/#feed`! Universal sharing links must always use the production domain: `https://tour2026.izhaanintellect.fun/#feed` or `#reels`.
+- **In-App Updater ([AppUpdatePlugin.java](file:///d:/Software_and_Apps/Tour-2026/android/app/src/main/java/com/izhaanintellect/tour2026/AppUpdatePlugin.java), [AppUpdateModal.jsx](file:///d:/Software_and_Apps/Tour-2026/src/components/AppUpdateModal.jsx))**:
+  - Custom native download manager with progress tracking and direct package installer intent for seamless updates without Play Store.
 
-Upgrade order for the live project (the old app wrote everything into one document):
-1. In the Firebase console, create `config/access` with `emails` (lowercase family addresses) and `admins` (the organiser's address). Do this before anything else, or the family will be locked out.
-2. Deploy the rules: `npx firebase deploy --only firestore:rules`.
-3. Deploy the app and server (section 2).
-4. An admin opens the app once. The app moves the old arrays into subcollections (a banner shows progress). Only admins can run this; records keep their original authors. Check the expense totals afterwards.
-5. In the Members list, set the coordinator's phone and mark that member with `role: "coordinator"` (the safety screen dials that number). Phone numbers are never stored in the code.
+---
 
-## 4. Rules for Changes
+## 5. Feature Modules Reference
 
-- Never write personal phone numbers, emails, or other private details into source files or the web bundle. Family data lives in Firestore only.
-- Never store full-size base64 photos in Firestore. Thumbnails only (`src/services/photos.js`).
-- Write single documents (`src/services/tourStore.js`). Do not overwrite whole lists.
-- Money, dates, CSV, tides, and member linking have unit tests (`npm test`). Keep them passing.
-- The tide table (`src/data/tideSchedule.js`) is hand-entered and not verified. Check it against a local tide table before anyone relies on it for swimming decisions.
-- Known open risk, deliberately left unchanged: the Apps Script Drive webhook accepts uploads from anyone who has its URL.
+- **Media Feed, Reels & Profile ([InstagramFeed.jsx](file:///d:/Software_and_Apps/Tour-2026/src/components/InstagramFeed.jsx), [UserProfileModal.jsx](file:///d:/Software_and_Apps/Tour-2026/src/components/UserProfileModal.jsx), [ReelsPlayerModal.jsx](file:///d:/Software_and_Apps/Tour-2026/src/components/ReelsPlayerModal.jsx))**:
+  - Instagram-style vertical feed (4:5) and explore mosaic (3x3).
+  - Multi-image carousel with synchronized image index controls.
+  - Video trimmer up to 3 mins (`VideoTrimmerModal.jsx`).
+  - Likes, comment sliding sheet, member tagging, and instant client-side video caching (`localVideoCache.js`).
+- **Interactive GameZone Hub ([GameZoneHub.jsx](file:///d:/Software_and_Apps/Tour-2026/src/components/GameZoneHub.jsx))**:
+  - 29 Card Game (`card29Logic.js`) with bidding and trump suit engine.
+  - Chess with Minimax AI (`chessLogic.js`, `chessAi.js`).
+  - Ludo multiplayer (`ludoLogic.js`).
+  - Poker Evaluator (`pokerEvaluator.js`).
+  - Haptic feedback (`haptics.js`) and audio synthesizers (`gameAudio.js`).
+- **Family Safety & Beach Compass ([FamilySafetyHub.jsx](file:///d:/Software_and_Apps/Tour-2026/src/components/FamilySafetyHub.jsx))**:
+  - Real-time geolocation bearing to Hotel Sea Moon and bus meetup point.
+  - Emergency siren and one-click dialer for coordinators and local emergency hotlines.
+- **Discord Discussion Hub ([DiscordDiscussion.jsx](file:///d:/Software_and_Apps/Tour-2026/src/components/DiscordDiscussion.jsx))**:
+  - Real-time channel chat (`general`, `food`, `sightseeing`, `emergency`, `plans`), single reaction per person, typing indicators, Bengali counters.
+- **Seat & Room Maps ([BusSeatMap.jsx](file:///d:/Software_and_Apps/Tour-2026/src/components/BusSeatMap.jsx), [HotelRoomMap.jsx](file:///d:/Software_and_Apps/Tour-2026/src/components/HotelRoomMap.jsx))**:
+  - Interactive bus layout (40 seats) and Hotel Sea Moon room allocations linked to members.
+- **Audit Sheet & Digital Scrapbook ([PrintableReport.jsx](file:///d:/Software_and_Apps/Tour-2026/src/components/PrintableReport.jsx), [TourScrapbookModal.jsx](file:///d:/Software_and_Apps/Tour-2026/src/components/TourScrapbookModal.jsx))**:
+  - Integer paisa ledger accounting, print export, and interactive flipbook magazine.
 
-## 5. Feature Modules
+---
 
-- **Family Safety & Beach Compass** (`src/components/FamilySafetyHub.jsx`): live location (one document per person, cleared on request), compass to Hotel Sea Moon and the bus meeting point, siren, dialer for the coordinator (from members) and public emergency numbers.
-- **Family Travel Trivia Quiz** (`src/components/TourQuizModal.jsx`).
-- **Seat and room maps** (`src/components/BusSeatMap.jsx`, `HotelRoomMap.jsx`): contact numbers are looked up from members by exact name.
-- **Discord Discussion Hub** (`src/components/DiscordDiscussion.jsx`): mobile Discord-style drawer, real-time channels, reactions (single reaction per person per message), message deletion, and unified Bengali numeric counters.
-- **Media Feed & Reels** (`src/components/InstagramFeed.jsx`, `ReelsPlayerModal.jsx`, `VideoTrimmerModal.jsx`): album galleries, video trimmers up to 3 mins, client-side video caching (`src/utils/localVideoCache.js`), and Apps Script Google Drive backup hub.
-- **Member & Deposit Management** (`src/App.jsx`): live deposit breakdown (+/- calculation with quick preset adders and reset button), full-width clean labels, responsive inputs with `inputMode="numeric"`, and event isolation against accidental backdrop dismissals.
-- **Native Android** (`android/`): Capacitor plugins for authentication, app lifecycle, geolocation, haptics, network, splash screen, status bar. Back button: modals, drawer, dashboard, exit.
-- **Service worker** (`public/sw.js`): build-stamped cache name (`vite.config.js`), network-first navigations, cache-first hashed assets.
+## 6. Rules for Changes & Operational Wisdom
 
-## 6. Coding Standards
-
-- Mobile-first layout, Tailwind, high-contrast badges for outdoor daylight use.
-- Bengali text and a friendly tone for the family.
-- Keep the local-first behaviour: the last known data is shown instantly from `localStorage`, and Firestore's offline cache keeps edits while offline.
+- **Preserve Unit Tests**: Keep all 30 test files and 227+ tests passing (`npm test`). Always run tests before building.
+- **Never Hardcode Secrets or PII**: Personal phone numbers, emails, or credentials live in Firestore and environment variables only.
+- **Firestore Writes**: Always write discrete documents with field bounds (`tourStore.js`). Never overwrite entire root collections.
+- **Responsive & Daylight Readable**: High contrast Tailwind styling, Bengali typography, and tactile active-press animations suitable for outdoor mobile use.
