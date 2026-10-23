@@ -6,7 +6,9 @@
 
 const DB_NAME = 'Tour2026MediaCache';
 const STORE_NAME = 'videos';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Synchronized with mediaUploadCheckpoint.js
+
+const activeObjectUrls = new Map();
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -17,8 +19,11 @@ function openDB() {
 
     request.onupgradeneeded = (e) => {
       const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('videos')) {
+        db.createObjectStore('videos', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('upload_checkpoints')) {
+        db.createObjectStore('upload_checkpoints', { keyPath: 'uploadId' });
       }
     };
 
@@ -73,23 +78,58 @@ export async function getLocalVideo(id) {
 }
 
 /**
- * Creates an active, playable object URL from cached video if available.
+ * Creates or returns an active, playable object URL from cached video.
+ * URLs are tracked in memory so they can be revoked cleanly without leaking RAM.
  */
 export async function getLocalVideoUrl(id) {
-  const blob = await getLocalVideo(id);
+  if (!id) return null;
+  const key = String(id);
+  if (activeObjectUrls.has(key)) {
+    return activeObjectUrls.get(key);
+  }
+  const blob = await getLocalVideo(key);
   if (!blob) return null;
   try {
-    return URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
+    activeObjectUrls.set(key, url);
+    return url;
   } catch {
     return null;
   }
 }
 
 /**
- * Removes cached video
+ * Revokes a previously created object URL to free native memory.
+ */
+export function revokeLocalVideoUrl(id) {
+  if (!id) return;
+  const key = String(id);
+  if (activeObjectUrls.has(key)) {
+    try {
+      URL.revokeObjectURL(activeObjectUrls.get(key));
+    } catch {}
+    activeObjectUrls.delete(key);
+  }
+}
+
+/**
+ * Revokes all managed object URLs.
+ */
+export function clearAllLocalVideoUrls() {
+  for (const [, url] of activeObjectUrls.entries()) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {}
+  }
+  activeObjectUrls.clear();
+}
+
+/**
+ * Removes cached video and revokes its object URL
  */
 export async function deleteLocalVideo(id) {
   if (!id) return;
+  revokeLocalVideoUrl(id);
   try {
     const db = await openDB();
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -97,4 +137,26 @@ export async function deleteLocalVideo(id) {
   } catch (err) {
     console.warn('Failed to delete video from IndexedDB:', err);
   }
+}
+
+/**
+ * Prunes video cache older than maxAgeDays to prevent uncontrolled disk usage.
+ */
+export async function pruneOldLocalVideos(maxAgeDays = 14) {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.getAll();
+    req.onsuccess = () => {
+      const items = req.result || [];
+      const cutoff = Date.now() - maxAgeDays * 86400000;
+      for (const item of items) {
+        if (item.updatedAt && item.updatedAt < cutoff) {
+          store.delete(item.id);
+          revokeLocalVideoUrl(item.id);
+        }
+      }
+    };
+  } catch {}
 }

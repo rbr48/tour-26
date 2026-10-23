@@ -232,6 +232,21 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
     sendJson(res, 404, { error: 'push endpoint not found' }, headers);
   }
 
+
+function safeDecodeHeader(val, fallback = '') {
+  if (!val) return fallback;
+  try {
+    return decodeURIComponent(val);
+  } catch {
+    return String(val).replace(/[^a-zA-Z0-9_.-]/g, '');
+  }
+}
+
+const ALLOWED_MEDIA_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic',
+  '.mp4', '.mov', '.webm', '.m4v'
+]);
+
   async function handleUploadApi(req, res) {
     const headers = corsHeaders(req.headers.origin, allowedOrigins);
 
@@ -522,12 +537,12 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
           return;
         }
         let versionData = {
-          versionCode: 30,
-          versionName: '2.30',
+          versionCode: 31,
+          versionName: '2.31',
           minVersionCode: 1,
-          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v30.apk',
+          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v31.apk',
           apkSize: '8.2 MB',
-          releaseNotes: 'আপডেট v2.30: অডিট শিট ও ডিজিটাল ম্যাগাজিন প্রিন্ট ব্ল্যাঙ্ক পেইজ ফিক্স (আইসোলেটেড সফটওয়্যার রেন্ডারিং ও মেজার্ড প্রিন্ট ভিউ)।',
+          releaseNotes: 'আপডেট v2.31: ফায়ারস্টোর ও সার্ভার নিরাপত্তা হার্ডেনিং, লেজার আইডি নরমালাইজেশন, ইনডেক্সড-ডিবি ভিডিও ক্যাশ ও রিঅ্যাক্ট লাইফসাইকেল অপ্টিমাইজেশন।',
           releasedAt: '2026-10-19T01:45:00Z',
           forceUpdate: false,
         };

@@ -45,17 +45,20 @@ export function allocate(total, weights) {
  * ID; older entries stored the name, which is matched exactly once so a rename cannot
  * silently move a payment.
  */
-export function payerIdFor(expense, members) {
-  const memberIds = new Set(members.map((member) => member.id));
+export function payerIdFor(expense, members = []) {
   if ('paidById' in expense) {
-    return memberIds.has(expense.paidById) ? expense.paidById : null;
+    if (expense.paidById === null || expense.paidById === undefined || expense.paidById === '') {
+      return null;
+    }
+    const targetStr = String(expense.paidById);
+    const match = (members || []).find((member) => String(member.id) === targetStr);
+    return match ? match.id : null;
   }
   const name = String(expense.paidBy ?? '').trim();
-  const match = members.find((member) => String(member.name ?? '').trim() === name);
+  const match = (members || []).find((member) => String(member.name ?? '').trim() === name);
   return match ? match.id : null;
 }
 
-/** Minimal set of payments that clears every balance. Parties are {name, netPaisa}. */
 export function settle(parties) {
   for (const party of parties) {
     if (!Number.isFinite(party.netPaisa)) {

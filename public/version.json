@@ -1,10 +1,10 @@
 {
-  "versionCode": 30,
-  "versionName": "2.30",
+  "versionCode": 31,
+  "versionName": "2.31",
   "minVersionCode": 1,
-  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v30.apk",
+  "apkUrl": "https://tour2026.izhaanintellect.fun/Tour2026-v31.apk",
   "apkSize": "8.9 MB",
-  "releaseNotes": "আপডেট v2.30: অডিট শিট ও ডিজিটাল ম্যাগাজিন প্রিন্ট ব্ল্যাঙ্ক পেইজ ফিক্স (আইসোলেটেড সফটওয়্যার রেন্ডারিং ও মেজার্ড প্রিন্ট ভিউ)।",
-  "releasedAt": "2026-10-23T01:08:00.000Z",
+  "releaseNotes": "আপডেট v2.31: ফায়ারস্টোর ও সার্ভার নিরাপত্তা হার্ডেনিং, লেজার আইডি নরমালাইজেশন, ইনডেক্সড-ডিবি ভিডিও ক্যাশ ও রিঅ্যাক্ট লাইফসাইকেল অপ্টিমাইজেশন।",
+  "releasedAt": "2026-10-23T01:57:44.804Z",
   "forceUpdate": false
 }

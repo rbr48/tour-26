@@ -16,7 +16,8 @@ const memoryStore = new Map();
 function getStorageItem(key) {
   try {
     if (typeof localStorage !== 'undefined') {
-      return localStorage.getItem(key);
+      const val = localStorage.getItem(key);
+      if (val !== null) return val;
     }
     return memoryStore.get(key) || null;
   } catch {

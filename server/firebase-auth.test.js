@@ -110,10 +110,20 @@ describe('createFirebaseTokenVerifier', () => {
     );
   });
 
-  it('accepts any valid Google account unconditionally', async () => {
-    const { verify } = makeVerifier();
+  it('accepts any valid Google account when allowedEmails is [*]', async () => {
+    const { verify } = makeVerifier({ allowedEmails: ['*'] });
     const result = await verify(signToken(privateKey, claimsWith({ email: 'any-user@example.com' })));
     expect(result.email).toBe('any-user@example.com');
+  });
+
+  it('rejects accounts not in allowedEmails when allowlist is configured', async () => {
+    const { verify } = makeVerifier({ allowedEmails: ['family@example.com'] });
+    await expectAuthError(verify(signToken(privateKey, claimsWith({ email: 'stranger@example.com' }))), 403, /allowlist/);
+  });
+
+  it('rejects accounts with unverified emails', async () => {
+    const { verify } = makeVerifier();
+    await expectAuthError(verify(signToken(privateKey, claimsWith({ email_verified: false }))), 403, /verified/);
   });
 
   it('rejects missing or malformed tokens', async () => {

@@ -39,10 +39,11 @@ export async function shrinkProfilePhoto(value) {
 export async function preparePhotoFromDataUrl({ dataUrl, authorName, caption }) {
   const thumb = await makeThumbnail(dataUrl);
   let upload = null;
+  const safeAuthor = String(authorName || 'member').trim().replace(/\s+/g, '_') || 'member';
   try {
     upload = await uploadToGoogleDrive({
       imageDataUrl: dataUrl,
-      fileName: `Tour2026_${authorName.replace(/\s+/g, '_')}_${Date.now()}.jpg`,
+      fileName: `Tour2026_${safeAuthor}_${Date.now()}.jpg`,
       caption,
     });
   } catch (err) {

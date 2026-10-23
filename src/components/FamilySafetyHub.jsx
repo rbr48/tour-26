@@ -16,6 +16,8 @@ import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { useBackHandler } from '../utils/backNavigation';
 
+const toBnNum = (n) => String(n ?? '').replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[d]);
+
 // Preset Critical Tour Landmarks
 const TOUR_LANDMARKS = [
   {
@@ -294,7 +296,7 @@ export default function FamilySafetyHub({
   let bearingDegrees = 0;
   if (userLocation && selectedTarget) {
     const dist = calculateDistance(userLocation.lat, userLocation.lng, selectedTarget.lat, selectedTarget.lng);
-    distanceText = dist < 1000 ? `${dist} মিটার` : `${(dist / 1000).toFixed(2)} কি.মি.`;
+    distanceText = dist < 1000 ? `${toBnNum(dist)} মিটার` : `${toBnNum((dist / 1000).toFixed(2))} কি.মি.`;
     bearingDegrees = calculateBearing(userLocation.lat, userLocation.lng, selectedTarget.lat, selectedTarget.lng);
   }
 
@@ -422,7 +424,7 @@ export default function FamilySafetyHub({
               </div>
               {userLocation && (
                 <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                  ✓ জিপিএস সক্রিয় (±{userLocation.accuracy}মি.)
+                  ✓ জিপিএস সক্রিয় (±{toBnNum(userLocation.accuracy)}মি.)
                 </span>
               )}
             </div>

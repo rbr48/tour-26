@@ -450,7 +450,7 @@ export default function ReelsPlayerModal({
           {(videoSource && !videoLoadError) ? (
             <video
               ref={videoRef}
-              key={videoSource || currentReel?.id}
+              key={currentReel?.id || 'reel-video'}
               src={videoSource}
               poster={posterUrl || undefined}
               preload="auto"

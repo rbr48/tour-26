@@ -3,22 +3,32 @@ rules_version = '2';
 // Tour 2026 Firestore Security Rules
 // Protects database from unauthenticated access, enforces field constraints,
 // and restricts administrative management (expenses, members, itinerary, checklist, notices)
-// strictly to the admin (rajbrur@gmail.com and config/access admins).
-// General users can read tour data and only create/update/delete their own
+// strictly to the admin (config/access admins).
+// Family members can read tour data and only create/update/delete their own
 // feed posts, reactions, comments, profile, and chat messages.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function isAuthenticated() {
-      return request.auth != null;
+      return request.auth != null && request.auth.token.email_verified == true;
     }
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email.lower() == 'rajbrur@gmail.com' ||
         (exists(/databases/$(database)/documents/config/access) &&
-         request.auth.token.email.lower() in get(/databases/$(database)/documents/config/access).data.admins)
+         request.auth.token.email.lower() in get(/databases/$(database)/documents/config/access).data.admins) ||
+        (!exists(/databases/$(database)/documents/config/access) &&
+         request.auth.token.email.lower() == 'rajbrur@gmail.com')
+      );
+    }
+
+    function isFamily() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/config/access) &&
+         request.auth.token.email.lower() in get(/databases/$(database)/documents/config/access).data.emails) ||
+        !exists(/databases/$(database)/documents/config/access)
       );
     }
 
@@ -44,7 +54,7 @@ service cloud.firestore {
     }
 
     match /tours/{tourId} {
-      allow read: if isAuthenticated();
+      allow read: if isFamily();
       // Allow updates to tour info from admin only, reject legacy array injection
       allow create, update: if isAdmin()
         && fits(20)
@@ -54,13 +64,13 @@ service cloud.firestore {
       allow delete: if false;
 
       match /itinerary/{itemId} {
-        allow read: if isAuthenticated();
+        allow read: if isFamily();
         allow create, update: if isAdmin() && fits(25) && textWithin('notes', 2000);
         allow delete: if isAdmin();
       }
 
       match /members/{memberId} {
-        allow read: if isAuthenticated();
+        allow read: if isFamily();
         allow create, update: if isAdmin()
           && fits(25)
           && isPositiveBoundedNumber('deposit', 10000000);
@@ -68,7 +78,7 @@ service cloud.firestore {
       }
 
       match /expenses/{expenseId} {
-        allow read: if isAuthenticated();
+        allow read: if isFamily();
         allow create: if isAdmin()
           && fits(25)
           && isPositiveBoundedNumber('amount', 10000000)
@@ -81,24 +91,24 @@ service cloud.firestore {
       }
 
       match /checklist/{itemId} {
-        allow read: if isAuthenticated();
+        allow read: if isFamily();
         allow create, update: if isAdmin() && fits(15) && textWithin('text', 500);
         allow delete: if isAdmin();
       }
 
       match /notices/{noticeId} {
-        allow read: if isAuthenticated();
+        allow read: if isFamily();
         allow create, update: if isAdmin() && fits(20) && textWithin('content', 4000);
         allow delete: if isAdmin();
       }
 
       match /posts/{postId} {
-        allow read: if isAuthenticated();
-        allow create: if isAuthenticated()
+        allow read: if isFamily();
+        allow create: if isFamily()
           && fits(35)
           && textWithin('thumb', 350000)
           && textWithin('caption', 1000);
-        allow update: if isAuthenticated()
+        allow update: if isFamily()
           && fits(35)
           && textWithin('thumb', 350000)
           && (
@@ -108,7 +118,7 @@ service cloud.firestore {
             (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower()) ||
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comments', 'views', 'driveBackedUp', 'driveFileId', 'driveViewUrl', 'driveDownloadUrl', 'driveFileIds', 'driveViewUrls', 'thumbs'])
           );
-        allow delete: if isAuthenticated()
+        allow delete: if isFamily()
           && (
             isAdmin() ||
             resource.data.authorEmail == null ||
@@ -118,12 +128,12 @@ service cloud.firestore {
       }
 
       match /channels/{channelId}/messages/{messageId} {
-        allow read: if isAuthenticated() && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans'];
-        allow create: if isAuthenticated()
+        allow read: if isFamily() && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans'];
+        allow create: if isFamily()
           && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans']
           && fits(20)
           && textWithin('text', 4000);
-        allow update: if isAuthenticated()
+        allow update: if isFamily()
           && channelId in ['general', 'food', 'sightseeing', 'emergency', 'plans']
           && fits(20)
           && (
@@ -132,7 +142,7 @@ service cloud.firestore {
             (resource.data.authorEmail != null && request.auth.token.email.lower() == resource.data.authorEmail.lower()) ||
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
           );
-        allow delete: if isAuthenticated()
+        allow delete: if isFamily()
           && (
             isAdmin() ||
             (resource.data.senderEmail != null && request.auth.token.email.lower() == resource.data.senderEmail.lower()) ||
@@ -141,26 +151,26 @@ service cloud.firestore {
       }
 
       match /locations/{email} {
-        allow read: if isAuthenticated();
-        allow create, update: if isAuthenticated()
+        allow read: if isFamily();
+        allow create, update: if isFamily()
           && (isAdmin() || request.auth.token.email.lower() == email.lower())
           && fits(20);
-        allow delete: if isAuthenticated()
+        allow delete: if isFamily()
           && (isAdmin() || request.auth.token.email.lower() == email.lower());
       }
 
       match /meta/{docId} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
+        allow read: if isFamily();
+        allow write: if isFamily() && docId.matches('^typing_.*') && fits(30);
       }
 
       match /profiles/{email} {
-        allow read: if isAuthenticated();
-        allow create, update: if isAuthenticated()
+        allow read: if isFamily();
+        allow create, update: if isFamily()
           && (isAdmin() || request.auth.token.email.lower() == email.lower())
           && fits(25)
           && textWithin('customPhotoURL', 200000);
-        allow delete: if isAuthenticated()
+        allow delete: if isFamily()
           && (isAdmin() || request.auth.token.email.lower() == email.lower());
       }
     }

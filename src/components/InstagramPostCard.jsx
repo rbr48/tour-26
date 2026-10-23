@@ -200,20 +200,11 @@ export default function InstagramPostCard({
     isProgrammaticScrollRef.current = true;
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
 
-    const slides = carouselRef.current.children;
-    if (slides && slides[targetIdx]) {
-      slides[targetIdx].scrollIntoView({
-        behavior: 'smooth',
-        inline: 'start',
-        block: 'nearest',
-      });
-    } else {
-      const clientWidth = carouselRef.current.clientWidth || 360;
-      carouselRef.current.scrollTo({
-        left: targetIdx * clientWidth,
-        behavior: 'smooth',
-      });
-    }
+    const clientWidth = carouselRef.current.clientWidth || 360;
+    carouselRef.current.scrollTo({
+      left: targetIdx * clientWidth,
+      behavior: 'smooth',
+    });
 
     scrollTimeoutRef.current = setTimeout(() => {
       isProgrammaticScrollRef.current = false;
@@ -320,7 +311,7 @@ export default function InstagramPostCard({
             const itemDriveId = post.driveFileIds?.[idx] || post.driveFileId || null;
             return (
               <div
-                key={idx}
+                key={`post-${post.id}-slide-${idx}`}
                 className="w-full h-full shrink-0 snap-center relative flex items-center justify-center bg-neutral-950"
               >
                 <ProgressiveImage

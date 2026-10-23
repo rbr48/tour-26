@@ -80,6 +80,26 @@ public class AppUpdatePlugin extends Plugin {
             return;
         }
 
+        try {
+            Uri parsed = Uri.parse(apkUrl);
+            String scheme = parsed.getScheme();
+            String host = parsed.getHost();
+            boolean isAllowedScheme = "https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme);
+            boolean isAllowedHost = host != null && (
+                host.equalsIgnoreCase("tour2026.izhaanintellect.fun") ||
+                host.equalsIgnoreCase("localhost") ||
+                host.equalsIgnoreCase("10.0.2.2") ||
+                host.equalsIgnoreCase("127.0.0.1")
+            );
+            if (!isAllowedScheme || !isAllowedHost) {
+                call.reject("Untrusted download URL: " + apkUrl);
+                return;
+            }
+        } catch (Exception e) {
+            call.reject("Invalid download URL: " + e.getMessage());
+            return;
+        }
+
         executor.execute(() -> {
             File tempApk = null;
             try {

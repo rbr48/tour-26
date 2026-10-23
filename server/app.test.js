@@ -105,8 +105,17 @@ describe('backup API', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
-  it('accepts any valid Google account', async () => {
-    const base = await startApp();
+  it('rejects accounts not on the family allowlist', async () => {
+    const base = await startApp({ allowedEmails: [FAMILY_EMAIL] });
+    const response = await fetch(`${base}/api`, {
+      headers: { Authorization: `Bearer ${tokenFor('stranger@example.com')}` },
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'user is not on the family allowlist' });
+  });
+
+  it('accepts any valid Google account when wildcards are allowed', async () => {
+    const base = await startApp({ allowedEmails: ['*'] });
     const response = await fetch(`${base}/api`, {
       headers: { Authorization: `Bearer ${tokenFor('stranger@example.com')}` },
     });

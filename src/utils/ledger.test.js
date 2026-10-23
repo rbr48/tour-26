@@ -28,6 +28,13 @@ describe('payerIdFor', () => {
     expect(payerIdFor({ paidById: 2 }, members)).toBe(2);
   });
 
+  it('matches IDs regardless of string or number coercion', () => {
+    expect(payerIdFor({ paidById: '2' }, members)).toBe(2);
+    const strIdMembers = [{ id: '10', name: 'মামুন' }];
+    expect(payerIdFor({ paidById: 10 }, strIdMembers)).toBe('10');
+    expect(payerIdFor({ paidById: '10' }, strIdMembers)).toBe('10');
+  });
+
   it('treats an entry with no member as paid by the fund', () => {
     expect(payerIdFor({ paidById: null }, members)).toBeNull();
   });

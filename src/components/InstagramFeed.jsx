@@ -472,7 +472,7 @@ export default function InstagramFeed({
       if (remaining === 0) {
         setOfflineNotification('✓ সব অফলাইন পোস্ট সফলভাবে আপলোড সম্পন্ন হয়েছে!');
       } else {
-        setOfflineNotification(`⚠️ এখনও ${remaining}টি পোস্ট বাকি রয়েছে`);
+        setOfflineNotification(`⚠️ এখনও ${toBnNum(remaining)}টি পোস্ট বাকি রয়েছে`);
       }
     } catch (err) {
       console.warn('Queue drain error:', err);
@@ -597,7 +597,7 @@ export default function InstagramFeed({
     }
 
     if (!isDriveConfigured) {
-      const proceed = confirm(`মোট ${unsyncedPosts.length}টি ছবি ড্রাইভে ব্যাকআপ করা হবে। অনুগ্রহ করে ড্রাইভ অনুমোদনের জন্য আপনার গুগল অ্যাকাউন্ট কানেক্ট করুন।`);
+      const proceed = confirm(`মোট ${toBnNum(unsyncedPosts.length)}টি ছবি ড্রাইভে ব্যাকআপ করা হবে। অনুগ্রহ করে ড্রাইভ অনুমোদনের জন্য আপনার গুগল অ্যাকাউন্ট কানেক্ট করুন।`);
       if (!proceed) return;
       const res = await connectGoogleDrive();
       if (!res?.success) {
@@ -613,7 +613,7 @@ export default function InstagramFeed({
 
     for (let i = 0; i < unsyncedPosts.length; i++) {
       const p = unsyncedPosts[i];
-      setBatchSyncProgress(`ড্রাইভে সিঙ্ক হচ্ছে (${i + 1}/${unsyncedPosts.length})...`);
+      setBatchSyncProgress(`ড্রাইভে সিঙ্ক হচ্ছে (${toBnNum(i + 1)}/${toBnNum(unsyncedPosts.length)})...`);
       try {
         const result = await syncLegacyPhotoToDrive({ image: p.image, caption: p.caption });
         successCount++;
@@ -626,7 +626,7 @@ export default function InstagramFeed({
 
     setIsBatchSyncing(false);
     setBatchSyncProgress('');
-    alert(`ড্রাইভ ব্যাকআপ সম্পন্ন হয়েছে!\n\nসফল: ${successCount}টি\nব্যর্থ: ${failCount}টি\n\nকক্সবাজার ফ্যামিলি ট্যুর ২০২৬ ফোল্ডারে ছবি সংরক্ষিত হয়েছে।`);
+    alert(`ড্রাইভ ব্যাকআপ সম্পন্ন হয়েছে!\n\nসফল: ${toBnNum(successCount)}টি\nব্যর্থ: ${toBnNum(failCount)}টি\n\nকক্সবাজার ফ্যামিলি ট্যুর ২০২৬ ফোল্ডারে ছবি সংরক্ষিত হয়েছে।`);
   };
 
   // Save custom location to state and localStorage
@@ -698,7 +698,7 @@ export default function InstagramFeed({
     if (files.length === 0) return;
 
     if (selectedImages.length + files.length > 10) {
-      alert(`একসাথে সর্বোচ্চ ১০টি ছবি বাছাই করা যাবে। (বর্তমানে ${selectedImages.length}টি আছে)`);
+      alert(`একসাথে সর্বোচ্চ ১০টি ছবি বাছাই করা যাবে। (বর্তমানে ${toBnNum(selectedImages.length)}টি আছে)`);
     }
 
     const availableSlots = Math.max(0, 10 - selectedImages.length);

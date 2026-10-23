@@ -4,6 +4,7 @@ import { FUND_LABEL, categoryTotals, computeLedger } from '../utils/ledger';
 import { csvRow } from '../utils/csv';
 import { localISODate } from '../utils/date';
 import { resolvePayerName } from '../utils/syncHelpers';
+import { toBnNum } from '../utils/videoHelper';
 import { printDocument, downloadOrShareTextFile, buildPrintableHtmlDocument } from '../utils/printHelper';
 
 export default function PrintableReport({
@@ -52,7 +53,7 @@ export default function PrintableReport({
     line('মোট সংগৃহীত জমা ফান্ড', ledger.totalDeposits);
     line('সর্বমোট খরচ', ledger.totalExpense);
     line('ফান্ড থেকে পরিশোধিত খরচ বাদে অবশিষ্ট ফান্ড', ledger.fundBalance);
-    line('মোট সদস্য সংখ্যা (হেডকাউন্ট)', `${ledger.headcount} জন`);
+    line('মোট সদস্য সংখ্যা (হেডকাউন্ট)', `${toBnNum(ledger.headcount)} জন`);
     line('মাথাপিছু গড় ব্যয়', ledger.perHeadCost);
 
     section('খাতভিত্তিক খরচের সারসংক্ষেপ (CATEGORY BREAKDOWN)');
@@ -82,7 +83,9 @@ export default function PrintableReport({
     ledger.settlements.forEach((payment) => line(payment.from, payment.to, payment.amount));
 
     section('অডিট অনুমোদন ও স্বাক্ষর');
-    line("ট্যুর লিডার: রাজু ভাই","কোষাধ্যক্ষ: সোহাগ রানা","অডিটর: পরিবারের অভিভাবকবৃন্দ");
+    const leader = members.find((m) => m.role === 'coordinator' || m.role === 'leader')?.name || 'ট্যুর লিডার';
+    const cashier = members.find((m) => m.role === 'cashier' || m.role === 'treasurer')?.name || 'ট্যুর কোষাধ্যক্ষ';
+    line(`ট্যুর লিডার: ${leader}`, `কোষাধ্যক্ষ: ${cashier}`, 'অডিটর: পরিবারের অভিভাবকবৃন্দ');
 
     const csv = rows.join('\n') + '\n';
 

@@ -74,6 +74,7 @@ function createState() {
   return {
     tourExists: false,
     tour: null,
+    accessConfig: { emails: [], admins: [] },
     maps: Object.fromEntries(ITEM_COLLECTIONS.map((name) => [name, new Map()])),
     channels: Object.fromEntries(CHANNEL_IDS.map((id) => [id, new Map()])),
     loaded: new Set(),
@@ -107,6 +108,7 @@ function assemble(state) {
     meetingPoint: state.tour?.meetingPoint ?? null,
     hotelRooms: state.tour?.hotelRooms ?? null,
     busSeats: state.tour?.busSeats ?? null,
+    accessConfig: state.accessConfig || { emails: [], admins: [] },
     itinerary: list('itinerary'),
     members: list('members'),
     expenses: list('expenses', 'desc'),
@@ -166,6 +168,24 @@ export function subscribeToTour({ onUpdate, onError, onChange }) {
         publish();
       },
       (err) => handleListenerError('tour', err),
+    ),
+  );
+
+  unsubscribers.push(
+    onSnapshot(
+      doc(db, 'config', 'access'),
+      (snapshot) => {
+        state.accessConfig = snapshot.exists()
+          ? {
+              emails: Array.isArray(snapshot.data().emails) ? snapshot.data().emails.map((e) => String(e).toLowerCase()) : [],
+              admins: Array.isArray(snapshot.data().admins) ? snapshot.data().admins.map((e) => String(e).toLowerCase()) : [],
+            }
+          : { emails: [], admins: [] };
+        publish();
+      },
+      () => {
+        state.accessConfig = state.accessConfig || { emails: [], admins: [] };
+      },
     ),
   );
 

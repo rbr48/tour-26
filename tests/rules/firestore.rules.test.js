@@ -86,9 +86,9 @@ describe('reading the tour', () => {
     await assertSucceeds(getDoc(doc(dbFor(FAMILY), TOUR)));
   });
 
-  it('lets any verified signed-in Google account read the tour document and expenses', async () => {
-    await assertSucceeds(getDoc(doc(dbFor(STRANGER), TOUR)));
-    await assertSucceeds(getDocs(collection(dbFor(STRANGER), TOUR, 'expenses')));
+  it('blocks users outside the family allowlist from reading tour data', async () => {
+    await assertFails(getDoc(doc(dbFor(STRANGER), TOUR)));
+    await assertFails(getDocs(collection(dbFor(STRANGER), TOUR, 'expenses')));
   });
 
   it('blocks family accounts whose email is not verified', async () => {
@@ -113,13 +113,12 @@ describe('reading the tour', () => {
 });
 
 describe('tour document', () => {
-  it('requires the writer to be recorded as updatedBy', async () => {
-    const db = dbFor(FAMILY);
+  it('allows only admins to update the tour document', async () => {
     await assertSucceeds(
-      setDoc(doc(db, TOUR), { meetingPoint: { name: 'কামারপাড়া' }, updatedBy: { uid: `uid-${FAMILY}` } }, { merge: true }),
+      setDoc(doc(dbFor(ADMIN), TOUR), { meetingPoint: { name: 'কামারপাড়া' } }, { merge: true }),
     );
     await assertFails(
-      setDoc(doc(db, TOUR), { meetingPoint: { name: 'x' }, updatedBy: { uid: 'someone-else' } }, { merge: true }),
+      setDoc(doc(dbFor(FAMILY), TOUR), { meetingPoint: { name: 'অননুমোদিত' } }, { merge: true }),
     );
   });
 
@@ -129,26 +128,23 @@ describe('tour document', () => {
 });
 
 describe('expenses', () => {
-  it('records the author on new expenses and rejects spoofed authors', async () => {
-    const db = dbFor(FAMILY);
+  it('allows only admins to create expenses', async () => {
     await assertSucceeds(
-      setDoc(doc(db, TOUR, 'expenses', '3'), { id: 3, title: 'খাবার', amount: 300, addedByEmail: FAMILY }),
+      setDoc(doc(dbFor(ADMIN), TOUR, 'expenses', '3'), { id: 3, title: 'খাবার', amount: 300, addedByEmail: ADMIN }),
     );
     await assertFails(
-      setDoc(doc(db, TOUR, 'expenses', '4'), { id: 4, title: 'খাবার', amount: 300, addedByEmail: ADMIN }),
+      setDoc(doc(dbFor(FAMILY), TOUR, 'expenses', '4'), { id: 4, title: 'খাবার', amount: 300, addedByEmail: FAMILY }),
     );
   });
 
-  it('lets family members correct amounts but not change who added them', async () => {
-    const db = dbFor(OTHER_FAMILY);
-    await assertSucceeds(updateDoc(doc(db, TOUR, 'expenses', '1'), { amount: 550 }));
-    await assertFails(updateDoc(doc(db, TOUR, 'expenses', '1'), { addedByEmail: OTHER_FAMILY }));
+  it('allows only admins to update expenses', async () => {
+    await assertSucceeds(updateDoc(doc(dbFor(ADMIN), TOUR, 'expenses', '1'), { amount: 550 }));
+    await assertFails(updateDoc(doc(dbFor(FAMILY), TOUR, 'expenses', '1'), { amount: 600 }));
   });
 
-  it('lets only the author or an admin delete an expense', async () => {
-    await assertFails(deleteDoc(doc(dbFor(OTHER_FAMILY), TOUR, 'expenses', '1')));
-    await assertSucceeds(deleteDoc(doc(dbFor(FAMILY), TOUR, 'expenses', '1')));
-    await assertSucceeds(deleteDoc(doc(dbFor(ADMIN), TOUR, 'expenses', '2')));
+  it('allows only admins to delete an expense', async () => {
+    await assertFails(deleteDoc(doc(dbFor(FAMILY), TOUR, 'expenses', '1')));
+    await assertSucceeds(deleteDoc(doc(dbFor(ADMIN), TOUR, 'expenses', '1')));
   });
 });
 
