@@ -522,12 +522,12 @@ export function createApp({ config, verifyToken, store, pushService, reelsRegist
           return;
         }
         let versionData = {
-          versionCode: 29,
-          versionName: '2.29',
+          versionCode: 30,
+          versionName: '2.30',
           minVersionCode: 1,
-          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v29.apk',
+          apkUrl: 'https://tour2026.izhaanintellect.fun/Tour2026-v30.apk',
           apkSize: '8.2 MB',
-          releaseNotes: 'আপডেট v2.29: অডিট শিট ও ডিজিটাল ম্যাগাজিনের নেটিভ অ্যান্ড্রয়েড প্রিন্ট ও পিডিএফ ডাউনলোড ফিক্স।',
+          releaseNotes: 'আপডেট v2.30: অডিট শিট ও ডিজিটাল ম্যাগাজিন প্রিন্ট ব্ল্যাঙ্ক পেইজ ফিক্স (আইসোলেটেড সফটওয়্যার রেন্ডারিং ও মেজার্ড প্রিন্ট ভিউ)।',
           releasedAt: '2026-10-19T01:45:00Z',
           forceUpdate: false,
         };

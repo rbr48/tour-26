@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { triggerHaptic } from '../utils/haptics';
-import { printDocument } from '../utils/printHelper';
+import { printDocument, buildPrintableHtmlDocument } from '../utils/printHelper';
 import { resolveMediaUrl } from '../utils/videoHelper';
 import {
   Award,
@@ -40,7 +40,15 @@ export default function TourScrapbookModal({
 
   const handlePrint = async () => {
     triggerHaptic('medium');
-    await printDocument({ name: 'Tour2026_Family_Scrapbook_Magazine' });
+    const html = buildPrintableHtmlDocument({
+      title: 'Tour2026_Family_Scrapbook_Magazine',
+      elementId: 'tour-scrapbook-content',
+    });
+    await printDocument({
+      name: 'Tour2026_Family_Scrapbook_Magazine',
+      html,
+      elementId: 'tour-scrapbook-content',
+    });
   };
 
   return (

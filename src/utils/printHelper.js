@@ -17,19 +17,119 @@ if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
 }
 
 /**
+ * Extracts and packages an element's HTML with full page styles and standalone print typography
+ * into a self-contained printable HTML document.
+ * Eliminates background app DOM, flex containers, and modal backdrops that cause blank pages in print previews.
+ *
+ * @param {Object} options
+ * @param {string} [options.title]
+ * @param {string} options.elementId
+ * @returns {string}
+ */
+export function buildPrintableHtmlDocument({ title = 'Tour 2026 Document', elementId }) {
+  if (typeof document === 'undefined') return '';
+  const el = document.getElementById(elementId);
+  if (!el) return '';
+
+  // Gather existing page styles and CSS links
+  let externalStyles = '';
+  document.querySelectorAll('style, link[rel="stylesheet"]').forEach((s) => {
+    externalStyles += s.outerHTML + '\n';
+  });
+
+  const embeddedPrintStyles = `
+    <style>
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+      @page {
+        margin: 10mm 12mm;
+        size: auto;
+      }
+      html, body {
+        background: #ffffff !important;
+        color: #0f172a !important;
+        margin: 0 !important;
+        padding: 16px !important;
+        font-family: 'Hind Siliguri', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif !important;
+        font-size: 13px;
+        line-height: 1.5;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .print\\:hidden, button:not(#print-allowed) {
+        display: none !important;
+      }
+      table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin-top: 8px;
+        margin-bottom: 12px;
+        font-size: 11px;
+        page-break-inside: auto;
+      }
+      tr {
+        page-break-inside: avoid !important;
+        page-break-after: auto !important;
+      }
+      thead {
+        display: table-header-group !important;
+      }
+      th, td {
+        border: 1px solid #cbd5e1 !important;
+        padding: 6px 8px !important;
+      }
+      th {
+        background-color: #f1f5f9 !important;
+        color: #1e293b !important;
+        font-weight: bold;
+      }
+      .break-inside-avoid, [data-page-break-avoid] {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+      img {
+        max-width: 100%;
+        height: auto;
+      }
+    </style>
+  `;
+
+  return `<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  ${externalStyles}
+  ${embeddedPrintStyles}
+</head>
+<body class="bg-white text-slate-900">
+  ${el.innerHTML}
+</body>
+</html>`;
+}
+
+/**
  * Initiates a document print / PDF generation action across both Web and Android native.
  * On Android native, it triggers the Android System Print Spooler (offering "Save as PDF" and physical printers).
  * On Web, it invokes the browser's native print preview dialog.
  *
  * @param {Object} options
  * @param {string} [options.name] - Descriptive job / document name for the PDF
- * @param {string} [options.html] - Optional standalone HTML string to render in an isolated print view
+ * @param {string} [options.html] - Standalone HTML string to render in an isolated print view
+ * @param {string} [options.elementId] - Element ID to automatically package into standalone HTML
  * @returns {Promise<boolean>}
  */
-export async function printDocument({ name = 'Tour2026_Document', html = null } = {}) {
+export async function printDocument({ name = 'Tour2026_Document', html = null, elementId = null } = {}) {
+  let docHtml = html;
+  if (!docHtml && elementId) {
+    docHtml = buildPrintableHtmlDocument({ title: name, elementId });
+  }
+
   if (Capacitor.isNativePlatform()) {
     try {
-      await NativePrint.print({ name, html });
+      await NativePrint.print({ name, html: docHtml });
       return true;
     } catch (err) {
       console.warn('NativePrint failed, falling back to window.print:', err);
@@ -89,37 +189,4 @@ export async function downloadOrShareTextFile({ fileName, content, mimeType = 't
     console.error('Failed to download file on Web:', err);
     return false;
   }
-}
-
-/**
- * Extracts and packages an element's HTML with full page styles into a self-contained printable HTML document.
- * Useful for printing clean isolated views without modal backdrops.
- */
-export function buildPrintableHtmlDocument({ title = 'Tour 2026 Document', elementId }) {
-  if (typeof document === 'undefined') return '';
-  const el = document.getElementById(elementId);
-  if (!el) return '';
-
-  // Gather all style elements
-  let styles = '';
-  document.querySelectorAll('style, link[rel="stylesheet"]').forEach((s) => {
-    styles += s.outerHTML + '\n';
-  });
-
-  return `<!DOCTYPE html>
-<html lang="bn">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  ${styles}
-  <style>
-    body { background: #ffffff !important; color: #0f172a !important; margin: 0; padding: 16px; }
-    @page { margin: 10mm 12mm; size: auto; }
-  </style>
-</head>
-<body class="bg-white text-slate-900">
-  ${el.innerHTML}
-</body>
-</html>`;
 }

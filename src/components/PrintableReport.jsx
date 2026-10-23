@@ -4,7 +4,7 @@ import { FUND_LABEL, categoryTotals, computeLedger } from '../utils/ledger';
 import { csvRow } from '../utils/csv';
 import { localISODate } from '../utils/date';
 import { resolvePayerName } from '../utils/syncHelpers';
-import { printDocument, downloadOrShareTextFile } from '../utils/printHelper';
+import { printDocument, downloadOrShareTextFile, buildPrintableHtmlDocument } from '../utils/printHelper';
 
 export default function PrintableReport({
   tourInfo = {},
@@ -96,7 +96,15 @@ export default function PrintableReport({
   };
 
   const handlePrint = async () => {
-    await printDocument({ name: `CoxsBazar_Tour2026_Audit_${localISODate()}` });
+    const html = buildPrintableHtmlDocument({
+      title: `CoxsBazar_Tour2026_Audit_${localISODate()}`,
+      elementId: 'printable-report-content',
+    });
+    await printDocument({
+      name: `CoxsBazar_Tour2026_Audit_${localISODate()}`,
+      html,
+      elementId: 'printable-report-content',
+    });
   };
 
   return (

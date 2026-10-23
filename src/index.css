@@ -89,6 +89,18 @@
     overflow: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    min-height: 0 !important;
+  }
+
+    /* Reset all flex/grid roots in the SPA so print pagination works */
+  #root,
+  #root > div,
+  #root > div > div {
+    display: block !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
   }
 
   /* 1. Hide the entire application background */
@@ -133,6 +145,8 @@
     color: #0f172a !important;
     overflow: visible !important;
     border-radius: 0 !important;
+    animation: none !important;
+    transform: none !important;
   }
 
   #printable-report-content,

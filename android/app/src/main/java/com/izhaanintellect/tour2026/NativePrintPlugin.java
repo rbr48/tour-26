@@ -7,6 +7,9 @@ import android.os.Build;
 import android.print.PrintAttributes;
 import android.print.PrintDocumentAdapter;
 import android.print.PrintManager;
+import android.view.View;
+import android.view.ViewGroup;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.core.content.FileProvider;
@@ -22,6 +25,9 @@ import java.nio.charset.StandardCharsets;
 
 @CapacitorPlugin(name = "NativePrint")
 public class NativePrintPlugin extends Plugin {
+
+    // Retain strong reference to prevent premature garbage collection during print job spooling
+    private WebView printWebView;
 
     /**
      * Triggers Android's native PrintManager service.
@@ -42,32 +48,75 @@ public class NativePrintPlugin extends Plugin {
 
                 String html = call.getString("html");
                 if (html != null && !html.trim().isEmpty()) {
-                    // Create an isolated WebView to render and print the given HTML document
-                    WebView printWebView = new WebView(getContext());
-                    printWebView.getSettings().setJavaScriptEnabled(true);
-                    printWebView.getSettings().setDomStorageEnabled(true);
-                    printWebView.getSettings().setDefaultTextEncodingName("UTF-8");
+                    ViewGroup rootView = getActivity().findViewById(android.R.id.content);
+                    if (printWebView != null) {
+                        try {
+                            if (rootView != null) {
+                                rootView.removeView(printWebView);
+                            }
+                            printWebView.stopLoading();
+                            printWebView.destroy();
+                        } catch (Exception ignored) {}
+                        printWebView = null;
+                    }
+
+                    // Create dedicated off-screen printing WebView
+                    printWebView = new WebView(getContext());
+                    WebSettings settings = printWebView.getSettings();
+                    settings.setJavaScriptEnabled(true);
+                    settings.setDomStorageEnabled(true);
+                    settings.setDefaultTextEncodingName("UTF-8");
+                    settings.setAllowFileAccess(true);
+                    settings.setAllowContentAccess(true);
+                    settings.setLoadWithOverviewMode(true);
+                    settings.setUseWideViewPort(true);
+
+                    // Use SOFTWARE layer for print rasterization to avoid hardware acceleration blank preview bugs
+                    printWebView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+
+                    // Attach to view hierarchy with standard printable dimensions (invisible to user)
+                    // This forces Android's view system to measure and lay out the DOM tree, preventing blank pages
+                    int width = 1080;
+                    int height = 1920;
+                    printWebView.setVisibility(View.INVISIBLE);
+                    if (rootView != null) {
+                        rootView.addView(printWebView, new ViewGroup.LayoutParams(width, height));
+                    }
+                    printWebView.measure(
+                            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+                    );
+                    printWebView.layout(0, 0, width, height);
+
                     printWebView.setWebViewClient(new WebViewClient() {
                         @Override
                         public void onPageFinished(WebView view, String url) {
-                            PrintDocumentAdapter adapter;
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                                adapter = view.createPrintDocumentAdapter(jobName);
-                            } else {
-                                adapter = view.createPrintDocumentAdapter();
-                            }
+                            // Delay slightly to ensure layout rendering, images, and font calculations stabilize
+                            view.postDelayed(() -> {
+                                try {
+                                    PrintDocumentAdapter adapter;
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                        adapter = view.createPrintDocumentAdapter(jobName);
+                                    } else {
+                                        adapter = view.createPrintDocumentAdapter();
+                                    }
 
-                            printManager.print(jobName, adapter, new PrintAttributes.Builder()
-                                    .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
-                                    .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
-                                    .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
-                                    .build());
-                            call.resolve(new JSObject().put("success", true));
+                                    printManager.print(jobName, adapter, new PrintAttributes.Builder()
+                                            .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
+                                            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                                            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                                            .build());
+                                    call.resolve(new JSObject().put("success", true));
+                                } catch (Exception ex) {
+                                    call.reject("Failed to trigger print spooler: " + ex.getMessage(), ex);
+                                }
+                            }, 350);
                         }
                     });
+
                     printWebView.loadDataWithBaseURL("https://localhost/", html, "text/html", "UTF-8", null);
                 } else {
-                    // Print the current active WebView
+                    // Fallback: print active WebView directly
                     WebView mainWebView = getBridge().getWebView();
                     PrintDocumentAdapter adapter;
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
