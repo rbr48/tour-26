@@ -20,7 +20,12 @@ import {
   Loader2,
 } from 'lucide-react';
 import { formatDuration, toBnNum, resolveMediaUrl, getDriveEmbedUrl, PRODUCTION_ORIGIN, getShareableUrl } from '../utils/videoHelper';
-import { getLocalVideo, getLocalVideoUrl } from '../utils/localVideoCache';
+import {
+  getLocalVideo,
+  getLocalVideoUrl,
+  revokeLocalVideoUrl,
+  clearAllLocalVideoUrls,
+} from '../utils/localVideoCache';
 import { uploadReelVideo } from '../utils/reelUploader';
 import { useBackHandler } from '../utils/backNavigation';
 import { triggerHaptic } from '../utils/haptics';
@@ -74,16 +79,11 @@ export default function ReelsPlayerModal({
   // Resolve local IndexedDB video if this device uploaded it
   useEffect(() => {
     let active = true;
-    let objectUrl = null;
 
     if (currentReel?.id) {
       getLocalVideoUrl(currentReel.id).then((url) => {
-        if (!active) {
-          if (url) URL.revokeObjectURL(url);
-          return;
-        }
+        if (!active) return;
         if (url) {
-          objectUrl = url;
           setLocalVideoUrl(url);
           setVideoLoadError(false);
         } else {
@@ -96,11 +96,18 @@ export default function ReelsPlayerModal({
 
     return () => {
       active = false;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
     };
   }, [currentReel?.id]);
+
+  // Clean up cached blob object URLs only when modal closes to maintain instant back-and-forth navigation
+  useEffect(() => {
+    if (!isOpen) {
+      clearAllLocalVideoUrls();
+      setLocalVideoUrl(null);
+      setVideoLoadError(false);
+      setIsBuffering(false);
+    }
+  }, [isOpen]);
 
   // Video source resolution: prioritize local device cache, then server/cloud URL
   const rawVideoSource = currentReel?.videoUrl || currentReel?.video || null;
@@ -177,7 +184,21 @@ export default function ReelsPlayerModal({
     if (!isOpen || !videoRef.current || videoLoadError || !videoSource) return;
 
     const vid = videoRef.current;
-    vid.currentTime = startTime;
+    if (startTime > 0) {
+      if (vid.readyState >= 1) {
+        vid.currentTime = startTime;
+      } else {
+        const onLoaded = () => {
+          vid.currentTime = startTime;
+          vid.removeEventListener('loadedmetadata', onLoaded);
+        };
+        vid.addEventListener('loadedmetadata', onLoaded);
+      }
+    } else {
+      try {
+        vid.currentTime = 0;
+      } catch {}
+    }
     vid.muted = isMuted;
 
     const playPromise = vid.play();
@@ -187,7 +208,8 @@ export default function ReelsPlayerModal({
           setIsPlaying(true);
           setIsBuffering(false);
         })
-        .catch(() => {
+        .catch((err) => {
+          if (err?.name === 'AbortError') return;
           // Autoplay policy fallback: mute and play
           vid.muted = true;
           setIsMuted(true);
@@ -196,7 +218,10 @@ export default function ReelsPlayerModal({
               setIsPlaying(true);
               setIsBuffering(false);
             })
-            .catch(() => setIsPlaying(false));
+            .catch((e) => {
+              if (e?.name === 'AbortError') return;
+              setIsPlaying(false);
+            });
         });
     }
   }, [currentIndex, isOpen, startTime, videoSource, videoLoadError]);
@@ -470,7 +495,25 @@ export default function ReelsPlayerModal({
                 setIsBuffering(true);
               }}
               onError={(e) => {
-                console.warn('Reel video failed to load, trying fallback:', e?.target?.error, videoSource);
+                const err = e?.target?.error;
+                console.warn('Reel video failed to load:', err, videoSource);
+
+                // Ignore MEDIA_ERR_ABORTED (code 1) - this happens normally when switching slides or pausing
+                if (err?.code === 1) {
+                  return;
+                }
+
+                // If local cached blob fails, seamlessly fall back to server video URL
+                if (localVideoUrl && resolvedRemoteSource) {
+                  console.info('Local cached video failed, falling back to server URL:', resolvedRemoteSource);
+                  if (currentReel?.id) {
+                    revokeLocalVideoUrl(currentReel.id);
+                  }
+                  setLocalVideoUrl(null);
+                  setVideoLoadError(false);
+                  return;
+                }
+
                 setVideoLoadError(true);
                 setIsBuffering(false);
               }}
@@ -497,6 +540,9 @@ export default function ReelsPlayerModal({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (currentReel?.id) {
+                          revokeLocalVideoUrl(currentReel.id);
+                        }
                         setVideoLoadError(false);
                       }}
                       className="absolute inset-0 m-auto w-14 h-14 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-md shadow-2xl transition active:scale-95 cursor-pointer"
@@ -514,6 +560,7 @@ export default function ReelsPlayerModal({
                   e.stopPropagation();
                   setVideoLoadError(false);
                   if (currentReel?.id) {
+                    revokeLocalVideoUrl(currentReel.id);
                     getLocalVideoUrl(currentReel.id).then((u) => u && setLocalVideoUrl(u));
                   }
                 }}
