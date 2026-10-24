@@ -39,7 +39,7 @@
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "firebase-tools": "^15.34.0",
-    "oxlint": "^1.81.0",
+    "oxlint": "^1.89.0",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
